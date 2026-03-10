@@ -1,6 +1,9 @@
 {
   "expo": {
     "name": "partyup-mobile",
+    "web": {
+      "bundler": "metro"
+    },
     "slug": "partyup-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
