@@ -1,76 +1,93 @@
 import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Briefcase, Compass, Home, Map, MessageCircle, UserRound } from 'lucide-react-native';
 import { Tabs } from 'expo-router';
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
+  const isDark = useColorScheme() === 'dark';
+
+  const activeTintColor = isDark ? '#E2E8F0' : '#334155';
+  const inactiveTintColor = isDark ? '#64748B' : '#94A3B8';
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: activeTintColor,
+        tabBarInactiveTintColor: inactiveTintColor,
         headerShown: false,
+        sceneStyle: {
+          paddingTop: insets.top,
+        },
         tabBarButton: HapticTab,
         tabBarStyle: {
-          borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
-          paddingBottom: 8,
-          paddingTop: 8,
-          height: 60,
+          backgroundColor: '#FFFFFF',
+          borderTopWidth: 0,
+          elevation: 0,
+          shadowOpacity: 0,
+          height: 58 + Math.max(insets.bottom, 8),
+          paddingBottom: Math.max(insets.bottom, 8),
+          paddingTop: 10,
+          paddingHorizontal: 12,
+        },
+        tabBarItemStyle: {
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingVertical: 2,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
+          fontSize: 12,
+          fontWeight: '500',
+          lineHeight: 14,
           marginTop: 4,
+          marginBottom: 0,
         },
         tabBarIconStyle: {
-          marginBottom: 2,
+          marginBottom: 0,
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="house.fill" color={color} />,
+          tabBarIcon: ({ color }) => <Home size={25} color={color} strokeWidth={1.9} />,
         }}
       />
       <Tabs.Screen
         name="discover"
         options={{
           title: 'Discover',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="magnifyingglass" color={color} />,
+          tabBarIcon: ({ color }) => <Compass size={25} color={color} strokeWidth={1.9} />,
         }}
       />
       <Tabs.Screen
         name="carpooling"
         options={{
-          title: 'Carpool',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="car.fill" color={color} />,
+          title: 'Travel',
+          tabBarIcon: ({ color }) => <Briefcase size={25} color={color} strokeWidth={1.9} />,
         }}
       />
       <Tabs.Screen
         name="map"
         options={{
           title: 'Map',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="map.fill" color={color} />,
+          tabBarIcon: ({ color }) => <Map size={25} color={color} strokeWidth={1.9} />,
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
           title: 'Chat',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="bubble.right.fill" color={color} />,
+          tabBarIcon: ({ color }) => <MessageCircle size={25} color={color} strokeWidth={1.9} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={24} name="person.circle.fill" color={color} />,
+          tabBarIcon: ({ color }) => <UserRound size={25} color={color} strokeWidth={1.9} />,
         }}
       />
     </Tabs>

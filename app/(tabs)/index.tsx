@@ -1,116 +1,239 @@
-import ActivityFeed from '@/components/ActivityFeed';
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import NotificationModal from '@/components/NotificationModal';
+import { Bell, MapPin, Navigation, Send, Shield, Sparkles, Users } from 'lucide-react-native';
+import { useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
+const activeTrip = {
+  destination: 'Boracay',
+  pickupTime: '2:15h',
+  buddy: 'Sarah',
+  traffic: 'Moderate',
+  status: 'Active trip',
+};
+
+const safetyData = {
+  geofenceStatus: 'Within 5km safe zone',
+  location: 'Makati CBD',
+  distanceToBuddy: 2.3,
+  trustScore: 92,
+  verified: true,
+};
+
+const quickStats = [
+  { label: 'Trusted circle', value: '8 people' },
+  { label: 'Trips completed', value: '24' },
+  { label: 'Safety score', value: '92%' },
+];
+
+const activityItems = [
+  { id: 1, title: 'Sarah accepted your request', meta: '2 min ago' },
+  { id: 2, title: 'Pickup time updated to 2:00 PM', meta: '15 min ago' },
+  { id: 3, title: 'Route adjusted for traffic', meta: '1 hour ago' },
+];
+
 export default function HomeScreen() {
+  const [notificationVisible, setNotificationVisible] = useState(false);
+
+  const notifications = [
+    {
+      id: 1,
+      type: 'match' as const,
+      title: 'New Match!',
+      message: 'Sarah wants to travel with you to Bali',
+      timestamp: '5 minutes ago',
+      read: false,
+    },
+    {
+      id: 2,
+      type: 'message' as const,
+      title: 'New Message',
+      message: 'Mike: Hey! Are you still going to Tokyo?',
+      timestamp: '1 hour ago',
+      read: false,
+    },
+    {
+      id: 3,
+      type: 'trip' as const,
+      title: 'Trip Reminder',
+      message: 'Your trip to Paris starts in 3 days',
+      timestamp: '2 hours ago',
+      read: true,
+    },
+    {
+      id: 4,
+      type: 'safety' as const,
+      title: 'Safety Check',
+      message: 'Your trusted circle is requesting your location',
+      timestamp: '1 day ago',
+      read: true,
+    },
+  ];
+
   return (
-    <ScrollView className="flex-1 bg-white">
-      {/* Header */}
-      <View className="flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-100">
-        <View className="flex-row items-center gap-2">
-          <View className="w-10 h-10 bg-blue-800 rounded-lg items-center justify-center">
-            <Text className="text-white font-bold">P</Text>
+    <ScrollView className="flex-1 bg-[#F6F8FC]" contentContainerClassName="pb-28">
+      <View className="absolute -top-24 -right-20 h-56 w-56 rounded-full bg-[#DCE6FF] opacity-70" />
+      <View className="absolute top-40 -left-24 h-52 w-52 rounded-full bg-[#DDEFE8] opacity-70" />
+
+      <View className="px-4 pt-4 pb-5 border-b border-black/5 bg-white/80">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-3">
+            <View className="h-10 w-10 items-center justify-center rounded-full bg-[#2747C7]">
+              <Text className="text-white text-lg font-bold">P</Text>
+            </View>
+            <Text className="text-lg font-bold text-[#24314A]">PartyUp</Text>
           </View>
-          <Text className="text-xl font-bold text-black">PartyUp</Text>
+          <TouchableOpacity onPress={() => setNotificationVisible(true)} className="relative rounded-full border border-black/10 bg-white p-2">
+            <Bell size={20} color="#24314A" />
+            <View className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[#E34B4B]" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity className="p-2">
-          <IconSymbol size={24} name="bell.fill" color="#FF6B6B" />
-        </TouchableOpacity>
+
+        <View className="mt-8">
+          <Text className="text-[34px] leading-10 font-black text-[#182A4D]">What's happening now</Text>
+          <Text className="mt-2 text-base text-[#6C7A95]">Your live dashboard</Text>
+        </View>
       </View>
 
-      {/* Main Content */}
-      <View className="px-4 py-6">
-        {/* Title Section */}
-        <Text className="text-3xl font-bold text-black mb-1">What's happening now</Text>
-        <Text className="text-base text-gray-500 mb-6">Your live dashboard</Text>
-
-        {/* Active Trip Card */}
-        <View className="border-2 border-blue-800 rounded-2xl p-4 mb-4 bg-blue-50">
-          <View className="flex-row items-center justify-between mb-3">
+      <View className="px-4 pt-6 flex flex-col gap-4">
+        <View className="rounded-[24px] border-2 border-[#284BD6] bg-[#EAF0FF] p-4 shadow-sm shadow-[#284BD6]/10">
+          <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
-              <View className="w-3 h-3 bg-green-500 rounded-full" />
-              <Text className="text-blue-800 font-semibold">Active Trip</Text>
+              <View className="h-4 w-4 rounded-full bg-[#18A06A]" />
+              <Text className="text-base font-extrabold text-[#284BD6]">{activeTrip.status}</Text>
             </View>
-            <IconSymbol size={20} name="paperplane.fill" color="#2563EB" />
+            <Send size={20} color="#284BD6" />
           </View>
 
-          <Text className="text-2xl font-bold text-black mb-2">Boracay</Text>
-          <Text className="text-sm text-gray-600 mb-4">With Sarah</Text>
+          <Text className="mt-4 text-3xl font-black text-[#1B2340]">{activeTrip.destination}</Text>
+          <Text className="mt-1 text-base text-[#6D7A96]">With {activeTrip.buddy}</Text>
 
-          <View className="space-y-2 mb-4">
-            <View className="flex-row justify-between">
-              <Text className="text-gray-600">Pickup in</Text>
-              <Text className="font-bold">2:15h</Text>
+          <View className="mt-4 rounded-2xl bg-white/75 p-4">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-base text-[#6D7A96]">Pickup in</Text>
+              <Text className="text-2xl font-black text-[#1B2340]">{activeTrip.pickupTime}</Text>
             </View>
-            <View className="flex-row justify-between">
-              <Text className="text-gray-600">Live Traffic</Text>
-              <Text className="font-bold text-orange-500">Moderate</Text>
+            <View className="mt-3 flex-row items-center justify-between">
+              <Text className="text-base text-[#6D7A96]">Live Traffic</Text>
+              <Text className="text-base font-bold text-[#D88700]">{activeTrip.traffic}</Text>
             </View>
-          </View>
-
-          <View className="flex-row gap-3">
-            <TouchableOpacity className="flex-1 bg-blue-800 rounded-lg py-3 flex-row items-center justify-center gap-2">
-              <IconSymbol size={18} name="paperplane.fill" color="white" />
-              <Text className="text-white font-bold">Start Trip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="flex-1 border border-gray-300 rounded-lg py-3 flex-row items-center justify-center gap-2">
-              <IconSymbol size={18} name="location.fill" color="#666" />
-              <Text className="text-gray-700 font-semibold">Share Location</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Safety Overview Card */}
-        <View className="border-2 border-teal-500 rounded-2xl p-4 bg-teal-50 mb-4">
-          <View className="flex-row items-center gap-2 mb-4">
-            <IconSymbol size={24} name="shield.fill" color="#0D9488" />
-            <Text className="text-lg font-bold text-black">Safety Overview</Text>
-          </View>
-
-          <View className="space-y-3 mb-4">
-            <View>
-              <Text className="text-sm text-gray-600 mb-1">Geofence Status</Text>
-              <Text className="text-base font-bold text-black">Within 5km safe zone</Text>
-              <Text className="text-xs text-gray-500">Makati CBD</Text>
-            </View>
-            <View>
-              <Text className="text-sm text-gray-600 mb-1">Distance from Travel Buddy</Text>
-              <Text className="text-base font-bold text-black">2.3 km</Text>
-            </View>
-          </View>
-
-          <View className="absolute bottom-4 right-4 items-center gap-2">
-            <TouchableOpacity className="w-16 h-16 bg-blue-800 rounded-full items-center justify-center shadow-lg">
-              <View className="items-center">
-                <IconSymbol size={24} name="shield.fill" color="white" />
-                <Text className="text-white text-xs font-bold mt-1">Safety</Text>
+            <View className="mt-3 flex-row items-center justify-between">
+              <Text className="text-base text-[#6D7A96]">Route</Text>
+              <View className="flex-row items-center gap-2">
+                <MapPin size={16} color="#284BD6" />
+                <Text className="text-base font-semibold text-[#284BD6]">On track</Text>
               </View>
+            </View>
+          </View>
+
+          <View className="mt-4 flex-row gap-3">
+            <TouchableOpacity className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] px-4 py-3.5">
+              <Navigation size={16} color="white" />
+              <Text className="text-base font-bold text-white">Start Trip</Text>
+            </TouchableOpacity>
+            <TouchableOpacity className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3.5">
+              <Users size={16} color="#1B2340" />
+              <Text className="text-base font-bold text-[#1B2340]">Share Location</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Activity Feed */}
-        <ActivityFeed />
-
-        {/* Quick Actions */}
-        <View className="mt-6 mb-4">
-          <Text className="text-lg font-bold text-black mb-3">Quick Actions</Text>
-          <View className="flex-row gap-3">
-            <TouchableOpacity className="flex-1 bg-blue-800 rounded-xl py-3 items-center">
-              <IconSymbol size={20} name="plus.circle.fill" color="white" />
-              <Text className="text-white text-xs font-semibold mt-1">Create Trip</Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="flex-1 bg-green-600 rounded-xl py-3 items-center">
-              <IconSymbol size={20} name="magnifyingglass" color="white" />
-              <Text className="text-white text-xs font-semibold mt-1">Find Buddy</Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="flex-1 bg-purple-600 rounded-xl py-3 items-center">
-              <IconSymbol size={20} name="car.fill" color="white" />
-              <Text className="text-white text-xs font-semibold mt-1">Carpool</Text>
-            </TouchableOpacity>
+        <View className="rounded-[24px] border-2 border-[#159A67] bg-[#E5F6EF] p-4">
+          <View className="flex-row items-center gap-2">
+            <Shield size={20} color="#159A67" />
+            <Text className="text-2xl font-black text-[#1B2340]">Safety Overview</Text>
           </View>
+
+          <View className="mt-4 flex flex-col gap-3">
+            <View className="rounded-2xl bg-white/75 p-4">
+              <Text className="text-sm text-[#6D7A95]">Geofence Status</Text>
+              <Text className="mt-2 text-lg font-bold text-[#1B2340]">{safetyData.geofenceStatus}</Text>
+              <Text className="mt-1 text-sm text-[#6D7A95]">{safetyData.location}</Text>
+            </View>
+
+            <View className="rounded-2xl bg-white/75 p-4">
+              <Text className="text-sm text-[#6D7A95]">Distance from Travel Buddy</Text>
+              <Text className="mt-2 text-xl font-bold text-[#1B2340]">{safetyData.distanceToBuddy} km</Text>
+            </View>
+
+            <View className="rounded-2xl bg-white/75 p-4">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-sm text-[#6D7A95]">Trust Score</Text>
+                  <Text className="mt-1 text-lg font-bold text-[#1B2340]">Protected and verified</Text>
+                </View>
+                <View className="rounded-full bg-[#DDF4EA] px-3 py-1">
+                  <Text className="text-xs font-bold text-[#159A67]">✓ Verified</Text>
+                </View>
+              </View>
+
+              <View className="mt-3 flex-row items-center gap-3">
+                <View className="h-2 flex-1 overflow-hidden rounded-full bg-[#D9E4DE]">
+                  <View className="h-full rounded-full bg-[#159A67]" style={{ width: `${safetyData.trustScore}%` }} />
+                </View>
+                <Text className="text-2xl font-black text-[#159A67]">{safetyData.trustScore}%</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <View className="rounded-[24px] border border-[#E4EAF2] bg-white/85 p-4">
+          <View className="flex-row items-center gap-2">
+            <Sparkles size={18} color="#284BD6" />
+            <Text className="text-xl font-black text-[#1B2340]">Quick Stats</Text>
+          </View>
+
+          <View className="mt-4 flex-row gap-4">
+            {quickStats.map((item) => (
+              <View key={item.label} className="flex-1 rounded-2xl bg-[#F5F7FB] p-3">
+                <Text className="text-xs text-[#6D7A96]">{item.label}</Text>
+                <Text className="mt-2 text-base font-bold text-[#1B2340]">{item.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View className="rounded-[24px] border border-[#E4EAF2] bg-white/85 p-4">
+          <View className="flex-row items-center justify-between">
+            <Text className="text-xl font-black text-[#1B2340]">Live Activity</Text>
+            <Text className="text-sm font-semibold text-[#284BD6]">View all</Text>
+          </View>
+
+          <View className="mt-4 flex flex-col gap-3">
+            {activityItems.map((item) => (
+              <View key={item.id} className="flex-row items-start gap-3 rounded-2xl bg-[#F5F7FB] p-3">
+                <View className="mt-1 h-2.5 w-2.5 rounded-full bg-[#284BD6]" />
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-[#1B2340]">{item.title}</Text>
+                  <Text className="mt-1 text-xs text-[#6D7A96]">{item.meta}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View className="flex-row gap-4 pb-6">
+          <TouchableOpacity className="flex-1 rounded-[22px] border border-[#D8E0EE] bg-white px-4 py-4">
+            <View className="h-11 w-11 items-center justify-center rounded-full bg-[#EEF3FF]">
+              <Users size={20} color="#284BD6" />
+            </View>
+            <Text className="mt-3 text-base font-bold text-[#1B2340]">Find Buddies</Text>
+            <Text className="mt-1 text-xs text-[#6D7A96]">See who is traveling nearby</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity className="flex-1 rounded-[22px] border-2 border-[#FFB1A9] bg-[#FFF3F1] px-4 py-4">
+            <View className="h-11 w-11 items-center justify-center rounded-full bg-[#FFE1DC]">
+              <Shield size={20} color="#D94B3D" />
+            </View>
+            <Text className="mt-3 text-base font-black text-[#D94B3D]">Emergency SOS</Text>
+            <Text className="mt-1 text-xs text-[#A75A51]">Alert trusted circle</Text>
+          </TouchableOpacity>
         </View>
       </View>
+      <NotificationModal
+        visible={notificationVisible}
+        onClose={() => setNotificationVisible(false)}
+        notifications={notifications}
+      />
     </ScrollView>
   );
 }

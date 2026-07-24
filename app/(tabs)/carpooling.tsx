@@ -1,122 +1,170 @@
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { CalendarDays, CarFront, Edit2, MapPin, Plane, Plus, Sparkles, Users } from 'lucide-react-native';
+import { useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
-const activeRides = [
+type TripView = 'Carpool' | 'Tours';
+
+const carpoolTrips = [
   {
     id: 1,
-    driver: 'John Doe',
-    from: 'Makati',
-    to: 'BGC',
-    seats: 2,
-    price: '₱150',
-    departure: '2:30 PM',
-    rating: 4.9,
+    route: 'Makati → Laguna',
+    dateRange: 'Feb 10, 2026 - Feb 10, 2026',
+    status: 'Active',
+    type: 'Carpool',
+    stops: 'Makati → Laguna',
+    date: 'Feb 10, 2026',
+    members: '7 of 7 buddies',
+    price: '₱ 360 per person',
+    tags: ['Commute', 'Budget Travel', 'Scenic Route'],
   },
   {
     id: 2,
-    driver: 'Maria Santos',
-    from: 'Quezon City',
-    to: 'Makati',
-    seats: 1,
-    price: '₱200',
-    departure: '3:00 PM',
-    rating: 4.8,
-  },
-  {
-    id: 3,
-    driver: 'Carlos Garcia',
-    from: 'BGC',
-    to: 'Pasig',
-    seats: 3,
-    price: '₱180',
-    departure: '2:45 PM',
-    rating: 4.7,
+    route: 'Quezon City → Cavite',
+    dateRange: 'Apr 5, 2026 - Apr 5, 2026',
+    status: 'Active',
+    type: 'Carpool',
+    stops: 'Quezon City → Cavite',
+    date: 'Apr 5, 2026',
+    members: '5 of 6 buddies',
+    price: '₱ 280 per person',
+    tags: ['Workday', 'Weekly Ride'],
   },
 ];
 
-export default function CarpoolingScreen() {
+const tourTrips: never[] = [];
+
+const emptyState = {
+  Carpool: {
+    title: 'No carpool trips yet',
+    description: 'Create a ride or join one to get moving with nearby travelers.',
+    button: 'Create Carpool',
+    icon: CarFront,
+  },
+  Tours: {
+    title: 'No tours trips yet',
+    description: 'Join a tour or create one to get started.',
+    button: 'Create Tour',
+    icon: Plane,
+  },
+} as const;
+
+function TripCard({ trip }: { trip: (typeof carpoolTrips)[number] | (typeof tourTrips)[number] }) {
   return (
-    <ScrollView className="flex-1 bg-white">
-      {/* Header */}
-      <View className="px-4 py-4 border-b border-gray-100">
-        <Text className="text-2xl font-bold text-black">Carpooling</Text>
-        <Text className="text-sm text-gray-500 mt-1">Available rides near you</Text>
+    <View className="rounded-[22px] border border-[#E9EDF5] bg-white p-5 shadow-sm shadow-black/5">
+      <View className="flex-row items-start justify-between gap-3">
+        <View className="flex-1 pr-3">
+          <Text className="text-[22px] font-black text-[#1D2746]">{trip.route}</Text>
+          <Text className="mt-1 text-sm text-[#6A758F]">{trip.dateRange}</Text>
+        </View>
+        <View className="items-end gap-2">
+          <View className="rounded-full bg-[#DDF3EA] px-4 py-1.5">
+            <Text className="text-sm font-bold text-[#19A06B]">{trip.status}</Text>
+          </View>
+          <View className="rounded-full bg-[#E9F0FF] px-4 py-1.5">
+            <Text className="text-sm font-bold text-[#2A55D4]">{trip.type}</Text>
+          </View>
+        </View>
       </View>
 
-      {/* Actions */}
-      <View className="px-4 py-4 gap-2">
-        <TouchableOpacity className="bg-blue-800 rounded-lg py-3 flex-row items-center justify-center gap-2">
-          <IconSymbol size={20} name="plus.circle.fill" color="white" />
-          <Text className="text-white font-semibold">Offer a Ride</Text>
-        </TouchableOpacity>
+      <View className="mt-5 gap-3">
+        <View className="flex-row items-center gap-3">
+          <MapPin size={18} color="#2A55D4" />
+          <Text className="text-base text-[#17233F]">{trip.stops}</Text>
+        </View>
+        <View className="flex-row items-center gap-3">
+          <CalendarDays size={18} color="#2A55D4" />
+          <Text className="text-base text-[#17233F]">{trip.date}</Text>
+        </View>
+        <View className="flex-row items-center gap-3">
+          <Users size={18} color="#2A55D4" />
+          <Text className="text-base text-[#17233F]">{trip.members}</Text>
+        </View>
+        <View className="flex-row items-center gap-3">
+          <Sparkles size={18} color="#2A55D4" />
+          <Text className="text-base font-semibold text-[#17233F]">{trip.price}</Text>
+        </View>
       </View>
 
-      {/* Filter Tabs */}
-      <View className="px-4 pb-4 flex-row gap-2">
-        <TouchableOpacity className="px-4 py-2 bg-blue-800 rounded-full">
-          <Text className="text-white text-sm font-semibold">All</Text>
-        </TouchableOpacity>
-        <TouchableOpacity className="px-4 py-2 bg-gray-200 rounded-full">
-          <Text className="text-gray-700 text-sm font-semibold">Verified Drivers</Text>
-        </TouchableOpacity>
+      <View className="mt-5 border-t border-[#EBEFF6] pt-4">
+        <View className="flex-row flex-wrap gap-2">
+          {trip.tags.map((tag) => (
+            <View key={tag} className="rounded-full bg-[#F4F6FB] px-3 py-1.5">
+              <Text className="text-sm text-[#57637D]">{tag}</Text>
+            </View>
+          ))}
+        </View>
       </View>
 
-      {/* Available Rides */}
-      <View className="px-4 mb-6">
-        <Text className="text-lg font-bold text-black mb-4">Available Now</Text>
-        {activeRides.map((ride) => (
-          <View key={ride.id} className="border border-gray-200 rounded-xl p-4 mb-3 bg-white">
-            {/* Driver Info */}
-            <View className="flex-row items-center gap-3 mb-4">
-              <View className="w-12 h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full items-center justify-center">
-                <Text className="text-white font-bold">{ride.driver[0]}</Text>
-              </View>
-              <View className="flex-1">
-                <Text className="text-base font-bold text-black">{ride.driver}</Text>
-                <View className="flex-row items-center gap-1 mt-1">
-                  <IconSymbol size={14} name="star.fill" color="#F59E0B" />
-                  <Text className="text-sm font-semibold text-black">{ride.rating}</Text>
-                </View>
-              </View>
-              <View className="items-center">
-                <Text className="text-xl font-bold text-blue-800">{ride.price}</Text>
-                <Text className="text-xs text-gray-500">per seat</Text>
-              </View>
-            </View>
+      <View className="mt-5 flex-row gap-3">
+        <TouchableOpacity className="flex-1 flex-row items-center justify-center rounded-2xl border border-[#D7DFEE] bg-white py-3.5">
+          <Edit2 size={18} color="#24314A" />
+        </TouchableOpacity>
+        <TouchableOpacity className="flex-[1.2] rounded-2xl bg-[#2A55D4] py-3.5">
+          <Text className="text-center text-base font-bold text-white">View Details</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
 
-            {/* Route Info */}
-            <View className="gap-3 mb-4">
-              <View className="flex-row items-center gap-3">
-                <View className="w-2 h-2 rounded-full bg-green-500" />
-                <Text className="text-sm font-semibold text-black">{ride.from}</Text>
-              </View>
-              <View className="flex-row pl-1 gap-2">
-                <View className="w-0.5 h-6 bg-gray-300" />
-              </View>
-              <View className="flex-row items-center gap-3">
-                <View className="w-2 h-2 rounded-full bg-red-500" />
-                <Text className="text-sm font-semibold text-black">{ride.to}</Text>
-              </View>
-            </View>
+export default function CarpoolingScreen() {
+  const [activeView, setActiveView] = useState<TripView>('Carpool');
 
-            {/* Additional Info */}
-            <View className="flex-row gap-3 pt-3 border-t border-gray-100">
-              <View className="flex-row items-center gap-1">
-                <IconSymbol size={16} name="clock.fill" color="#666" />
-                <Text className="text-xs text-gray-600">{ride.departure}</Text>
-              </View>
-              <View className="flex-row items-center gap-1">
-                <IconSymbol size={16} name="person.2.fill" color="#666" />
-                <Text className="text-xs text-gray-600">{ride.seats} seats left</Text>
-              </View>
-            </View>
+  const trips = activeView === 'Carpool' ? carpoolTrips : tourTrips;
+  const isEmpty = trips.length === 0;
+  const state = emptyState[activeView];
+  const Icon = state.icon;
 
-            {/* Book Button */}
-            <TouchableOpacity className="bg-blue-800 rounded-lg py-2 mt-3">
-              <Text className="text-white font-semibold text-center">Book Ride</Text>
+  return (
+    <ScrollView className="flex-1 bg-[#F8FAFD]" contentContainerClassName="pb-28">
+      <View className="px-4 pt-4 pb-5 border-b border-black/5 bg-white">
+        <View className="flex-row items-center justify-between">
+          <Text className="text-[30px] leading-9 font-black text-[#1F3CA4]">My Trips</Text>
+          <TouchableOpacity className="h-12 w-12 items-center justify-center rounded-2xl bg-[#2A55D4] shadow-sm shadow-[#2A55D4]/20">
+            <Plus size={24} color="white" />
+          </TouchableOpacity>
+        </View>
+
+        <View className="mt-6 flex-row items-center gap-3">
+          {(['Carpool', 'Tours'] as TripView[]).map((tab) => {
+            const selected = activeView === tab;
+            const TabIcon = tab === 'Carpool' ? CarFront : Plane;
+
+            return (
+              <TouchableOpacity
+                key={tab}
+                onPress={() => setActiveView(tab)}
+                className={`flex-row flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-3 ${
+                  selected ? 'border-[#A9C1FF] bg-[#DCE8FF]' : 'border-transparent bg-transparent'
+                }`}>
+                <TabIcon size={18} color={selected ? '#2656E8' : '#617093'} />
+                <Text className={`text-base font-semibold ${selected ? 'text-[#2656E8]' : 'text-[#617093]'}`}>{tab}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      <View className="px-4 pt-4">
+        {isEmpty ? (
+          <View className="items-center justify-center rounded-[28px] border border-dashed border-[#DCE3EF] bg-white px-6 py-16">
+            <View className="h-20 w-20 items-center justify-center rounded-full bg-[#EEF3FF]">
+              <Icon size={42} color="#2A55D4" />
+            </View>
+            <Text className="mt-6 text-2xl font-black text-[#182847] text-center">{state.title}</Text>
+            <Text className="mt-3 text-center text-base leading-6 text-[#6B7590]">{state.description}</Text>
+            <TouchableOpacity className="mt-8 flex-row items-center justify-center gap-2 rounded-2xl bg-[#2A55D4] px-5 py-3.5">
+              <Plus size={18} color="white" />
+              <Text className="text-base font-bold text-white">{state.button}</Text>
             </TouchableOpacity>
           </View>
-        ))}
+        ) : (
+          <View className="gap-4">
+            {trips.map((trip) => (
+              <TripCard key={trip.id} trip={trip} />
+            ))}
+          </View>
+        )}
       </View>
     </ScrollView>
   );
