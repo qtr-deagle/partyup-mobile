@@ -1,3 +1,4 @@
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { EyeOff, MapPin } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -21,12 +22,21 @@ function RoadLine({ className, color }: { className: string; color: string }) {
 
 export default function MapScreen() {
   const [selectedTraveler, setSelectedTraveler] = useState<Traveler>(travelers[0]);
+  const isDark = useColorScheme() === 'dark';
+
+  const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FB]';
+  const mapShellBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-black/5 bg-[#EAF0F5]';
+  const mapInnerBackground = isDark ? 'bg-[#0F172A]' : 'bg-[#EEF3F8]';
+  const infoCardBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#B8C7FA] bg-[#F4F7FF]';
+  const travelerCardBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#EBEFF7] bg-white';
+  const primaryText = isDark ? 'text-white' : 'text-[#17233F]';
+  const secondaryText = isDark ? 'text-[#94A3B8]' : 'text-[#64708A]';
 
   return (
-    <ScrollView className="flex-1 bg-[#F7F8FB]" contentContainerClassName="pb-28">
+    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
       <View className="px-4 pt-4">
-        <View className="relative h-[380px] overflow-hidden rounded-[28px] border border-black/5 bg-[#EAF0F5] shadow-sm shadow-black/5">
-          <View className="absolute inset-0 bg-[#EEF3F8]" />
+        <View className={`relative h-[380px] overflow-hidden rounded-[28px] border shadow-sm ${mapShellBackground} ${isDark ? 'shadow-black/20' : 'shadow-black/5'}`}>
+          <View className={`absolute inset-0 ${mapInnerBackground}`} />
 
           <View className="absolute inset-0 opacity-55">
             <View className="absolute inset-0">
@@ -76,31 +86,31 @@ export default function MapScreen() {
           <View className="absolute left-[44%] top-[53%] h-5 w-5 rounded-full bg-[#2D53D4]" />
           <View className="absolute right-[8%] top-[54%] h-6 w-6 rounded-full bg-[#0D9B6C]" />
 
-          <View className="absolute left-[-6px] top-[95px] w-[120px] rounded-2xl bg-white px-4 py-4 shadow-sm shadow-black/10">
+          <View className={`absolute left-[-6px] top-[95px] w-[120px] rounded-2xl px-4 py-4 shadow-sm ${isDark ? 'bg-[#111B2E] shadow-black/20' : 'bg-white shadow-black/10'}`}>
             <TouchableOpacity className="absolute right-2 top-1">
-              <Text className="text-[12px] text-[#5B6477]">×</Text>
+              <Text className={`text-[12px] ${secondaryText}`}>×</Text>
             </TouchableOpacity>
-            <Text className="text-[16px] font-medium text-[#24314A]">Sarah</Text>
-            <Text className="mt-1 text-[14px] text-[#5F6A80]">2.3 km away</Text>
+            <Text className={`text-[16px] font-medium ${primaryText}`}>Sarah</Text>
+            <Text className={`mt-1 text-[14px] ${secondaryText}`}>2.3 km away</Text>
           </View>
 
-          <TouchableOpacity className="absolute right-3 top-3 h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm shadow-black/15">
+          <TouchableOpacity className={`absolute right-3 top-3 h-12 w-12 items-center justify-center rounded-full shadow-sm ${isDark ? 'bg-[#111B2E] shadow-black/20' : 'bg-white shadow-black/15'}`}>
             <EyeOff size={20} color="#65728B" />
           </TouchableOpacity>
 
-          <View className="absolute bottom-3 left-3 right-3 rounded-full bg-white/80 px-2 py-1 shadow-sm shadow-black/10">
-            <Text className="text-[11px] text-[#586476]">Mapbox</Text>
+          <View className={`absolute bottom-3 left-3 right-3 rounded-full px-2 py-1 shadow-sm ${isDark ? 'bg-[#0F172A]/80 shadow-black/20' : 'bg-white/80 shadow-black/10'}`}>
+            <Text className={`text-[11px] ${secondaryText}`}>Mapbox</Text>
           </View>
         </View>
 
-        <View className="mt-4 rounded-[20px] border border-[#B8C7FA] bg-[#F4F7FF] px-4 py-4">
+        <View className={`mt-4 rounded-[20px] border px-4 py-4 ${infoCardBackground}`}>
           <View className="flex-row items-start gap-2">
             <Text className="text-[#2246C7]">✓</Text>
             <Text className="flex-1 text-[15px] leading-6 text-[#2246C7]">Your location is hidden until you match with someone</Text>
           </View>
         </View>
 
-        <Text className="mt-5 text-[28px] font-black text-[#17233F]">Nearby Travelers</Text>
+        <Text className={`mt-5 text-[28px] font-black ${primaryText}`}>Nearby Travelers</Text>
 
         <View className="mt-5 gap-3">
           {travelers.map((traveler) => {
@@ -110,13 +120,13 @@ export default function MapScreen() {
               <TouchableOpacity
                 key={traveler.id}
                 onPress={() => setSelectedTraveler(traveler)}
-                className="rounded-[18px] border border-[#EBEFF7] bg-white px-4 py-4 shadow-sm shadow-black/5">
+                className={`rounded-[18px] border px-4 py-4 shadow-sm ${travelerCardBackground} ${isDark ? 'shadow-black/20' : 'shadow-black/5'}`}>
                 <View className="flex-row items-center justify-between gap-3">
                   <View className="flex-row items-center gap-3 flex-1">
                     <View className={`h-4 w-4 rounded-full ${traveler.tone === 'green' ? 'bg-[#179B67]' : 'bg-[#C4CDEB]'}`} />
                     <View>
-                      <Text className="text-[16px] font-semibold text-[#182847]">{traveler.name}</Text>
-                      <Text className="text-[14px] text-[#64708A]">{traveler.distance}</Text>
+                      <Text className={`text-[16px] font-semibold ${primaryText}`}>{traveler.name}</Text>
+                      <Text className={`text-[14px] ${secondaryText}`}>{traveler.distance}</Text>
                     </View>
                   </View>
 
@@ -130,7 +140,7 @@ export default function MapScreen() {
                 </View>
 
                 {isSelected && (
-                  <View className="mt-3 flex-row items-center gap-2 rounded-2xl bg-[#F4F7FF] px-3 py-2">
+                  <View className={`mt-3 flex-row items-center gap-2 rounded-2xl px-3 py-2 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F7FF]'}`}>
                     <MapPin size={14} color="#2246C7" />
                     <Text className="text-[13px] text-[#2246C7]">Live proximity updated for {traveler.name}</Text>
                   </View>

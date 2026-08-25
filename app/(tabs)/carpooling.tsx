@@ -1,3 +1,4 @@
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { CalendarDays, CarFront, Edit2, MapPin, Plane, Plus, Sparkles, Users } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -109,6 +110,13 @@ function TripCard({ trip }: { trip: (typeof carpoolTrips)[number] | (typeof tour
 
 export default function CarpoolingScreen() {
   const [activeView, setActiveView] = useState<TripView>('Carpool');
+  const isDark = useColorScheme() === 'dark';
+
+  const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F8FAFD]';
+  const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-black/5 bg-white';
+  const titleColor = isDark ? 'text-white' : 'text-[#1F3CA4]';
+  const primaryText = isDark ? 'text-white' : 'text-[#1D2746]';
+  const mutedText = isDark ? 'text-[#94A3B8]' : 'text-[#6A758F]';
 
   const trips = activeView === 'Carpool' ? carpoolTrips : tourTrips;
   const isEmpty = trips.length === 0;
@@ -116,10 +124,10 @@ export default function CarpoolingScreen() {
   const Icon = state.icon;
 
   return (
-    <ScrollView className="flex-1 bg-[#F8FAFD]" contentContainerClassName="pb-28">
-      <View className="px-4 pt-4 pb-5 border-b border-black/5 bg-white">
+    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
+      <View className={`px-4 pt-4 pb-5 border-b ${headerBackground}`}>
         <View className="flex-row items-center justify-between">
-          <Text className="text-[30px] leading-9 font-black text-[#1F3CA4]">My Trips</Text>
+          <Text className={`text-[30px] leading-9 font-black ${titleColor}`}>My Trips</Text>
           <TouchableOpacity className="h-12 w-12 items-center justify-center rounded-2xl bg-[#2A55D4] shadow-sm shadow-[#2A55D4]/20">
             <Plus size={24} color="white" />
           </TouchableOpacity>
@@ -135,10 +143,10 @@ export default function CarpoolingScreen() {
                 key={tab}
                 onPress={() => setActiveView(tab)}
                 className={`flex-row flex-1 items-center justify-center gap-2 rounded-2xl border px-4 py-3 ${
-                  selected ? 'border-[#A9C1FF] bg-[#DCE8FF]' : 'border-transparent bg-transparent'
+                  selected ? 'border-[#A9C1FF] bg-[#DCE8FF]' : isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-transparent bg-transparent'
                 }`}>
                 <TabIcon size={18} color={selected ? '#2656E8' : '#617093'} />
-                <Text className={`text-base font-semibold ${selected ? 'text-[#2656E8]' : 'text-[#617093]'}`}>{tab}</Text>
+                <Text className={`text-base font-semibold ${selected ? 'text-[#2656E8]' : isDark ? 'text-[#94A3B8]' : 'text-[#617093]'}`}>{tab}</Text>
               </TouchableOpacity>
             );
           })}
@@ -147,12 +155,12 @@ export default function CarpoolingScreen() {
 
       <View className="px-4 pt-4">
         {isEmpty ? (
-          <View className="items-center justify-center rounded-[28px] border border-dashed border-[#DCE3EF] bg-white px-6 py-16">
-            <View className="h-20 w-20 items-center justify-center rounded-full bg-[#EEF3FF]">
+          <View className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
+            <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
               <Icon size={42} color="#2A55D4" />
             </View>
-            <Text className="mt-6 text-2xl font-black text-[#182847] text-center">{state.title}</Text>
-            <Text className="mt-3 text-center text-base leading-6 text-[#6B7590]">{state.description}</Text>
+            <Text className={`mt-6 text-2xl font-black text-center ${primaryText}`}>{state.title}</Text>
+            <Text className={`mt-3 text-center text-base leading-6 ${mutedText}`}>{state.description}</Text>
             <TouchableOpacity className="mt-8 flex-row items-center justify-center gap-2 rounded-2xl bg-[#2A55D4] px-5 py-3.5">
               <Plus size={18} color="white" />
               <Text className="text-base font-bold text-white">{state.button}</Text>

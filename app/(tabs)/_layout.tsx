@@ -1,16 +1,29 @@
 import { HapticTab } from '@/components/haptic-tab';
+import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { Redirect, Tabs } from 'expo-router';
 import { Briefcase, Compass, Home, Map, MessageCircle, UserRound } from 'lucide-react-native';
-import { Tabs } from 'expo-router';
 import React from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  if (!session) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
 
   const activeTintColor = isDark ? '#E2E8F0' : '#334155';
   const inactiveTintColor = isDark ? '#64748B' : '#94A3B8';
+  const tabBarBackgroundColor = isDark ? '#0F172A' : '#FFFFFF';
+  const sceneBackgroundColor = isDark ? '#0B1220' : '#F8FAFC';
+  const borderColor = isDark ? '#1E293B' : '#E2E8F0';
 
   return (
     <Tabs
@@ -18,13 +31,16 @@ export default function TabLayout() {
         tabBarActiveTintColor: activeTintColor,
         tabBarInactiveTintColor: inactiveTintColor,
         headerShown: false,
+        header: () => null,
         sceneStyle: {
           paddingTop: insets.top,
+          backgroundColor: sceneBackgroundColor,
         },
         tabBarButton: HapticTab,
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopWidth: 0,
+          backgroundColor: tabBarBackgroundColor,
+          borderTopWidth: 1,
+          borderTopColor: borderColor,
           elevation: 0,
           shadowOpacity: 0,
           height: 58 + Math.max(insets.bottom, 8),

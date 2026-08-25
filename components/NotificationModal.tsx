@@ -154,7 +154,7 @@ export default function NotificationModal({
             <View className="flex-1 items-center justify-center">
               <IconSymbol size={60} name="bell" color="#DDD" />
               <Text className="text-gray-500 mt-4 font-semibold">No notifications yet</Text>
-              <Text className="text-sm text-gray-400 mt-2">You're all caught up!</Text>
+              <Text className="text-sm text-gray-400 mt-2">You&apos;re all caught up!</Text>
             </View>
           ) : (
             <ScrollView className="flex-1">

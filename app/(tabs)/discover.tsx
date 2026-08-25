@@ -1,302 +1,383 @@
-import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Filter, MapPin, Search, Shield, SlidersHorizontal, Star, X } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
-import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { DEFAULT_FILTERS, FiltersModal, countActiveFilters, type FiltersValue } from '@/components/discover/FiltersModal';
+import { MyTripModal } from '@/components/discover/MyTripModal';
+import { SwipeCard } from '@/components/discover/SwipeCard';
+import { useAuth } from '@/hooks/auth-provider';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { computeCompatibility, EMPTY_MY_TRIP, loadMyTrip, saveMyTrip, type MyTrip } from '@/lib/compatibility';
+import { getMockTripData } from '@/lib/discover-mock';
+import { createOrGetDirectThread, removeFriend, respondToFriendRequest, searchProfiles, sendFriendRequest, type SearchProfile } from '@/lib/social';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { ChevronDown, ChevronLeft, ChevronRight, Check, MapPin, Search, SlidersHorizontal, Sparkles, UserPlus, X } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-const travelers = [
-  {
-    id: 1,
-    name: 'Emma',
-    age: 23,
-    destination: 'Batangas getaway',
-    route: 'Makati → Batangas',
-    dates: 'Mar 18, 2026 - Mar 19, 2026',
-    distance: '3.2 km away',
-    rating: 4.9,
-    verified: true,
-    compatibility: 92,
-    matchLabel: 'Overall Match',
-    interests: ['Vacation', 'Luxury', 'Instagram Hunter'],
-    tags: ['Beach', 'Shopping', 'Resorts', 'Brunch'],
-    reason: 70,
-  },
-  {
-    id: 2,
-    name: 'Alex',
-    age: 28,
-    destination: 'BGC weekend',
-    route: 'Ortigas → BGC',
-    dates: 'Mar 20, 2026 - Mar 21, 2026',
-    distance: '1.8 km away',
-    rating: 4.8,
-    verified: true,
-    compatibility: 87,
-    matchLabel: 'Overall Match',
-    interests: ['Business', 'Coffee Stops'],
-    tags: ['Nightlife', 'Food', 'Meetups'],
-    reason: 60,
-  },
-];
+type SortOption = 'compatibility' | 'distance' | 'dateOverlap' | 'destinationPriority' | 'recentActivity';
 
-type FilterKey = 'All' | 'Today' | 'This Week' | 'Verified';
-type BudgetKey = 'Budget' | 'Mid-range' | 'Luxury';
-type PurposeKey = 'Vacation' | 'Business' | 'Backpacking' | 'Study';
-
-const purposeOptions: PurposeKey[] = ['Vacation', 'Business', 'Backpacking', 'Study'];
+const SORT_LABELS: Record<SortOption, string> = {
+  compatibility: 'Highest compatibility',
+  distance: 'Nearest',
+  dateOverlap: 'Date overlap',
+  destinationPriority: 'Destination priority',
+  recentActivity: 'Recent activity',
+};
 
 export default function DiscoverScreen() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterKey>('All');
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [activeBudget, setActiveBudget] = useState<BudgetKey>('Mid-range');
-  const [activePurpose, setActivePurpose] = useState<PurposeKey[]>(['Vacation']);
-  const [compatibility, setCompatibility] = useState(60);
+  const router = useRouter();
+  const isDark = useColorScheme() === 'dark';
+  const { profile: myProfile } = useAuth();
+  const [mode, setMode] = useState<'swipe' | 'search'>('swipe');
 
-  const filteredTravelers = useMemo(() => {
-    return travelers.filter((traveler) => {
-      const query = searchQuery.trim().toLowerCase();
-      const matchesQuery =
-        !query || traveler.name.toLowerCase().includes(query) || traveler.destination.toLowerCase().includes(query) || traveler.route.toLowerCase().includes(query);
-      const matchesFilter = activeFilter === 'All' || (activeFilter === 'Verified' ? traveler.verified : true);
+  const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
+  const cardBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
+  const inputBackground = isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D8E0EE] bg-white';
+  const textPrimary = isDark ? 'text-white' : 'text-[#1B2340]';
+  const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
 
-      return matchesQuery && matchesFilter;
+  // ----- Search mode (unchanged behavior) -----
+  const [query, setQuery] = useState('');
+  const [profiles, setProfiles] = useState<SearchProfile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [requestingId, setRequestingId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const searchInputRef = useRef<TextInput>(null);
+
+  const runSearch = useCallback(async () => {
+    setLoading(true);
+    setErrorMessage(null);
+    try {
+      const result = await searchProfiles(query);
+      if (result.error) {
+        setErrorMessage(result.error.message);
+        setProfiles([]);
+      } else {
+        setProfiles(result.data);
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to search people.');
+      setProfiles([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [query]);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => void runSearch(), 250);
+    return () => clearTimeout(timeoutId);
+  }, [runSearch]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void runSearch();
+    }, [runSearch])
+  );
+
+  async function handleRequest(profileId: string) {
+    setRequestingId(profileId);
+    setErrorMessage(null);
+    const profile = profiles.find((item) => item.id === profileId);
+    if (profile?.request_status === 'accepted') {
+      Alert.alert('Remove friend?', `Remove ${profile.display_name} from your friends?`, [
+        { text: 'Cancel', style: 'cancel', onPress: () => setRequestingId(null) },
+        { text: 'Remove', style: 'destructive', onPress: () => void removeFriendAndUpdate(profileId) },
+      ]);
+      return;
+    }
+    if (profile?.request_status === 'outgoing_pending' && profile.request_id) {
+      const requestId = profile.request_id;
+      Alert.alert('Cancel friend request?', `Cancel your request to ${profile.display_name}?`, [
+        { text: 'Keep request', style: 'cancel', onPress: () => setRequestingId(null) },
+        { text: 'Cancel request', style: 'destructive', onPress: () => void cancelRequestAndUpdate(profileId, requestId) },
+      ]);
+      return;
+    }
+    const { data, error } = profile?.request_status === 'incoming_pending' && profile.request_id
+      ? await respondToFriendRequest(profile.request_id, 'accepted')
+      : await sendFriendRequest(profileId);
+    setRequestingId(null);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+    if (profile?.request_status === 'incoming_pending') {
+      const threadResult = await createOrGetDirectThread(profileId);
+      if (threadResult.error) {
+        setErrorMessage(threadResult.error.message);
+        return;
+      }
+    }
+    setProfiles((current) => current.map((item) => item.id === profileId ? { ...item, request_status: profile?.request_status === 'incoming_pending' ? 'accepted' : 'outgoing_pending', request_id: data?.id ?? item.request_id } : item));
+  }
+
+  async function cancelRequestAndUpdate(profileId: string, requestId: string) {
+    setErrorMessage(null);
+    const { error } = await respondToFriendRequest(requestId, 'cancelled');
+    setRequestingId(null);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+    setProfiles((current) => current.map((item) => item.id === profileId ? { ...item, request_status: null, request_id: null } : item));
+  }
+
+  async function removeFriendAndUpdate(profileId: string) {
+    setErrorMessage(null);
+    const { error } = await removeFriend(profileId);
+    setRequestingId(null);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+    setProfiles((current) => current.map((item) => item.id === profileId ? { ...item, request_status: null, request_id: null } : item));
+  }
+
+  // ----- Swipe mode -----
+  const [swipeProfiles, setSwipeProfiles] = useState<SearchProfile[]>([]);
+  const [swipeLoading, setSwipeLoading] = useState(false);
+  const [swipeError, setSwipeError] = useState<string | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [filters, setFilters] = useState<FiltersValue>(DEFAULT_FILTERS);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [sortOption, setSortOption] = useState<SortOption>('compatibility');
+  const [sortMenuVisible, setSortMenuVisible] = useState(false);
+  const [myTrip, setMyTrip] = useState<MyTrip>(EMPTY_MY_TRIP);
+  const [myTripModalVisible, setMyTripModalVisible] = useState(false);
+  const myInterests = useMemo(() => myProfile?.interests ?? [], [myProfile]);
+
+  useEffect(() => {
+    void loadMyTrip().then(setMyTrip);
+  }, []);
+
+  function handleSaveMyTrip(next: MyTrip) {
+    setMyTrip(next);
+    setMyTripModalVisible(false);
+    void saveMyTrip(next);
+  }
+
+  const loadSwipeProfiles = useCallback(async () => {
+    setSwipeLoading(true);
+    setSwipeError(null);
+    try {
+      const result = await searchProfiles('');
+      if (result.error) {
+        setSwipeError(result.error.message);
+        setSwipeProfiles([]);
+      } else {
+        setSwipeProfiles(result.data);
+      }
+    } catch (error) {
+      setSwipeError(error instanceof Error ? error.message : 'Unable to load travelers.');
+      setSwipeProfiles([]);
+    } finally {
+      setSwipeLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (mode === 'swipe') void loadSwipeProfiles();
+    }, [mode, loadSwipeProfiles])
+  );
+
+  const scoredDeck = useMemo(() => {
+    return swipeProfiles.map((profile) => {
+      const trip = getMockTripData(profile);
+      const score = computeCompatibility(profile, myInterests, myTrip, trip);
+      return { profile, trip, score };
     });
-  }, [activeFilter, searchQuery]);
+  }, [swipeProfiles, myInterests, myTrip]);
 
-  const featuredTraveler = filteredTravelers[0] ?? travelers[0];
+  const deck = useMemo(() => {
+    const filtered = scoredDeck.filter(({ profile, trip, score }) => {
+      if (filters.location.trim()) {
+        const needle = filters.location.trim().toLowerCase();
+        const haystack = `${profile.city ?? ''} ${profile.country ?? ''}`.toLowerCase();
+        if (!haystack.includes(needle)) return false;
+      }
+      if (filters.dateStart && trip.dates.start < filters.dateStart) return false;
+      if (filters.dateEnd && trip.dates.start > filters.dateEnd) return false;
+      if (filters.budget && trip.budgetTier !== filters.budget) return false;
+      if (filters.purpose && trip.purpose !== filters.purpose) return false;
+      if (score.overall < filters.minCompatibility) return false;
+      if (filters.carpoolOnly && !trip.carpoolAvailable) return false;
+      return true;
+    });
+
+    return [...filtered].sort((a, b) => {
+      if (sortOption === 'distance') return a.trip.distanceKm - b.trip.distanceKm;
+      if (sortOption === 'dateOverlap') return b.score.dateAlignment - a.score.dateAlignment;
+      if (sortOption === 'recentActivity') return new Date(b.profile.updated_at ?? 0).getTime() - new Date(a.profile.updated_at ?? 0).getTime();
+      if (sortOption === 'destinationPriority') {
+        const destination = myTrip.destination.trim().toLowerCase();
+        const aMatches = destination !== '' && a.trip.route.destination.toLowerCase() === destination;
+        const bMatches = destination !== '' && b.trip.route.destination.toLowerCase() === destination;
+        if (aMatches !== bMatches) return aMatches ? -1 : 1;
+        return b.score.overall - a.score.overall;
+      }
+      return b.score.overall - a.score.overall;
+    });
+  }, [scoredDeck, filters, sortOption, myTrip.destination]);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [filters, sortOption, swipeProfiles.length, myTrip]);
+
+  const currentEntry = deck[currentIndex];
+
+  async function connectWithProfile(profile: SearchProfile) {
+    setSwipeError(null);
+    let error: { message: string } | null = null;
+    if (profile.request_status === 'incoming_pending' && profile.request_id) {
+      const result = await respondToFriendRequest(profile.request_id, 'accepted');
+      error = result.error;
+      if (!error) {
+        const threadResult = await createOrGetDirectThread(profile.id);
+        error = threadResult.error;
+      }
+    } else if (!profile.request_status) {
+      const result = await sendFriendRequest(profile.id);
+      error = result.error;
+    }
+    if (error) {
+      setSwipeError(error.message);
+    } else if (profile.request_status !== 'accepted' && profile.request_status !== 'outgoing_pending') {
+      setSwipeProfiles((current) => current.map((item) => item.id === profile.id ? { ...item, request_status: item.request_status === 'incoming_pending' ? 'accepted' : 'outgoing_pending' } : item));
+    }
+    setCurrentIndex((index) => index + 1);
+  }
+
+  function passProfile() {
+    setCurrentIndex((index) => index + 1);
+  }
 
   return (
-    <>
-      <ScrollView className="flex-1 bg-[#F6F8FC]" contentContainerClassName="pb-28">
-        <View className="absolute -top-24 -right-20 h-56 w-56 rounded-full bg-[#DCE6FF] opacity-70" />
-        <View className="absolute top-48 -left-24 h-52 w-52 rounded-full bg-[#DDEFE8] opacity-70" />
-
-        <View className="px-4 pt-4 pb-5 border-b border-black/5 bg-white/80">
-          <View className="flex-row items-center justify-between">
-            <View>
-              <Text className="text-[32px] leading-10 font-black text-[#182A4D]">Discover</Text>
-              <Text className="mt-1 text-base text-[#6C7A95]">Find nearby travel buddies</Text>
-            </View>
-            <View className="h-11 w-11 items-center justify-center rounded-full bg-[#EEF3FF]">
-              <Search size={18} color="#284BD6" />
-            </View>
-          </View>
-
-          <View className="mt-4 flex-row items-center gap-2">
-            <TouchableOpacity className="flex-1 flex-row items-center justify-between rounded-2xl border border-[#D8E0EE] bg-white px-3 py-3">
-              <Text className="text-sm font-semibold text-[#24314A]">Highest compatibility</Text>
-              <ChevronDown size={16} color="#6C7A95" />
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => setFilterOpen(true)} className="flex-row items-center gap-2 rounded-2xl border border-[#D8E0EE] bg-white px-3 py-3">
-              <Filter size={16} color="#24314A" />
-              <Text className="text-sm font-semibold text-[#24314A]">Filter</Text>
-            </TouchableOpacity>
-          </View>
+    <View className={`flex-1 ${screenBackground}`}>
+      <View className="px-4 pb-3 pt-5">
+        <View className="flex-row items-center justify-between">
+          <Text className={`text-[32px] font-black ${textPrimary}`}>Discover</Text>
         </View>
-
-        <View className="px-4 pt-4 flex flex-col gap-4">
-          <View className="rounded-[24px] border border-[#E4EAF2] bg-white p-4 shadow-sm shadow-black/5">
-            <View className="flex-row items-start justify-between">
-              <View className="flex-1 pr-3">
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-2xl font-black text-[#1B2340]">{featuredTraveler.name}, {featuredTraveler.age}</Text>
-                  <Shield size={16} color="#18A06A" />
-                </View>
-                <Text className="mt-2 text-base text-[#6D7A96]">Beach lover planning a quick Batangas getaway.</Text>
-                <View className="mt-3 flex-row items-center gap-2">
-                  <MapPin size={14} color="#284BD6" />
-                  <Text className="text-sm font-medium text-[#284BD6]">{featuredTraveler.distance}</Text>
-                </View>
-              </View>
-              <View className="rounded-full bg-[#EEF2FF] px-3 py-1">
-                <View className="flex-row items-center gap-1">
-                  <Star size={12} color="#6B77F5" fill="#6B77F5" />
-                  <Text className="text-xs font-bold text-[#6B77F5]">4.9</Text>
-                </View>
-              </View>
-            </View>
-
-            <View className="mt-4 border-t border-[#EDF0F5] pt-4">
-              <Text className="text-sm text-[#5E6A82]">Route: <Text className="font-semibold text-[#24314A]">{featuredTraveler.route}</Text></Text>
-              <Text className="mt-2 text-sm text-[#5E6A82]">Dates: <Text className="font-semibold text-[#24314A]">{featuredTraveler.dates}</Text></Text>
-
-              <View className="mt-3 flex-row flex-wrap gap-2">
-                {featuredTraveler.interests.map((interest) => (
-                  <View key={interest} className="rounded-full border border-[#D8E0EE] bg-white px-3 py-1.5">
-                    <Text className="text-xs font-semibold text-[#24314A]">{interest}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View className="mt-4 border-t border-[#EDF0F5] pt-4">
-              <Text className="text-xs font-bold uppercase tracking-[0.12em] text-[#8794A9]">Interests</Text>
-              <View className="mt-3 flex-row flex-wrap gap-2">
-                {featuredTraveler.tags.map((tag) => (
-                  <View key={tag} className="rounded-full bg-[#F2F4F7] px-3 py-1.5">
-                    <Text className="text-xs font-semibold text-[#7E8798]">{tag}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View className="mt-4 border-t border-[#EDF0F5] pt-4">
-              <Text className="text-xs font-bold uppercase tracking-[0.12em] text-[#8794A9]">Why we matched</Text>
-              <View className="mt-3 gap-3">
-                <View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-sm text-[#24314A]">Interests</Text>
-                    <Text className="text-sm font-semibold text-[#24314A]">{featuredTraveler.reason}%</Text>
-                  </View>
-                  <View className="mt-2 h-2 overflow-hidden rounded-full bg-[#EDF0F5]">
-                    <View className="h-full w-[70%] rounded-full bg-[#2AA6DF]" />
-                  </View>
-                </View>
-
-                <View>
-                  <View className="flex-row items-center justify-between">
-                    <Text className="text-sm text-[#24314A]">Overall Match</Text>
-                    <Text className="text-sm font-black text-[#284BD6]">{featuredTraveler.compatibility}%</Text>
-                  </View>
-                  <View className="mt-2 h-2 overflow-hidden rounded-full bg-[#EDF0F5]">
-                    <View className="h-full w-[92%] rounded-full bg-[#284BD6]" />
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            <View className="mt-4 flex-row gap-2">
-              <TouchableOpacity className="flex-1 rounded-2xl border border-[#D8E0EE] bg-white py-3">
-                <Text className="text-center text-sm font-semibold text-[#24314A]">View Details</Text>
-              </TouchableOpacity>
-              <TouchableOpacity className="flex-1 rounded-2xl bg-[#284BD6] py-3">
-                <Text className="text-center text-sm font-bold text-white">Connect</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View className="items-center gap-3 pb-4">
-            <View className="flex-row items-center gap-2">
-              <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-full border border-[#D8E0EE] bg-white">
-                <ChevronLeft size={16} color="#24314A" />
-              </TouchableOpacity>
-
-              <View className="flex-row items-center gap-1.5">
-                <View className="h-2 w-2 rounded-full bg-[#284BD6]" />
-                <View className="h-2 w-2 rounded-full bg-[#D6DCE8]" />
-                <View className="h-2 w-2 rounded-full bg-[#D6DCE8]" />
-                <View className="h-2 w-2 rounded-full bg-[#D6DCE8]" />
-                <View className="h-2 w-2 rounded-full bg-[#D6DCE8]" />
-              </View>
-
-              <TouchableOpacity className="h-9 w-9 items-center justify-center rounded-full border border-[#D8E0EE] bg-white">
-                <ChevronRight size={16} color="#24314A" />
-              </TouchableOpacity>
-            </View>
-          </View>
+        <View className={`mt-4 flex-row rounded-full border p-1 ${inputBackground}`}>
+          <TouchableOpacity onPress={() => setMode('swipe')} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-full py-2 ${mode === 'swipe' ? 'bg-[#284BD6]' : ''}`}>
+            <Sparkles size={15} color={mode === 'swipe' ? '#FFFFFF' : '#7A859D'} />
+            <Text className={`text-sm font-bold ${mode === 'swipe' ? 'text-white' : textSecondary}`}>Swipe</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setMode('search')} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-full py-2 ${mode === 'search' ? 'bg-[#284BD6]' : ''}`}>
+            <Search size={15} color={mode === 'search' ? '#FFFFFF' : '#7A859D'} />
+            <Text className={`text-sm font-bold ${mode === 'search' ? 'text-white' : textSecondary}`}>Search</Text>
+          </TouchableOpacity>
         </View>
-      </ScrollView>
+      </View>
 
-      <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={() => setFilterOpen(false)}>
-        <View className="flex-1 justify-center bg-black/45 px-4">
-          <View className="rounded-[28px] bg-white p-4 shadow-lg shadow-black/20">
-            <View className="flex-row items-center justify-between">
-              <View className="w-8" />
-              <Text className="text-xl font-black text-[#1B2340]">Filters</Text>
-              <TouchableOpacity onPress={() => setFilterOpen(false)} className="h-8 w-8 items-center justify-center rounded-full bg-[#F3F5FA]">
-                <X size={16} color="#6C7A95" />
+      {mode === 'swipe' ? (
+        <View className="flex-1">
+          <View className="z-10 flex-row items-center justify-between px-4 pb-3">
+            <View className="relative">
+              <TouchableOpacity onPress={() => setSortMenuVisible((visible) => !visible)} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-2 ${cardBackground}`}>
+                <Text className={`text-sm font-semibold ${textPrimary}`}>{SORT_LABELS[sortOption]}</Text>
+                <ChevronDown size={15} color={isDark ? '#94A3B8' : '#6C7A95'} />
               </TouchableOpacity>
-            </View>
-
-            <View className="mt-3 self-start rounded-full bg-[#EEF2FF] px-3 py-1.5">
-              <Text className="text-xs font-bold text-[#6B77F5]">0 active</Text>
-            </View>
-
-            <View className="mt-4 gap-4">
-              <View>
-                <Text className="text-xs font-bold uppercase tracking-[0.12em] text-[#8794A9]">Location</Text>
-                <View className="mt-2 rounded-2xl border border-[#EDF0F5] bg-[#FAFBFD] px-3 py-3">
-                  <Text className="text-base text-[#9CA3AF]">Paris, Tokyo, NYC...</Text>
-                </View>
-              </View>
-
-              <View>
-                <Text className="text-xs font-bold uppercase tracking-[0.12em] text-[#8794A9]">Travel Dates</Text>
-                <View className="mt-2 flex-row gap-3">
-                  <View className="flex-1 rounded-2xl border border-[#EDF0F5] bg-[#FAFBFD] px-3 py-3">
-                    <Text className="text-base text-[#9CA3AF]">mm/dd/yyyy</Text>
-                  </View>
-                  <View className="flex-1 rounded-2xl border border-[#EDF0F5] bg-[#FAFBFD] px-3 py-3">
-                    <Text className="text-base text-[#9CA3AF]">mm/dd/yyyy</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View>
-                <Text className="text-xs font-bold uppercase tracking-[0.12em] text-[#8794A9]">Budget</Text>
-                <View className="mt-2 flex-row gap-2">
-                  {(['Budget', 'Mid-range', 'Luxury'] as BudgetKey[]).map((budget) => (
-                    <TouchableOpacity
-                      key={budget}
-                      onPress={() => setActiveBudget(budget)}
-                      className={`flex-1 rounded-full px-3 py-2 ${activeBudget === budget ? 'bg-[#EEF2FF]' : 'bg-[#F4F6FA]'}`}
-                    >
-                      <Text className={`text-center text-xs font-semibold ${activeBudget === budget ? 'text-[#284BD6]' : 'text-[#6C7A95]'}`}>
-                        {budget}
-                      </Text>
+              {sortMenuVisible ? (
+                <View className={`absolute left-0 top-11 w-56 rounded-2xl border p-1.5 shadow-lg ${cardBackground}`}>
+                  {(Object.keys(SORT_LABELS) as SortOption[]).map((option) => (
+                    <TouchableOpacity key={option} onPress={() => { setSortOption(option); setSortMenuVisible(false); }} className="flex-row items-center justify-between rounded-xl px-3 py-2.5">
+                      <Text className={`text-sm ${sortOption === option ? 'font-bold text-[#284BD6]' : textPrimary}`}>{SORT_LABELS[option]}</Text>
+                      {sortOption === option ? <Check size={15} color="#284BD6" /> : null}
                     </TouchableOpacity>
                   ))}
                 </View>
-              </View>
-
-              <View>
-                <Text className="text-xs font-bold uppercase tracking-[0.12em] text-[#8794A9]">Purpose</Text>
-                <View className="mt-2 flex-row flex-wrap gap-2">
-                  {purposeOptions.map((purpose) => {
-                    const selected = activePurpose.includes(purpose);
-                    return (
-                      <TouchableOpacity
-                        key={purpose}
-                        onPress={() =>
-                          setActivePurpose((current) =>
-                            current.includes(purpose) ? current.filter((item) => item !== purpose) : [...current, purpose]
-                          )
-                        }
-                        className={`min-w-[46%] rounded-2xl px-3 py-3 ${selected ? 'bg-[#EEF2FF]' : 'bg-[#F4F6FA]'}`}
-                      >
-                        <Text className={`text-center text-sm font-semibold ${selected ? 'text-[#284BD6]' : 'text-[#6C7A95]'}`}>{purpose}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-
-              <View>
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-xs font-bold uppercase tracking-[0.12em] text-[#8794A9]">Compatibility</Text>
-                  <Text className="text-sm font-bold text-[#284BD6]">{compatibility}%+</Text>
-                </View>
-                <View className="mt-3 h-2 overflow-hidden rounded-full bg-[#DCE4F3]">
-                  <View className="h-full rounded-full bg-[#284BD6]" style={{ width: `${compatibility}%` }} />
-                </View>
-              </View>
-
-              <View className="rounded-2xl border border-[#EDF0F5] bg-[#FAFBFD] px-3 py-3">
-                <Text className="text-sm text-[#6C7A95]">Carpool available</Text>
-              </View>
-
-              <View className="flex-row gap-3 pt-1">
-                <TouchableOpacity className="flex-1 rounded-2xl border border-[#D8E0EE] bg-white py-3">
-                  <Text className="text-center text-sm font-semibold text-[#24314A]">Reset</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setFilterOpen(false)} className="flex-1 rounded-2xl bg-[#284BD6] py-3">
-                  <Text className="text-center text-sm font-bold text-white">Apply</Text>
-                </TouchableOpacity>
-              </View>
+              ) : null}
             </View>
+            <TouchableOpacity onPress={() => setFiltersVisible(true)} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-2 ${cardBackground}`}>
+              <SlidersHorizontal size={15} color={isDark ? '#94A3B8' : '#6C7A95'} />
+              <Text className={`text-sm font-semibold ${textPrimary}`}>Filter</Text>
+              {countActiveFilters(filters) > 0 ? (
+                <View className="h-4 w-4 items-center justify-center rounded-full bg-[#284BD6]"><Text className="text-[10px] font-bold text-white">{countActiveFilters(filters)}</Text></View>
+              ) : null}
+            </TouchableOpacity>
+          </View>
+
+          {sortMenuVisible ? <Pressable className="absolute inset-0" onPress={() => setSortMenuVisible(false)} /> : null}
+
+          <TouchableOpacity onPress={() => setMyTripModalVisible(true)} className={`mx-4 mb-3 flex-row items-center gap-2 rounded-2xl border px-4 py-2.5 ${cardBackground}`}>
+            <MapPin size={15} color="#284BD6" />
+            <Text className={`flex-1 text-sm ${textSecondary}`}>
+              {myTrip.destination.trim() ? <Text className={`font-bold ${textPrimary}`}>{myTrip.origin.trim() || 'Anywhere'} → {myTrip.destination}</Text> : 'Set your trip to sharpen your matches'}
+            </Text>
+            <Text className="text-xs font-bold text-[#284BD6]">Edit</Text>
+          </TouchableOpacity>
+
+          {swipeError ? <Text className="mx-4 mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{swipeError}</Text> : null}
+
+          <View className="flex-1">
+            {swipeLoading ? (
+              <ActivityIndicator className="mt-10" color="#284BD6" />
+            ) : currentEntry ? (
+              <View className="flex-1 px-4">
+                <SwipeCard profile={currentEntry.profile} trip={currentEntry.trip} score={currentEntry.score} isDark={isDark} onConnect={(profile) => void connectWithProfile(profile)} onPass={passProfile} />
+
+                <View className="mt-4 flex-row items-center justify-center gap-6">
+                  <TouchableOpacity onPress={() => setCurrentIndex((index) => Math.max(0, index - 1))} disabled={currentIndex === 0} className={`h-11 w-11 items-center justify-center rounded-full border ${cardBackground} ${currentIndex === 0 ? 'opacity-40' : ''}`}>
+                    <ChevronLeft size={20} color={isDark ? '#E2E8F0' : '#182847'} />
+                  </TouchableOpacity>
+                  <View className="flex-row items-center gap-1.5">
+                    {deck.slice(0, 8).map((entry, index) => (
+                      <View key={entry.profile.id} className={`h-2 rounded-full ${index === currentIndex ? 'w-5 bg-[#284BD6]' : 'w-2 bg-[#C6CEDD]'}`} />
+                    ))}
+                  </View>
+                  <TouchableOpacity onPress={passProfile} className={`h-11 w-11 items-center justify-center rounded-full border ${cardBackground}`}>
+                    <ChevronRight size={20} color={isDark ? '#E2E8F0' : '#182847'} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View className="flex-1 items-center justify-center px-8">
+                <Sparkles size={40} color="#94A3B8" />
+                <Text className={`mt-4 text-center text-lg font-bold ${textPrimary}`}>You&apos;re all caught up</Text>
+                <Text className={`mt-1 text-center text-base ${textSecondary}`}>Check back later or adjust your filters to see more travelers.</Text>
+                {countActiveFilters(filters) > 0 ? (
+                  <TouchableOpacity onPress={() => setFilters(DEFAULT_FILTERS)} className="mt-5 rounded-2xl bg-[#284BD6] px-6 py-3">
+                    <Text className="font-bold text-white">Reset filters</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            )}
           </View>
         </View>
-      </Modal>
-    </>
+      ) : (
+        <ScrollView className="flex-1" contentContainerClassName="pb-28">
+          <View className="px-4 pb-5">
+            <Text className={`mt-1 text-base ${textSecondary}`}>Search active PartyUp travelers and connect.</Text>
+            <Pressable onPress={() => searchInputRef.current?.focus()} className={`mt-5 flex-row items-center gap-3 rounded-2xl border px-4 py-3 ${inputBackground}`}>
+              <Search size={20} color="#7A859D" />
+              <TextInput ref={searchInputRef} value={query} onChangeText={setQuery} editable autoCapitalize="none" autoCorrect={false} returnKeyType="search" placeholder="Search by name or interest" placeholderTextColor="#72809B" className={`flex-1 text-[16px] ${textPrimary}`} />
+            </Pressable>
+          </View>
+
+          {errorMessage ? <Text className="mx-4 mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
+          {loading ? <ActivityIndicator className="mt-6" color="#284BD6" /> : null}
+          {!loading && !profiles.length ? <Text className={`px-4 pt-8 text-center text-base ${textSecondary}`}>{query ? 'No users found.' : 'No other active users yet.'}</Text> : null}
+
+          <View className="gap-3 px-4">
+            {profiles.map((profile) => (
+              <View key={profile.id} className={`rounded-[24px] border p-4 ${cardBackground}`}>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/profile/[id]', params: { id: profile.id, displayName: profile.display_name, interests: JSON.stringify(profile.interests), avatarUrl: profile.avatar_url ?? '', requestStatus: profile.request_status ?? '', requestId: profile.request_id ?? '' } })}
+                  className="flex-row items-center gap-3"
+                  accessibilityLabel={`View ${profile.display_name}'s profile`}
+                >
+                  <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{profile.display_name.charAt(0).toUpperCase()}</Text></View>
+                  <View className="flex-1"><Text className={`text-xl font-black ${textPrimary}`}>{profile.display_name}</Text><Text className={`mt-1 text-sm ${textSecondary}`}>{profile.interests.length ? profile.interests.join('  •  ') : 'No interests selected'}</Text></View>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => void handleRequest(profile.id)} disabled={requestingId === profile.id} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${profile.request_status === 'accepted' || profile.request_status === 'outgoing_pending' ? 'bg-[#9EAFE9]' : 'bg-[#284BD6]'}`}>
+                  {requestingId === profile.id ? <ActivityIndicator color="#FFFFFF" /> : <>{profile.request_status === 'accepted' || profile.request_status === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : profile.request_status === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{profile.request_status === 'accepted' ? 'Friends' : profile.request_status === 'outgoing_pending' ? 'Cancel request' : profile.request_status === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+
+      <FiltersModal visible={filtersVisible} value={filters} isDark={isDark} onApply={(next) => { setFilters(next); setFiltersVisible(false); }} onClose={() => setFiltersVisible(false)} />
+      <MyTripModal visible={myTripModalVisible} value={myTrip} isDark={isDark} onSave={handleSaveMyTrip} onClose={() => setMyTripModalVisible(false)} />
+    </View>
   );
 }

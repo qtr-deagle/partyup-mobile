@@ -1,7 +1,9 @@
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Car, Star } from 'lucide-react-native';
 import { useState } from 'react';
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+import { useAuth } from '@/hooks/auth-provider';
 
 const vehicleStats = [
   { label: 'My Vehicles', value: '2' },
@@ -26,7 +28,16 @@ const vehicleCards = [
 
 export default function VehiclesScreen() {
   const router = useRouter();
+  const { session, loading } = useAuth();
   const [addVehicleVisible, setAddVehicleVisible] = useState(false);
+
+  if (loading) {
+    return null;
+  }
+
+  if (!session) {
+    return <Redirect href="/(auth)/sign-in" />;
+  }
 
   return (
     <View className="flex-1 bg-[#F8FAFD]">
@@ -36,13 +47,22 @@ export default function VehiclesScreen() {
             <Text className="text-[32px] font-black text-[#17233F]">My Vehicles</Text>
             <Text className="mt-2 text-[16px] leading-6 text-[#6B7590]">Track your personal vehicles for carpooling and trips</Text>
           </View>
-          <TouchableOpacity
-            onPress={() => setAddVehicleVisible(true)}
-            className="flex-row items-center gap-2 rounded-full bg-[#2747C7] px-4 py-3"
-          >
-            <Text className="text-[18px] text-white">+</Text>
-            <Text className="text-[16px] font-bold text-white">Add Vehicle</Text>
-          </TouchableOpacity>
+          <View className="items-end gap-3">
+            <TouchableOpacity
+              onPress={() => router.back()}
+              className="h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10"
+            >
+              <Text className="text-[22px] text-[#6B7590]">×</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setAddVehicleVisible(true)}
+              className="flex-row items-center gap-2 self-end rounded-full bg-[#2747C7] px-4 py-3"
+            >
+              <Text className="text-[18px] text-white">+</Text>
+              <Text className="text-[16px] font-bold text-white">Add Vehicle</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View className="mt-6 flex-row gap-3">
@@ -116,13 +136,6 @@ export default function VehiclesScreen() {
           ))}
         </View>
       </ScrollView>
-
-      <TouchableOpacity
-        onPress={() => router.back()}
-        className="absolute right-4 top-14 h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10"
-      >
-        <Text className="text-[22px] text-[#6B7590]">×</Text>
-      </TouchableOpacity>
 
       <Modal visible={addVehicleVisible} transparent animationType="fade" onRequestClose={() => setAddVehicleVisible(false)}>
         <View className="flex-1 items-center justify-center bg-black/45 px-4">
