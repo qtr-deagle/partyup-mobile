@@ -2,7 +2,8 @@
   "expo": {
     "name": "partyup-mobile",
     "web": {
-      "bundler": "metro"
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
     },
     "slug": "partyup-mobile",
     "version": "1.0.0",
@@ -12,7 +13,14 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "PartyUp uses your location to show nearby travelers on the map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "PartyUp uses your location to show nearby travelers and keep matched friends updated, even when the app is in the background.",
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
     },
     "android": {
       "package": "com.partyup.mobile",
@@ -23,11 +31,22 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_BACKGROUND_LOCATION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_LOCATION"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "unused-placeholder-key-osm-tiles-in-use"
+        }
+      }
     },
     "plugins": [
       "expo-router",
@@ -42,11 +61,27 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "PartyUp uses your location to show nearby travelers and keep matched friends updated on the map, even when the app is in the background.",
+          "locationAlwaysPermission": "PartyUp uses your location to show nearby travelers and keep matched friends updated on the map, even when the app is in the background.",
+          "locationWhenInUsePermission": "PartyUp uses your location to show nearby travelers on the map.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c54dcdb0-dfbe-4167-88c6-38fac4fa2e79"
+      }
     }
   }
 }

@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 
 const REQUEST_TIMEOUT_MS = 10000;
 
-async function withRequestTimeout<T>(request: PromiseLike<T>, label: string) {
+export async function withRequestTimeout<T>(request: PromiseLike<T>, label: string) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([

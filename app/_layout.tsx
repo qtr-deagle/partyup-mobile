@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import '../global.css';
+import '@/lib/location-task';
 
 import { AuthProvider, useAuth } from '@/hooks/auth-provider';
 import { ThemePreferenceProvider, useColorScheme } from '@/hooks/use-color-scheme';
