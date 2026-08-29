@@ -6,6 +6,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { computeCompatibility, EMPTY_MY_TRIP, loadMyTrip, saveMyTrip, type MyTrip } from '@/lib/compatibility';
 import { getMockTripData } from '@/lib/discover-mock';
 import { createOrGetDirectThread, removeFriend, respondToFriendRequest, searchProfiles, sendFriendRequest, type SearchProfile } from '@/lib/social';
+import { getTheme, typography } from '@/lib/theme';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronDown, ChevronLeft, ChevronRight, Check, MapPin, Search, SlidersHorizontal, Sparkles, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -32,6 +33,7 @@ export default function DiscoverScreen() {
   const inputBackground = isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D8E0EE] bg-white';
   const textPrimary = isDark ? 'text-white' : 'text-[#1B2340]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
+  const { titleColor } = getTheme(isDark);
 
   // ----- Search mode (unchanged behavior) -----
   const [query, setQuery] = useState('');
@@ -253,7 +255,7 @@ export default function DiscoverScreen() {
     <View className={`flex-1 ${screenBackground}`}>
       <View className="px-4 pb-3 pt-5">
         <View className="flex-row items-center justify-between">
-          <Text className={`text-[32px] font-black ${textPrimary}`}>Discover</Text>
+          <Text className={`${typography.pageTitle} ${titleColor}`}>Discover</Text>
         </View>
         <View className={`mt-4 flex-row rounded-full border p-1 ${inputBackground}`}>
           <TouchableOpacity onPress={() => setMode('swipe')} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-full py-2 ${mode === 'swipe' ? 'bg-[#284BD6]' : ''}`}>
@@ -311,7 +313,7 @@ export default function DiscoverScreen() {
             {swipeLoading ? (
               <ActivityIndicator className="mt-10" color="#284BD6" />
             ) : currentEntry ? (
-              <View className="flex-1 px-4">
+              <ScrollView className="flex-1" contentContainerClassName="px-4 pb-6" showsVerticalScrollIndicator={false}>
                 <SwipeCard profile={currentEntry.profile} trip={currentEntry.trip} score={currentEntry.score} isDark={isDark} onConnect={(profile) => void connectWithProfile(profile)} onPass={passProfile} />
 
                 <View className="mt-4 flex-row items-center justify-center gap-6">
@@ -327,7 +329,7 @@ export default function DiscoverScreen() {
                     <ChevronRight size={20} color={isDark ? '#E2E8F0' : '#182847'} />
                   </TouchableOpacity>
                 </View>
-              </View>
+              </ScrollView>
             ) : (
               <View className="flex-1 items-center justify-center px-8">
                 <Sparkles size={40} color="#94A3B8" />

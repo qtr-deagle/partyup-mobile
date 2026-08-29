@@ -96,6 +96,14 @@ export async function searchProfiles(query: string) {
   };
 }
 
+export async function getProfileById(id: string) {
+  const result = await searchProfiles('');
+  if (result.error) {
+    return { data: null, error: result.error };
+  }
+  return { data: result.data.find((profile) => profile.id === id) ?? null, error: null };
+}
+
 export async function getFriendRequestStatuses(profileIds: string[]) {
   const statuses = new Map<string, { status: SearchProfile['request_status']; requestId: string }>();
   if (!profileIds.length) {

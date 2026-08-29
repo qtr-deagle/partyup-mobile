@@ -5,8 +5,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 interface Notification {
-  id: number;
-  type: 'trip' | 'message' | 'match' | 'safety';
+  id: string;
+  type: 'trip' | 'message' | 'match' | 'safety' | 'system';
   title: string;
   message: string;
   timestamp: string;
@@ -17,15 +17,17 @@ interface Notification {
 interface NotificationModalProps {
   visible: boolean;
   onClose: () => void;
+  isDark?: boolean;
   notifications?: Notification[];
   onNotificationPress?: (notification: Notification) => void;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
 
-export default function NotificationModal({ 
+export default function NotificationModal({
   visible,
   onClose,
+  isDark = false,
   notifications = [],
   onNotificationPress
 }: NotificationModalProps) {
@@ -85,6 +87,8 @@ export default function NotificationModal({
         return 'checkmark.circle.fill';
       case 'safety':
         return 'shield.fill';
+      case 'system':
+        return 'sparkles';
       default:
         return 'bell.fill';
     }
@@ -100,6 +104,8 @@ export default function NotificationModal({
         return '#10B981';
       case 'safety':
         return '#EF4444';
+      case 'system':
+        return '#F59E0B';
       default:
         return '#6B7280';
     }
@@ -132,29 +138,29 @@ export default function NotificationModal({
 
         <Animated.View
           style={{ transform: [{ translateX: slideX }] }}
-          className="flex-1 bg-gray-50"
+          className={isDark ? 'flex-1 bg-[#0B1220]' : 'flex-1 bg-gray-50'}
         >
-          <View className="bg-white px-6 py-4 border-b border-gray-100 pt-14">
+          <View className={`px-6 py-4 border-b pt-14 ${isDark ? 'bg-[#0F172A] border-[#1E293B]' : 'bg-white border-gray-100'}`}>
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
-                <Text className="text-2xl font-bold text-black">Notifications</Text>
+                <Text className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-black'}`}>Notifications</Text>
                 {unreadCount > 0 && (
                   <View className="bg-red-500 rounded-full px-2 py-1">
                     <Text className="text-white text-xs font-bold">{unreadCount}</Text>
                   </View>
                 )}
               </View>
-              <TouchableOpacity onPress={onClose} className="rounded-full bg-[#F3F4F8] p-2">
-                <X size={20} color="#666" strokeWidth={2.25} />
+              <TouchableOpacity onPress={onClose} className={`rounded-full p-2 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F8]'}`}>
+                <X size={20} color={isDark ? '#E2E8F0' : '#666'} strokeWidth={2.25} />
               </TouchableOpacity>
             </View>
           </View>
 
           {notifications.length === 0 ? (
             <View className="flex-1 items-center justify-center">
-              <IconSymbol size={60} name="bell" color="#DDD" />
-              <Text className="text-gray-500 mt-4 font-semibold">No notifications yet</Text>
-              <Text className="text-sm text-gray-400 mt-2">You&apos;re all caught up!</Text>
+              <IconSymbol size={60} name="bell" color={isDark ? '#3A4A66' : '#DDD'} />
+              <Text className={`mt-4 font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-gray-500'}`}>No notifications yet</Text>
+              <Text className={`text-sm mt-2 ${isDark ? 'text-[#64748B]' : 'text-gray-400'}`}>You&apos;re all caught up!</Text>
             </View>
           ) : (
             <ScrollView className="flex-1">
@@ -162,8 +168,8 @@ export default function NotificationModal({
                 <TouchableOpacity
                   key={notification.id}
                   onPress={() => handleNotificationPress(notification)}
-                  className={`px-6 py-4 border-b border-gray-100 ${
-                    !notification.read ? 'bg-blue-50' : 'bg-white'
+                  className={`px-6 py-4 border-b ${isDark ? 'border-[#1E293B]' : 'border-gray-100'} ${
+                    !notification.read ? (isDark ? 'bg-[#111B2E]' : 'bg-blue-50') : (isDark ? 'bg-[#0B1220]' : 'bg-white')
                   }`}
                 >
                   <View className="flex-row items-start gap-3">
@@ -183,16 +189,16 @@ export default function NotificationModal({
                     <View className="flex-1">
                       <View className="flex-row items-start justify-between">
                         <View className="flex-1">
-                          <Text className={`font-semibold ${!notification.read ? 'text-black' : 'text-gray-900'}`}>
+                          <Text className={`font-semibold ${isDark ? 'text-white' : !notification.read ? 'text-black' : 'text-gray-900'}`}>
                             {notification.title}
                           </Text>
-                          <Text className={`text-sm mt-1 ${!notification.read ? 'text-gray-700' : 'text-gray-600'}`}>
+                          <Text className={`text-sm mt-1 ${isDark ? 'text-[#94A3B8]' : !notification.read ? 'text-gray-700' : 'text-gray-600'}`}>
                             {notification.message}
                           </Text>
                         </View>
                         {!notification.read && <View className="w-2 h-2 rounded-full bg-blue-800 mt-2" />}
                       </View>
-                      <Text className="text-xs text-gray-500 mt-2">{notification.timestamp}</Text>
+                      <Text className={`text-xs mt-2 ${isDark ? 'text-[#64748B]' : 'text-gray-500'}`}>{notification.timestamp}</Text>
                     </View>
                   </View>
                 </TouchableOpacity>

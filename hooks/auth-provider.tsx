@@ -15,6 +15,8 @@ export type UserProfile = {
   phone: string | null;
   city: string | null;
   country: string | null;
+  gcash_handle: string | null;
+  paymaya_handle: string | null;
   role: ProfileRole;
   verification_status: VerificationStatus;
   is_active: boolean;

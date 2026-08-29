@@ -1,14 +1,16 @@
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { parseTimestamp } from '@/lib/datetime';
 import { ensureAcceptedDirectThreads, getChatMessages, listDirectConversations, markThreadRead, sendChatMessage, type ChatMessage, type Conversation } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
+import { getTheme, typography } from '@/lib/theme';
 import { useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Info, MessageCircle, MoreVertical, Search, Send } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 function formatTime(value: string | null) {
-  return value ? new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }) : '';
+  return value ? parseTimestamp(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }) : '';
 }
 
 export default function ChatScreen() {
@@ -29,6 +31,7 @@ export default function ChatScreen() {
   const panelBackground = isDark ? 'bg-[#111B2E]' : 'bg-[#F6F7FB]';
   const textPrimary = isDark ? 'text-white' : 'text-[#182847]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
+  const { titleColor } = getTheme(isDark);
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
@@ -100,7 +103,7 @@ export default function ChatScreen() {
   if (selected) {
     return (
       <View className={`flex-1 ${screenBackground}`}>
-        <View className={`flex-row items-center gap-3 border-b px-4 py-4 ${borderColor}`}><TouchableOpacity onPress={() => { setSelected(null); void loadConversations(); }}><ArrowLeft size={24} color="#284BD6" /></TouchableOpacity><View className="flex-1"><Text className={`text-xl font-black ${textPrimary}`}>{selected.display_name}</Text><Text className={`text-sm ${textSecondary}`}>Direct chat</Text></View><TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options"><MoreVertical size={23} color={isDark ? '#E2E8F0' : '#182847'} /></TouchableOpacity></View>
+        <View className={`flex-row items-center gap-3 border-b px-4 py-4 ${borderColor}`}><TouchableOpacity onPress={() => { setSelected(null); void loadConversations(); }}><ArrowLeft size={24} color="#284BD6" /></TouchableOpacity><View className="flex-1"><Text className={`${typography.sectionTitle} ${titleColor}`}>{selected.display_name}</Text><Text className={`text-sm ${textSecondary}`}>Direct chat</Text></View><TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options"><MoreVertical size={23} color={isDark ? '#E2E8F0' : '#182847'} /></TouchableOpacity></View>
         <View className={`flex-row items-start gap-2 border-b px-4 py-3 ${borderColor} ${panelBackground}`}><Info size={17} color="#7A8DAE" /><Text className={`flex-1 text-xs leading-5 ${textSecondary}`}>Messages and calls are secured with end-to-end encryption. Only people in this chat can read, listen to, or share them. Learn more</Text></View>
         {errorMessage ? <Text className="m-4 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
         <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingVertical: 16 }}>{messages.map((message) => { const mine = message.sender_id === session?.user.id; return <View key={message.id} className={`mb-3 flex-row ${mine ? 'justify-end' : 'justify-start'}`}><View className={`max-w-[80%] rounded-2xl px-4 py-3 ${mine ? 'bg-[#284BD6]' : `border ${borderColor} ${panelBackground}`}`}><Text className={`text-base ${mine ? 'text-white' : textPrimary}`}>{message.body}</Text><Text className={`mt-1 text-xs ${mine ? 'text-white/75' : textSecondary}`}>{formatTime(message.created_at)}</Text></View></View>; })}</ScrollView>
@@ -114,7 +117,7 @@ export default function ChatScreen() {
 
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
-      <View className={`border-b px-4 pb-4 pt-5 ${borderColor}`}><Text className={`text-[32px] font-black ${textPrimary}`}>Messages</Text><View className={`mt-4 flex-row items-center gap-3 rounded-full border px-4 py-3 ${borderColor} ${panelBackground}`}><Search size={19} color="#7A859D" /><TextInput placeholder="Search chats" placeholderTextColor="#94A3B8" className={`flex-1 ${textPrimary}`} /></View></View>
+      <View className={`border-b px-4 pb-4 pt-5 ${borderColor}`}><Text className={`${typography.pageTitle} ${titleColor}`}>Messages</Text><View className={`mt-4 flex-row items-center gap-3 rounded-full border px-4 py-3 ${borderColor} ${panelBackground}`}><Search size={19} color="#7A859D" /><TextInput placeholder="Search chats" placeholderTextColor="#94A3B8" className={`flex-1 ${textPrimary}`} /></View></View>
       {errorMessage ? <Text className="m-4 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
       {loading ? <ActivityIndicator className="mt-8" color="#284BD6" /> : null}
       {!loading && !conversations.length ? <View className="items-center px-8 pt-16"><MessageCircle size={40} color="#94A3B8" /><Text className={`mt-4 text-center text-base ${textSecondary}`}>No conversations yet. Add a friend to start chatting.</Text></View> : null}

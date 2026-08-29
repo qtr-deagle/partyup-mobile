@@ -1,15 +1,12 @@
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { supabase } from '@/lib/supabase';
+import { getTheme, typography } from '@/lib/theme';
+import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Car, CheckCircle2, Cog, LogOut, Shield, ShieldCheck, Star, Users } from 'lucide-react-native';
-import { useCallback } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
-
-const trustedCircle = [
-  { id: 1, name: 'Mom', phone: '+1 (555) 123-4567' },
-  { id: 2, name: 'Best Friend Sarah', phone: '+1 (555) 987-6543' },
-  { id: 3, name: 'Dad', phone: '+1 (555) 456-7890' },
-];
+import { AlertCircle, Car, CheckCircle2, Cog, LogOut, Shield, ShieldCheck, Star, Users, Wallet } from 'lucide-react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const reviews = [
   {
@@ -42,21 +39,54 @@ function SectionCard({ children }: { children: React.ReactNode }) {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const { profile, refreshProfile, signOut } = useAuth();
+  const { profile, session, refreshProfile, signOut } = useAuth();
+  const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
+  const [editingPayment, setEditingPayment] = useState(false);
+  const [gcashInput, setGcashInput] = useState('');
+  const [paymayaInput, setPaymayaInput] = useState('');
+  const [savingPayment, setSavingPayment] = useState(false);
   const isDark = useColorScheme() === 'dark';
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]';
   const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white';
-  const titleColor = isDark ? 'text-white' : 'text-[#2647B8]';
+  const { titleColor } = getTheme(isDark);
   const textPrimary = isDark ? 'text-white' : 'text-[#182847]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
   const softFill = isDark ? 'bg-[#18253C]' : 'bg-[#F2F4F8]';
   const profileAge = profile?.date_of_birth ? Math.max(0, new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() - (new Date() < new Date(new Date().getFullYear(), new Date(profile.date_of_birth).getMonth(), new Date(profile.date_of_birth).getDate()) ? 1 : 0)) : null;
+  const confirmedTrustedContacts = trustedContacts.filter((contact) => contact.status === 'accepted');
 
   useFocusEffect(
     useCallback(() => {
       void refreshProfile();
+      void listTrustedContacts().then((result) => {
+        if (!result.error) {
+          setTrustedContacts(result.data);
+        }
+      });
     }, [refreshProfile])
   );
+
+  function startEditingPayment() {
+    setGcashInput(profile?.gcash_handle ?? '');
+    setPaymayaInput(profile?.paymaya_handle ?? '');
+    setEditingPayment(true);
+  }
+
+  async function handleSavePayment() {
+    if (!session?.user.id) {
+      return;
+    }
+    setSavingPayment(true);
+    const { error } = await supabase
+      .from('profiles')
+      .update({ gcash_handle: gcashInput.trim() || null, paymaya_handle: paymayaInput.trim() || null })
+      .eq('id', session.user.id);
+    setSavingPayment(false);
+    if (!error) {
+      await refreshProfile();
+      setEditingPayment(false);
+    }
+  }
 
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
@@ -65,7 +95,7 @@ export default function ProfileScreen() {
           <TouchableOpacity onPress={() => router.push('/modal')} className="h-10 w-10 items-center justify-center rounded-full">
             <Cog size={22} color={isDark ? '#E2E8F0' : '#2647B8'} />
           </TouchableOpacity>
-          <Text className={`text-[30px] font-black ${titleColor}`}>{profile?.display_name ?? 'Alex'}</Text>
+          <Text className={`${typography.pageTitle} ${titleColor}`}>{profile?.display_name ?? 'Alex'}</Text>
           <View className="h-10 w-10" />
         </View>
       </View>
@@ -76,9 +106,17 @@ export default function ProfileScreen() {
             <View className={`h-28 w-28 rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#D5E4EE]'}`} />
 
             <View className="mt-6 flex-row items-center gap-2">
-              <Text className={`text-[30px] font-black ${textPrimary}`}>{profile?.display_name ?? 'Alex'}{profileAge ? `, ${profileAge}` : ''}</Text>
+              <Text className={`text-[30px] font-black ${textPrimary}`}>{profile?.display_name ?? 'Alex'}</Text>
               <ShieldCheck size={20} color="#00A56A" />
             </View>
+
+            {profileAge ? (
+              <View className="mt-2 flex-row items-center gap-2">
+                <View className={`h-px w-4 ${isDark ? 'bg-[#B08D57]/40' : 'bg-[#A9793F]/30'}`} />
+                <Text className={`text-[11px] font-semibold uppercase tracking-[3px] ${isDark ? 'text-[#D9B77E]' : 'text-[#A9793F]'}`}>{profileAge} Years Old</Text>
+                <View className={`h-px w-4 ${isDark ? 'bg-[#B08D57]/40' : 'bg-[#A9793F]/30'}`} />
+              </View>
+            ) : null}
 
             <Text className={`mt-2 text-[18px] ${textSecondary}`}>{profile?.city && profile?.country ? `${profile.city}, ${profile.country}` : 'San Francisco, CA'}</Text>
 
@@ -158,7 +196,7 @@ export default function ProfileScreen() {
         <SectionCard>
           <View className="flex-row items-center gap-2">
             <Users size={22} color="#2647B8" />
-            <Text className="text-[22px] font-black text-[#182847]">Trusted Circle</Text>
+            <Text className={`text-[22px] font-black ${textPrimary}`}>Trusted Circle</Text>
           </View>
 
           <TouchableOpacity onPress={() => router.push('/friends')} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DDE8] bg-white'}`}>
@@ -167,16 +205,20 @@ export default function ProfileScreen() {
           </TouchableOpacity>
 
           <View className="mt-4 gap-3">
-            {trustedCircle.map((contact) => (
-              <View key={contact.id} className={`rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F7]'}`}>
-                  <Text className={`text-[18px] ${textPrimary}`}>{contact.name}</Text>
-                  <Text className={`mt-1 text-[15px] ${textSecondary}`}>{contact.phone}</Text>
-              </View>
-            ))}
+            {confirmedTrustedContacts.length ? (
+              confirmedTrustedContacts.slice(0, 3).map((contact) => (
+                <View key={contact.id} className={`rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F7]'}`}>
+                  <Text className={`text-[18px] ${textPrimary}`}>{contact.display_name}</Text>
+                  <Text className={`mt-1 text-[15px] ${textSecondary}`}>{contact.relationship}</Text>
+                </View>
+              ))
+            ) : (
+              <Text className={`text-[16px] ${textSecondary}`}>No confirmed emergency contacts yet.</Text>
+            )}
           </View>
 
-            <TouchableOpacity className={`mt-4 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#D7DDE8] bg-white'}`}>
-              <Text className={`text-center text-[17px] ${textPrimary}`}>Add Contact</Text>
+          <TouchableOpacity onPress={() => router.push('/trusted-circle')} className={`mt-4 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#D7DDE8] bg-white'}`}>
+            <Text className={`text-center text-[17px] ${textPrimary}`}>{confirmedTrustedContacts.length ? 'Manage Emergency Contacts' : 'Add Emergency Contact'}</Text>
           </TouchableOpacity>
         </SectionCard>
 
@@ -209,9 +251,59 @@ export default function ProfileScreen() {
           <Text className={`mt-4 text-[17px] leading-6 ${textSecondary}`}>
             When you activate SOS, your location will be shared with your trusted circle and our safety team.
           </Text>
-          <TouchableOpacity className="mt-4 rounded-2xl bg-[#E32727] py-4">
+          <TouchableOpacity onPress={() => router.push('/trusted-circle')} className="mt-4 rounded-2xl bg-[#E32727] py-4">
             <Text className="text-center text-[17px] font-bold text-white">Manage Emergency Contacts</Text>
           </TouchableOpacity>
+        </SectionCard>
+
+        <SectionCard>
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center gap-2">
+              <Wallet size={22} color="#2647B8" />
+              <Text className={`text-[22px] font-black ${textPrimary}`}>Payment Methods</Text>
+            </View>
+            {!editingPayment ? (
+              <TouchableOpacity onPress={startEditingPayment}>
+                <Text className="text-[16px] font-bold text-[#2647B8]">{profile?.gcash_handle || profile?.paymaya_handle ? 'Edit' : 'Add'}</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          <Text className={`mt-2 text-[15px] leading-6 ${textSecondary}`}>
+            Riders send your carpool fare directly here via GCash or PayMaya — payments never pass through PartyUp.
+          </Text>
+          {editingPayment ? (
+            <View className="mt-4 gap-3">
+              <TextInput
+                className={`rounded-2xl px-4 py-3.5 text-[16px] ${softFill} ${textPrimary}`}
+                placeholder="GCash number"
+                placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
+                value={gcashInput}
+                onChangeText={setGcashInput}
+                keyboardType="phone-pad"
+              />
+              <TextInput
+                className={`rounded-2xl px-4 py-3.5 text-[16px] ${softFill} ${textPrimary}`}
+                placeholder="PayMaya number"
+                placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
+                value={paymayaInput}
+                onChangeText={setPaymayaInput}
+                keyboardType="phone-pad"
+              />
+              <View className="flex-row gap-2">
+                <TouchableOpacity onPress={() => setEditingPayment(false)} className={`flex-1 items-center rounded-2xl border py-3 ${isDark ? 'border-[#22324B]' : 'border-[#D7DDE8]'}`}>
+                  <Text className={`font-bold ${textPrimary}`}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={handleSavePayment} disabled={savingPayment} className="flex-1 items-center rounded-2xl bg-[#2647B8] py-3">
+                  {savingPayment ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-bold text-white">Save</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View className="mt-4 gap-2">
+              <Text className={`text-[17px] ${textPrimary}`}>GCash: {profile?.gcash_handle || 'Not set'}</Text>
+              <Text className={`text-[17px] ${textPrimary}`}>PayMaya: {profile?.paymaya_handle || 'Not set'}</Text>
+            </View>
+          )}
         </SectionCard>
 
         <TouchableOpacity onPress={() => router.push('/vehicles')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>

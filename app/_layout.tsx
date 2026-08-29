@@ -42,6 +42,12 @@ function RootLayoutContent() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="vehicles" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
+        <Stack.Screen name="friends" options={{ headerShown: false }} />
+        <Stack.Screen name="trusted-circle" options={{ headerShown: false }} />
+        <Stack.Screen name="profile/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="trip/create" options={{ headerShown: false }} />
+        <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="trip/join/[code]" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </ThemeProvider>

@@ -18,19 +18,6 @@ type SwipeCardProps = {
   onPass: (profile: SearchProfile) => void;
 };
 
-function CompatibilityBar({ label, value, isDark }: { label: string; value: number; isDark: boolean }) {
-  const trackColor = isDark ? 'bg-[#22324B]' : 'bg-[#E7EAF2]';
-  return (
-    <View className="flex-row items-center gap-3">
-      <Text className={`w-20 text-sm ${isDark ? 'text-[#94A3B8]' : 'text-[#67748D]'}`}>{label}</Text>
-      <View className={`h-2 flex-1 overflow-hidden rounded-full ${trackColor}`}>
-        <View className="h-2 rounded-full bg-[#22B8CF]" style={{ width: `${value}%` }} />
-      </View>
-      <Text className={`w-10 text-right text-sm font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>{value}%</Text>
-    </View>
-  );
-}
-
 export function SwipeCard({ profile, trip, score, isDark, onConnect, onPass }: SwipeCardProps) {
   const router = useRouter();
   const age = getAge(profile.date_of_birth);
@@ -66,6 +53,8 @@ export function SwipeCard({ profile, trip, score, isDark, onConnect, onPass }: S
   }
 
   const pan = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .failOffsetY([-15, 15])
     .onUpdate((event) => {
       translateX.value = event.translationX;
     })
@@ -98,7 +87,7 @@ export function SwipeCard({ profile, trip, score, isDark, onConnect, onPass }: S
               <Text className={`text-2xl font-black ${textPrimary}`}>{profile.display_name}{age !== null ? `, ${age}` : ''}</Text>
               {verified ? <BadgeCheck size={20} color="#179B67" /> : null}
             </View>
-            <Text numberOfLines={2} className={`mt-2 text-[15px] leading-5 ${textSecondary}`}>{profile.bio || 'This traveler hasn’t added a bio yet.'}</Text>
+            <Text numberOfLines={1} className={`mt-2 text-[15px] leading-5 ${textSecondary}`}>{profile.bio || 'This traveler hasn’t added a bio yet.'}</Text>
             <View className="mt-3 flex-row items-center gap-1.5">
               <MapPin size={15} color="#284BD6" />
               <Text className="text-[13px] font-semibold text-[#284BD6]">{trip.distanceKm} km away</Text>
@@ -131,27 +120,9 @@ export function SwipeCard({ profile, trip, score, isDark, onConnect, onPass }: S
             <View className={`rounded-full px-3 py-1.5 ${isDark ? 'bg-[#22324B]' : 'bg-[#F1F3F8]'}`}><Text className={`text-[13px] font-semibold ${textPrimary}`}>{trip.vibeTag}</Text></View>
           </View>
 
-          {profile.interests.length ? (
-            <View className="mt-1">
-              <Text className={`text-xs font-bold uppercase tracking-wide ${textSecondary}`}>Interests</Text>
-              <View className="mt-2 flex-row flex-wrap gap-2">
-                {profile.interests.map((interest) => (
-                  <View key={interest} className={`rounded-full px-3 py-1.5 ${isDark ? 'bg-[#18253C]' : 'bg-[#F1F3F8]'}`}><Text className={`text-[13px] ${textPrimary}`}>{interest}</Text></View>
-                ))}
-              </View>
-            </View>
-          ) : null}
-
-          <View className="mt-3 gap-2 border-t border-[#22324B]/20 pt-3">
-            <Text className={`text-xs font-bold uppercase tracking-wide ${textSecondary}`}>Why we matched</Text>
-            <CompatibilityBar label="Interests" value={score.interestOverlap} isDark={isDark} />
-            <CompatibilityBar label="Dates" value={score.dateAlignment} isDark={isDark} />
-            <CompatibilityBar label="Route" value={score.routeCompatibility} isDark={isDark} />
-            <CompatibilityBar label="Trust" value={score.communityTrust} isDark={isDark} />
-            <View className="flex-row items-center justify-between">
-              <Text className={`text-sm font-bold ${textPrimary}`}>Overall Match</Text>
-              <Text className="text-lg font-black text-[#284BD6]">{score.overall}%</Text>
-            </View>
+          <View className="mt-3 flex-row items-center justify-between border-t border-[#22324B]/20 pt-3">
+            <Text className={`text-sm font-bold ${textPrimary}`}>Overall Match</Text>
+            <Text className="text-lg font-black text-[#284BD6]">{score.overall}%</Text>
           </View>
         </View>
 

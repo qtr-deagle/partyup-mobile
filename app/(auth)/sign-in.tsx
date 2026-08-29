@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import { Link, useRouter } from 'expo-router';
+import { Link, useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, EyeOff, Github, Lock, Mail } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/auth-provider';
 
 export default function SignInScreen() {
   const router = useRouter();
+  const { redirect } = useLocalSearchParams<{ redirect?: string }>();
   const { session, loading } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -17,9 +18,9 @@ export default function SignInScreen() {
 
   useEffect(() => {
     if (!loading && session) {
-      router.replace('/(tabs)');
+      router.replace(redirect ? (redirect as any) : '/(tabs)');
     }
-  }, [loading, router, session]);
+  }, [loading, redirect, router, session]);
 
   async function handleSignIn() {
     if (!email.trim() || !password.trim()) {
@@ -42,7 +43,7 @@ export default function SignInScreen() {
       return;
     }
 
-    router.replace('/(tabs)');
+    router.replace(redirect ? (redirect as any) : '/(tabs)');
   }
 
   return (

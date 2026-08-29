@@ -1,11 +1,14 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import NotificationModal from '@/components/NotificationModal';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { parseTimestamp } from '@/lib/datetime';
+import { listNotifications, markNotificationRead, type AppNotification } from '@/lib/notifications';
 import { listIncomingFriendRequests, type IncomingFriendRequest } from '@/lib/social';
+import { getTheme, typography } from '@/lib/theme';
 import { useRouter } from 'expo-router';
 import { Bell, MapPin, Navigation, Send, Shield, Sparkles, Users } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Alert, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
 const activeTrip = {
@@ -40,6 +43,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
+  const [dbNotifications, setDbNotifications] = useState<AppNotification[]>([]);
   const isDark = useColorScheme() === 'dark';
 
   useEffect(() => {
@@ -48,67 +52,59 @@ export default function HomeScreen() {
         setIncomingRequests(result.data);
       }
     });
+    void listNotifications().then((result) => {
+      if (!result.error) {
+        setDbNotifications(result.data);
+      }
+    });
   }, []);
 
-  // Design tokens aligned with the PartyUp web app: deep ocean blue primary,
-  // emerald accent, and destructive red for alerts.
-  const primaryColor = isDark ? '#3B82F6' : '#1E40AF';
-  const accentColor = isDark ? '#10B981' : '#059669';
-  const destructiveColor = isDark ? '#EF4444' : '#DC2626';
-
-  const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
-  const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-black/5 bg-white/80';
-  const titleColor = isDark ? 'text-white' : 'text-[#182A4D]';
-  const subtitleColor = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
-  const panelBackground = isDark ? 'bg-[#0F172A]' : 'bg-white/85';
-  const panelBorder = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
-  const mutedPanel = isDark ? 'bg-[#18253C]' : 'bg-white/75';
-  const mutedText = isDark ? 'text-[#CBD5E1]' : 'text-[#6D7A96]';
-  const primaryText = isDark ? 'text-white' : 'text-[#1B2340]';
-  const softBorder = isDark ? 'border-[#22324B]' : 'border-[#D8E0EE]';
+  const {
+    primaryColor,
+    accentColor,
+    destructiveColor,
+    warningColor,
+    screenBackground,
+    headerBackground,
+    titleColor,
+    subtitleColor,
+    panelBackground,
+    panelBorder,
+    mutedPanel,
+    mutedText,
+    primaryText,
+    softBorder,
+  } = getTheme(isDark);
 
   const notifications = [
-    ...incomingRequests.map((request, index) => ({
-      id: 1000 + index,
+    ...incomingRequests.map((request) => ({
+      id: request.id,
       type: 'match' as const,
       title: 'New friend request',
       message: `${request.display_name} added you. Open Discover to confirm.`,
-      timestamp: new Date(request.created_at).toLocaleString(),
+      timestamp: parseTimestamp(request.created_at).toLocaleString(),
+      sortTime: parseTimestamp(request.created_at).getTime(),
       read: false,
     })),
-    {
-      id: 1,
-      type: 'match' as const,
-      title: 'New Match!',
-      message: 'Sarah wants to travel with you to Bali',
-      timestamp: '5 minutes ago',
-      read: false,
-    },
-    {
-      id: 2,
-      type: 'message' as const,
-      title: 'New Message',
-      message: 'Mike: Hey! Are you still going to Tokyo?',
-      timestamp: '1 hour ago',
-      read: false,
-    },
-    {
-      id: 3,
-      type: 'trip' as const,
-      title: 'Trip Reminder',
-      message: 'Your trip to Paris starts in 3 days',
-      timestamp: '2 hours ago',
-      read: true,
-    },
-    {
-      id: 4,
-      type: 'safety' as const,
-      title: 'Safety Check',
-      message: 'Your trusted circle is requesting your location',
-      timestamp: '1 day ago',
-      read: true,
-    },
-  ];
+    ...dbNotifications.map((notification) => ({
+      id: notification.id,
+      type: notification.type,
+      title: notification.title,
+      message: notification.message,
+      timestamp: parseTimestamp(notification.created_at).toLocaleString(),
+      sortTime: parseTimestamp(notification.created_at).getTime(),
+      read: notification.read,
+    })),
+  ].sort((a, b) => b.sortTime - a.sortTime);
+
+  const handleNotificationPress = (notification: { id: string; title: string; message: string; read: boolean }) => {
+    const isDbNotification = dbNotifications.some((n) => n.id === notification.id);
+    if (isDbNotification && !notification.read) {
+      setDbNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)));
+      void markNotificationRead(notification.id);
+    }
+    Alert.alert(notification.title, notification.message);
+  };
 
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
@@ -148,7 +144,7 @@ export default function HomeScreen() {
         </View>
 
         <View className="mt-8">
-          <Text className={`text-[34px] leading-10 font-black ${titleColor}`}>What&apos;s happening now</Text>
+          <Text className={`${typography.pageTitle} ${titleColor}`}>What&apos;s happening now</Text>
           <Text className={`mt-2 text-base ${subtitleColor}`}>Your live dashboard</Text>
         </View>
       </Animated.View>
@@ -175,7 +171,7 @@ export default function HomeScreen() {
             </View>
             <View className="mt-3 flex-row items-center justify-between">
               <Text className={`text-base ${mutedText}`}>Live Traffic</Text>
-              <Text className="text-base font-bold text-[#D88700]">{activeTrip.traffic}</Text>
+              <Text className="text-base font-bold" style={{ color: warningColor }}>{activeTrip.traffic}</Text>
             </View>
             <View className="mt-3 flex-row items-center justify-between">
               <Text className={`text-base ${mutedText}`}>Route</Text>
@@ -206,19 +202,19 @@ export default function HomeScreen() {
           className={`rounded-[24px] border-2 p-4 ${isDark ? 'border-[#10B981] bg-[#0D1E1A]' : 'border-[#059669] bg-[#E5F6EF]'}`}>
           <View className="flex-row items-center gap-2">
             <Shield size={20} color={accentColor} />
-            <Text className={`text-2xl font-black ${primaryText}`}>Safety Overview</Text>
+            <Text className={`${typography.sectionTitle} ${primaryText}`}>Safety Overview</Text>
           </View>
 
           <View className="mt-4 flex flex-col gap-3">
             <View className={`rounded-2xl p-4 ${mutedPanel}`}>
-              <Text className={`text-sm ${mutedText}`}>Geofence Status</Text>
-              <Text className={`mt-2 text-lg font-bold ${primaryText}`}>{safetyData.geofenceStatus}</Text>
+              <Text className={`${typography.label} ${mutedText}`}>Geofence Status</Text>
+              <Text className={`mt-2 ${typography.value} ${primaryText}`}>{safetyData.geofenceStatus}</Text>
               <Text className={`mt-1 text-sm ${mutedText}`}>{safetyData.location}</Text>
             </View>
 
             <View className={`rounded-2xl p-4 ${mutedPanel}`}>
-              <Text className={`text-sm ${mutedText}`}>Distance from Travel Buddy</Text>
-              <Text className={`mt-2 text-xl font-bold ${primaryText}`}>{safetyData.distanceToBuddy} km</Text>
+              <Text className={`${typography.label} ${mutedText}`}>Distance from Travel Buddy</Text>
+              <Text className={`mt-2 ${typography.value} ${primaryText}`}>{safetyData.distanceToBuddy} km</Text>
             </View>
 
             <View className={`rounded-2xl p-4 ${mutedPanel}`}>
@@ -251,7 +247,7 @@ export default function HomeScreen() {
           className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
           <View className="flex-row items-center gap-2">
             <Sparkles size={18} color={primaryColor} />
-            <Text className={`text-xl font-black ${primaryText}`}>Quick Stats</Text>
+            <Text className={`${typography.sectionTitle} ${primaryText}`}>Quick Stats</Text>
           </View>
 
           <View className="mt-4 flex-row gap-4">
@@ -268,7 +264,7 @@ export default function HomeScreen() {
           entering={FadeInDown.delay(260).duration(400).springify().damping(16)}
           className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
           <View className="flex-row items-center justify-between">
-            <Text className={`text-xl font-black ${primaryText}`}>Live Activity</Text>
+            <Text className={`${typography.sectionTitle} ${primaryText}`}>Live Activity</Text>
             <AnimatedPressable hitSlop={8}>
               <Text className="text-sm font-semibold" style={{ color: primaryColor }}>View all</Text>
             </AnimatedPressable>
@@ -310,7 +306,9 @@ export default function HomeScreen() {
       <NotificationModal
         visible={notificationVisible}
         onClose={() => setNotificationVisible(false)}
+        isDark={isDark}
         notifications={notifications}
+        onNotificationPress={handleNotificationPress}
       />
     </ScrollView>
   );

@@ -2,8 +2,12 @@ import { Redirect, useRouter } from 'expo-router';
 import { Car, Star } from 'lucide-react-native';
 import { useState } from 'react';
 import { Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/hooks/auth-provider';
+import { getTheme, typography } from '@/lib/theme';
+
+const { titleColor } = getTheme(false);
 
 const vehicleStats = [
   { label: 'My Vehicles', value: '2' },
@@ -29,6 +33,7 @@ const vehicleCards = [
 export default function VehiclesScreen() {
   const router = useRouter();
   const { session, loading } = useAuth();
+  const insets = useSafeAreaInsets();
   const [addVehicleVisible, setAddVehicleVisible] = useState(false);
 
   if (loading) {
@@ -41,10 +46,10 @@ export default function VehiclesScreen() {
 
   return (
     <View className="flex-1 bg-[#F8FAFD]">
-      <View className="border-b border-black/5 bg-white px-4 pb-5 pt-14">
+      <View className="border-b border-black/5 bg-white px-4 pb-5" style={{ paddingTop: insets.top + 16 }}>
         <View className="flex-row items-start justify-between gap-4">
           <View className="flex-1">
-            <Text className="text-[32px] font-black text-[#17233F]">My Vehicles</Text>
+            <Text className={`${typography.pageTitle} ${titleColor}`}>My Vehicles</Text>
             <Text className="mt-2 text-[16px] leading-6 text-[#6B7590]">Track your personal vehicles for carpooling and trips</Text>
           </View>
           <View className="items-end gap-3">

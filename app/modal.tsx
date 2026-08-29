@@ -2,9 +2,11 @@ import { Redirect, useRouter } from 'expo-router';
 import { AlertTriangle, ArrowLeft, MapPin, Shield, ShieldAlert, ShieldCheck, SunMedium } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme, useThemePreference } from '@/hooks/use-color-scheme';
+import { getTheme, typography } from '@/lib/theme';
 
 function SettingsCard({ children, isDark }: { children: React.ReactNode; isDark: boolean }) {
   return (
@@ -52,12 +54,14 @@ export default function ModalScreen() {
   const { session, loading } = useAuth();
   const colorScheme = useColorScheme();
   const { setPreference } = useThemePreference();
+  const insets = useSafeAreaInsets();
   const [safetyEdgeTab, setSafetyEdgeTab] = useState(false);
   const [liveLocation, setLiveLocation] = useState(false);
   const [warningAlerts, setWarningAlerts] = useState(false);
   const [emergencySos, setEmergencySos] = useState(false);
 
   const isDark = colorScheme === 'dark';
+  const { titleColor } = getTheme(isDark);
 
   if (loading) {
     return null;
@@ -69,12 +73,14 @@ export default function ModalScreen() {
 
   return (
     <ScrollView className={`flex-1 ${isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]'}`} contentContainerClassName="pb-28">
-      <View className={`border-b px-4 py-4 ${isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white'}`}>
+      <View
+        className={`border-b px-4 pb-4 ${isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white'}`}
+        style={{ paddingTop: insets.top + 16 }}>
         <View className="flex-row items-center justify-between">
           <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center rounded-full">
-            <ArrowLeft size={24} color={isDark ? '#E2E8F0' : '#2647B8'} />
+            <ArrowLeft size={24} color={isDark ? '#E2E8F0' : '#182A4D'} />
           </TouchableOpacity>
-          <Text className={`text-[30px] font-black ${isDark ? 'text-white' : 'text-[#2647B8]'}`}>Settings</Text>
+          <Text className={`${typography.pageTitle} ${titleColor}`}>Settings</Text>
           <View className="h-10 w-10" />
         </View>
       </View>
@@ -166,7 +172,7 @@ export default function ModalScreen() {
           </View>
         </SettingsCard>
 
-        <TouchableOpacity className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
+        <TouchableOpacity onPress={() => router.push('/trusted-circle')} className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
           <Text className={`text-center text-[17px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Manage Safety Contacts</Text>
         </TouchableOpacity>
 

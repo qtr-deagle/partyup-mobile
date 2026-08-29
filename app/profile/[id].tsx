@@ -1,26 +1,44 @@
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { createOrGetDirectThread, getFriendRequestStatuses, removeFriend, respondToFriendRequest, sendFriendRequest } from '@/lib/social';
+import { createOrGetDirectThread, getFriendRequestStatuses, getProfileById, removeFriend, respondToFriendRequest, sendFriendRequest, type SearchProfile } from '@/lib/social';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Check, UserPlus, X } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, Check, MapPin, Star, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+function getAge(dateOfBirth: string | null) {
+  if (!dateOfBirth) return null;
+  const dob = new Date(dateOfBirth);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasHadBirthdayThisYear = today.getMonth() > dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return age;
+}
 
 export default function PublicProfileScreen() {
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id: string; displayName?: string; interests?: string; avatarUrl?: string; requestStatus?: string; requestId?: string }>();
   const [requesting, setRequesting] = useState(false);
   const [requestStatus, setRequestStatus] = useState(params.requestStatus || '');
   const [requestId, setRequestId] = useState(params.requestId || '');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const displayName = params.displayName ?? 'PartyUp traveler';
+  const [fullProfile, setFullProfile] = useState<SearchProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const displayName = fullProfile?.display_name ?? params.displayName ?? 'PartyUp traveler';
   const interests = useMemo(() => {
+    if (fullProfile) return fullProfile.interests;
     try {
       return params.interests ? JSON.parse(params.interests) as string[] : [];
     } catch {
       return [];
     }
-  }, [params.interests]);
+  }, [fullProfile, params.interests]);
+  const age = getAge(fullProfile?.date_of_birth ?? null);
+  const verified = fullProfile?.verification_status === 'approved';
+  const location = fullProfile?.city && fullProfile?.country ? `${fullProfile.city}, ${fullProfile.country}` : null;
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
   const primary = isDark ? 'text-white' : 'text-[#1B2340]';
@@ -32,6 +50,11 @@ export default function PublicProfileScreen() {
         const relationship = statuses.get(params.id);
         setRequestStatus(relationship?.status ?? '');
         setRequestId(relationship?.requestId ?? '');
+      });
+      setProfileLoading(true);
+      void getProfileById(params.id).then((result) => {
+        setFullProfile(result.data);
+        setProfileLoading(false);
       });
     }, [params.id])
   );
@@ -107,7 +130,10 @@ export default function PublicProfileScreen() {
   }
 
   return (
-    <ScrollView className={`flex-1 ${background}`} contentContainerClassName="px-4 pb-10 pt-5">
+    <ScrollView
+      className={`flex-1 ${background}`}
+      contentContainerClassName="px-4 pb-10"
+      contentContainerStyle={{ paddingTop: insets.top + 20 }}>
       <TouchableOpacity onPress={() => router.back()} className="mb-5 h-10 w-10 items-center justify-center" accessibilityLabel="Go back">
         <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
       </TouchableOpacity>
@@ -117,8 +143,44 @@ export default function PublicProfileScreen() {
           <View className="h-24 w-24 items-center justify-center rounded-full bg-[#B7C4EC]">
             <Text className="text-[34px] font-bold text-[#24314A]">{displayName.charAt(0).toUpperCase()}</Text>
           </View>
-          <Text className={`mt-4 text-[26px] font-black ${primary}`}>{displayName}</Text>
-          <Text className={`mt-1 text-sm ${secondary}`}>PartyUp traveler</Text>
+          <View className="mt-4 flex-row items-center gap-1.5">
+            <Text className={`text-[26px] font-black ${primary}`}>{displayName}</Text>
+            {verified ? <BadgeCheck size={20} color="#179B67" /> : null}
+          </View>
+
+          {age !== null ? (
+            <View className="mt-2 flex-row items-center gap-2">
+              <View className={`h-px w-4 ${isDark ? 'bg-[#B08D57]/40' : 'bg-[#A9793F]/30'}`} />
+              <Text className={`text-[11px] font-semibold uppercase tracking-[3px] ${isDark ? 'text-[#D9B77E]' : 'text-[#A9793F]'}`}>{age} Years Old</Text>
+              <View className={`h-px w-4 ${isDark ? 'bg-[#B08D57]/40' : 'bg-[#A9793F]/30'}`} />
+            </View>
+          ) : null}
+
+          {location ? (
+            <View className="mt-2 flex-row items-center gap-1">
+              <MapPin size={14} color={isDark ? '#94A3B8' : '#6C7A95'} />
+              <Text className={`text-sm ${secondary}`}>{location}</Text>
+            </View>
+          ) : age === null ? (
+            <Text className={`mt-2 text-sm ${secondary}`}>PartyUp traveler</Text>
+          ) : null}
+
+          {profileLoading ? (
+            <ActivityIndicator className="mt-3" color="#284BD6" />
+          ) : (
+            <View className={`mt-3 flex-row items-center gap-1 rounded-full px-3 py-1.5 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>
+              {fullProfile && fullProfile.trust_count > 0 && fullProfile.trust_score !== null ? (
+                <>
+                  <Star size={14} color="#F5A623" fill="#F5A623" />
+                  <Text className={`text-sm font-bold ${primary}`}>{fullProfile.trust_score?.toFixed(1)} · {fullProfile.trust_count} trust {fullProfile.trust_count === 1 ? 'review' : 'reviews'}</Text>
+                </>
+              ) : (
+                <Text className={`text-sm font-bold ${secondary}`}>New to PartyUp</Text>
+              )}
+            </View>
+          )}
+
+          {fullProfile?.bio ? <Text className={`mt-4 text-center text-sm leading-5 ${secondary}`}>{fullProfile.bio}</Text> : null}
         </View>
 
         <View className="mt-7 border-t border-[#E4EAF2] pt-5">
