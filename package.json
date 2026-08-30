@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
+    "@quidone/react-native-wheel-picker": "^1.7.1",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "8.4.4",
     "@react-navigation/bottom-tabs": "^7.4.0",
@@ -42,6 +43,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-calendars": "^1.1314.0",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-maps": "1.20.1",
     "react-native-reanimated": "~4.1.1",

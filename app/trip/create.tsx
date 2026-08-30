@@ -1,8 +1,10 @@
+import { DatePickerModal } from '@/components/carpool/DatePickerModal';
+import { TimePickerModal } from '@/components/carpool/TimePickerModal';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createTrip, type TripVisibility } from '@/lib/carpool';
 import { getTheme, typography } from '@/lib/theme';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Globe, Lock, Users } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, Flag, Globe, Lock, Plus, Users, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +14,28 @@ const visibilityOptions: { key: TripVisibility; label: string; description: stri
   { key: 'trusted_circle', label: 'Trusted Circle', description: 'You approve each join request', icon: Users },
   { key: 'private', label: 'Private', description: 'You approve each join request', icon: Lock },
 ];
+
+function formatDateLabel(date: Date | null) {
+  if (!date) {
+    return 'Select date';
+  }
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatTimeLabel(date: Date | null) {
+  if (!date) {
+    return 'Select time';
+  }
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function mergeDate(current: Date | null, datePart: Date) {
+  const next = new Date(datePart);
+  if (current) {
+    next.setHours(current.getHours(), current.getMinutes());
+  }
+  return next;
+}
 
 export default function CreateTripScreen() {
   const router = useRouter();
@@ -30,7 +54,16 @@ export default function CreateTripScreen() {
   const [title, setTitle] = useState('');
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
-  const [dateText, setDateText] = useState('');
+
+  const [startDate, setStartDate] = useState<Date | null>(null);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showStartTimePicker, setShowStartTimePicker] = useState(false);
+
+  const [includeEnd, setIncludeEnd] = useState(false);
+  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
+
   const [visibility, setVisibility] = useState<TripVisibility>('public');
   const [seatsTotal, setSeatsTotal] = useState('');
   const [totalCost, setTotalCost] = useState('');
@@ -38,12 +71,13 @@ export default function CreateTripScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  function parseStartAt(): string | null {
-    if (!dateText.trim()) {
-      return null;
-    }
-    const parsed = new Date(dateText.trim());
-    return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  function toggleIncludeEnd() {
+    setIncludeEnd((current) => {
+      if (current) {
+        setEndDate(null);
+      }
+      return !current;
+    });
   }
 
   async function handleSubmit() {
@@ -64,6 +98,11 @@ export default function CreateTripScreen() {
       return;
     }
 
+    if (includeEnd && startDate && endDate && endDate.getTime() < startDate.getTime()) {
+      setErrorMessage('End date & time must be after the meetup date & time.');
+      return;
+    }
+
     setSubmitting(true);
     setErrorMessage(null);
 
@@ -71,7 +110,8 @@ export default function CreateTripScreen() {
       title: title.trim(),
       origin: origin.trim(),
       destination: destination.trim(),
-      startAt: parseStartAt(),
+      startAt: startDate ? startDate.toISOString() : null,
+      endAt: includeEnd && endDate ? endDate.toISOString() : null,
       visibility,
       seatsTotal: seats,
       totalCost: cost,
@@ -141,15 +181,74 @@ export default function CreateTripScreen() {
         </View>
 
         <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DATE &amp; TIME (OPTIONAL)</Text>
-          <TextInput
-            className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="e.g., 2026-09-05 07:30"
-            placeholderTextColor={placeholderColor}
-            value={dateText}
-            onChangeText={setDateText}
-          />
+          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>MEETUP DATE &amp; TIME (OPTIONAL)</Text>
+          <View className="flex-row gap-3">
+            <TouchableOpacity
+              onPress={() => setShowStartDatePicker(true)}
+              className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+            >
+              <Calendar size={18} color={startDate ? '#2A55D4' : placeholderColor} />
+              <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
+                {formatDateLabel(startDate)}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShowStartTimePicker(true)}
+              className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+            >
+              <Clock size={18} color={startDate ? '#2A55D4' : placeholderColor} />
+              <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
+                {formatTimeLabel(startDate)}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {startDate ? (
+            <TouchableOpacity onPress={() => setStartDate(null)} className="mt-2 self-start">
+              <Text className="text-sm font-bold text-[#B91C1C]">Clear meetup date &amp; time</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
+
+        {includeEnd ? (
+          <View>
+            <View className="mb-2 flex-row items-center justify-between">
+              <Text className={`text-[13px] font-bold ${secondary}`}>RETURN / END DATE &amp; TIME</Text>
+              <TouchableOpacity onPress={toggleIncludeEnd} className="flex-row items-center gap-1">
+                <X size={14} color="#B91C1C" />
+                <Text className="text-[13px] font-bold text-[#B91C1C]">Remove</Text>
+              </TouchableOpacity>
+            </View>
+            <View className="flex-row gap-3">
+              <TouchableOpacity
+                onPress={() => setShowEndDatePicker(true)}
+                className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+              >
+                <Calendar size={18} color={endDate ? '#2A55D4' : placeholderColor} />
+                <Text className={`flex-1 text-base ${endDate ? inputText : ''}`} style={!endDate ? { color: placeholderColor } : undefined}>
+                  {formatDateLabel(endDate)}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setShowEndTimePicker(true)}
+                className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+              >
+                <Clock size={18} color={endDate ? '#2A55D4' : placeholderColor} />
+                <Text className={`flex-1 text-base ${endDate ? inputText : ''}`} style={!endDate ? { color: placeholderColor } : undefined}>
+                  {formatTimeLabel(endDate)}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={toggleIncludeEnd}
+            className={`flex-row items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-3.5 ${border}`}
+          >
+            <Plus size={16} color="#2A55D4" />
+            <Text className="text-sm font-bold text-[#2A55D4]">Add return / end time</Text>
+            <Flag size={14} color="#8A93A6" />
+          </TouchableOpacity>
+        )}
 
         <View>
           <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>VISIBILITY</Text>
@@ -224,6 +323,41 @@ export default function CreateTripScreen() {
           {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-base font-bold text-white">Create Trip</Text>}
         </TouchableOpacity>
       </ScrollView>
+
+      <DatePickerModal
+        visible={showStartDatePicker}
+        title="Meetup Date"
+        value={startDate}
+        minDate={new Date()}
+        isDark={isDark}
+        onClose={() => setShowStartDatePicker(false)}
+        onSelect={(date) => setStartDate((current) => mergeDate(current, date))}
+      />
+      <DatePickerModal
+        visible={showEndDatePicker}
+        title="Return / End Date"
+        value={endDate}
+        minDate={startDate ?? new Date()}
+        isDark={isDark}
+        onClose={() => setShowEndDatePicker(false)}
+        onSelect={(date) => setEndDate((current) => mergeDate(current, date))}
+      />
+      <TimePickerModal
+        visible={showStartTimePicker}
+        title="Meetup Time"
+        value={startDate}
+        isDark={isDark}
+        onClose={() => setShowStartTimePicker(false)}
+        onSelect={(date) => setStartDate(date)}
+      />
+      <TimePickerModal
+        visible={showEndTimePicker}
+        title="Return / End Time"
+        value={endDate}
+        isDark={isDark}
+        onClose={() => setShowEndTimePicker(false)}
+        onSelect={(date) => setEndDate(date)}
+      />
     </KeyboardAvoidingView>
   );
 }
