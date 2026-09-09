@@ -20,6 +20,8 @@ export type UserProfile = {
   role: ProfileRole;
   verification_status: VerificationStatus;
   is_active: boolean;
+  warning_alerts_enabled: boolean;
+  emergency_sos_enabled: boolean;
   created_at: string;
   updated_at: string;
 };

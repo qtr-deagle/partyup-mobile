@@ -15,7 +15,7 @@ export function ThemePreferenceProvider({ children }: { children: React.ReactNod
 
   useEffect(() => {
     if (typeof Appearance.setColorScheme === 'function') {
-      Appearance.setColorScheme(preference === 'system' ? null : preference);
+      Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
     }
   }, [preference]);
 

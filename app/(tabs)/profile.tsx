@@ -3,8 +3,9 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { supabase } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
+import { getMyVerification, type IdVerification } from '@/lib/verification';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Car, CheckCircle2, Cog, LogOut, Shield, ShieldCheck, Star, Users, Wallet } from 'lucide-react-native';
+import { AlertCircle, Car, CheckCircle2, Clock, Cog, LogOut, Shield, ShieldAlert, ShieldCheck, Star, Users, Wallet } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -41,6 +42,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { profile, session, refreshProfile, signOut } = useAuth();
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
+  const [verification, setVerification] = useState<IdVerification | null>(null);
   const [editingPayment, setEditingPayment] = useState(false);
   const [gcashInput, setGcashInput] = useState('');
   const [paymayaInput, setPaymayaInput] = useState('');
@@ -61,6 +63,11 @@ export default function ProfileScreen() {
       void listTrustedContacts().then((result) => {
         if (!result.error) {
           setTrustedContacts(result.data);
+        }
+      });
+      void getMyVerification().then((result) => {
+        if (!result.error) {
+          setVerification(result.data);
         }
       });
     }, [refreshProfile])
@@ -162,20 +169,52 @@ export default function ProfileScreen() {
           </View>
         </SectionCard>
 
-        <View className={`rounded-[22px] border p-4 ${isDark ? 'border-[#1F3B3D] bg-[#0F1F24]' : 'border-[#BEEFCB] bg-[#EFFCF3]'}`}>
-          <View className="flex-row items-start gap-3">
-            <CheckCircle2 size={24} color="#00A56A" />
-            <View className="flex-1">
-              <Text className={`text-[18px] font-black ${textPrimary}`}>ID Verification</Text>
-              <Text className="text-[18px] text-[#00A56A]">{profile?.verification_status === 'approved' ? 'Verified' : 'Pending'}</Text>
-              <View className={`mt-3 rounded-xl px-4 py-4 ${isDark ? 'bg-[#153224]' : 'bg-[#D9F8E4]'}`}>
-                <Text className={`text-[17px] leading-6 ${isDark ? 'text-[#A7F3D0]' : 'text-[#0F7B4B]'}`}>
-                  ✓ Your identity is verified. You can now create and join trips!
-                </Text>
+        {(() => {
+          const status =
+            verification?.status === 'pending' || verification?.status === 'resubmitted'
+              ? 'pending'
+              : profile?.verification_status ?? 'unverified';
+          const styles = {
+            approved: { border: isDark ? 'border-[#1F3B3D] bg-[#0F1F24]' : 'border-[#BEEFCB] bg-[#EFFCF3]', icon: <CheckCircle2 size={24} color="#00A56A" />, label: 'Verified', labelColor: '#00A56A' },
+            pending: { border: isDark ? 'border-[#3B341F] bg-[#241F0F]' : 'border-[#F3E3B5] bg-[#FFF8E6]', icon: <Clock size={24} color="#D88700" />, label: 'Pending Review', labelColor: '#D88700' },
+            rejected: { border: isDark ? 'border-[#3B1F1F] bg-[#240F0F]' : 'border-[#F3C7C7] bg-[#FFF0F0]', icon: <ShieldAlert size={24} color="#DC2626" />, label: 'Rejected', labelColor: '#DC2626' },
+            unverified: { border: isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E9EDF5] bg-white', icon: <Shield size={24} color="#6B7590" />, label: 'Not Verified', labelColor: '#6B7590' },
+          }[status];
+
+          return (
+            <View className={`rounded-[22px] border p-4 ${styles.border}`}>
+              <View className="flex-row items-start gap-3">
+                {styles.icon}
+                <View className="flex-1">
+                  <Text className={`text-[18px] font-black ${textPrimary}`}>ID Verification</Text>
+                  <Text className="text-[18px]" style={{ color: styles.labelColor }}>{styles.label}</Text>
+
+                  {status === 'approved' && (
+                    <View className={`mt-3 rounded-xl px-4 py-4 ${isDark ? 'bg-[#153224]' : 'bg-[#D9F8E4]'}`}>
+                      <Text className={`text-[17px] leading-6 ${isDark ? 'text-[#A7F3D0]' : 'text-[#0F7B4B]'}`}>
+                        ✓ Your identity is verified. You can now create and join trips!
+                      </Text>
+                    </View>
+                  )}
+
+                  {status === 'pending' && (
+                    <Text className={`mt-2 text-[15px] leading-5 ${textSecondary}`}>Your documents are under review. This usually takes 1-2 hours.</Text>
+                  )}
+
+                  {status === 'rejected' && verification?.reviewer_notes && (
+                    <Text className="mt-2 text-[15px] leading-5 text-[#DC2626]">Reason: {verification.reviewer_notes}</Text>
+                  )}
+
+                  {(status === 'unverified' || status === 'rejected') && (
+                    <TouchableOpacity onPress={() => router.push('/verify-id')} className="mt-3 self-start rounded-full bg-[#2747C7] px-5 py-3">
+                      <Text className="text-[15px] font-bold text-white">{status === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
             </View>
-          </View>
-        </View>
+          );
+        })()}
 
         <SectionCard>
           <View className="flex-row items-center gap-2">

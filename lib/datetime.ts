@@ -21,3 +21,22 @@ export function parseTimestamp(value: string): Date {
 
   return new Date(iso);
 }
+
+/**
+ * Formats the time remaining until `startAt` as a short countdown label
+ * (e.g. "2.3h", "45m"), or null if it's already passed / unset.
+ */
+export function formatCountdown(startAt: string | null | undefined): string | null {
+  if (!startAt) {
+    return null;
+  }
+  const diffMs = parseTimestamp(startAt).getTime() - Date.now();
+  if (Number.isNaN(diffMs) || diffMs <= 0) {
+    return null;
+  }
+  const diffMinutes = diffMs / 60000;
+  if (diffMinutes < 60) {
+    return `${Math.round(diffMinutes)}m`;
+  }
+  return `${(diffMinutes / 60).toFixed(1)}h`;
+}

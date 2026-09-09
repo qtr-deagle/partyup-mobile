@@ -1,11 +1,14 @@
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { AlertTriangle, ArrowLeft, MapPin, Shield, ShieldAlert, ShieldCheck, SunMedium } from 'lucide-react-native';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme, useThemePreference } from '@/hooks/use-color-scheme';
+import { setLocationVisibility } from '@/lib/location';
+import { setSafetyPreferences } from '@/lib/safety';
+import { supabase } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 
 function SettingsCard({ children, isDark }: { children: React.ReactNode; isDark: boolean }) {
@@ -51,17 +54,28 @@ function SettingRow({
 
 export default function ModalScreen() {
   const router = useRouter();
-  const { session, loading } = useAuth();
+  const { session, profile, loading, refreshProfile } = useAuth();
   const colorScheme = useColorScheme();
   const { setPreference } = useThemePreference();
   const insets = useSafeAreaInsets();
-  const [safetyEdgeTab, setSafetyEdgeTab] = useState(false);
-  const [liveLocation, setLiveLocation] = useState(false);
-  const [warningAlerts, setWarningAlerts] = useState(false);
-  const [emergencySos, setEmergencySos] = useState(false);
+  const [liveLocation, setLiveLocation] = useState(true);
 
   const isDark = colorScheme === 'dark';
   const { titleColor } = getTheme(isDark);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!session?.user.id) return;
+      void supabase
+        .from('current_locations')
+        .select('is_visible')
+        .eq('user_id', session.user.id)
+        .maybeSingle()
+        .then(({ data }) => {
+          setLiveLocation(data ? data.is_visible : true);
+        });
+    }, [session?.user.id])
+  );
 
   if (loading) {
     return null;
@@ -69,6 +83,28 @@ export default function ModalScreen() {
 
   if (!session) {
     return <Redirect href="/(auth)/sign-in" />;
+  }
+
+  async function handleToggleLiveLocation(next: boolean) {
+    setLiveLocation(next);
+    const { error } = await setLocationVisibility(next);
+    if (error) {
+      setLiveLocation(!next);
+    }
+  }
+
+  async function handleToggleWarningAlerts(next: boolean) {
+    const { error } = await setSafetyPreferences({ warningAlertsEnabled: next });
+    if (!error) {
+      void refreshProfile();
+    }
+  }
+
+  async function handleToggleEmergencySos(next: boolean) {
+    const { error } = await setSafetyPreferences({ emergencySosEnabled: next });
+    if (!error) {
+      void refreshProfile();
+    }
   }
 
   return (
@@ -112,20 +148,11 @@ export default function ModalScreen() {
 
           <View className="mt-4 gap-4">
             <SettingRow
-              icon={<Shield size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
-              title="Safety Edge Tab"
-              description="Show safety controls on screen edge"
-              value={safetyEdgeTab}
-              onValueChange={setSafetyEdgeTab}
-              isDark={isDark}
-            />
-
-            <SettingRow
               icon={<MapPin size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
               title="Live Location Sharing"
               description="Allow real-time location sharing during trips"
               value={liveLocation}
-              onValueChange={setLiveLocation}
+              onValueChange={(next) => void handleToggleLiveLocation(next)}
               isDark={isDark}
             />
 
@@ -133,8 +160,8 @@ export default function ModalScreen() {
               icon={<AlertTriangle size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
               title="Warning Alerts"
               description="Receive safety warnings and alerts"
-              value={warningAlerts}
-              onValueChange={setWarningAlerts}
+              value={profile?.warning_alerts_enabled ?? true}
+              onValueChange={(next) => void handleToggleWarningAlerts(next)}
               isDark={isDark}
             />
 
@@ -142,8 +169,8 @@ export default function ModalScreen() {
               icon={<ShieldAlert size={18} color="#E32727" />}
               title="Emergency SOS"
               description="Enable emergency SOS button"
-              value={emergencySos}
-              onValueChange={setEmergencySos}
+              value={profile?.emergency_sos_enabled ?? true}
+              onValueChange={(next) => void handleToggleEmergencySos(next)}
               isDark={isDark}
             />
           </View>

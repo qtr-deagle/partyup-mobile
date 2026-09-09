@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router/react-navigation';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
@@ -41,6 +41,7 @@ function RootLayoutContent() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false, header: () => null, title: '' }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="vehicles" options={{ presentation: 'fullScreenModal', headerShown: false }} />
+        <Stack.Screen name="verify-id" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="friends" options={{ headerShown: false }} />
         <Stack.Screen name="trusted-circle" options={{ headerShown: false }} />

@@ -1,10 +1,12 @@
 import { DatePickerModal } from '@/components/carpool/DatePickerModal';
 import { TimePickerModal } from '@/components/carpool/TimePickerModal';
+import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createTrip, type TripVisibility } from '@/lib/carpool';
 import { getTheme, typography } from '@/lib/theme';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Calendar, Clock, Flag, Globe, Lock, Plus, Users, X } from 'lucide-react-native';
+import * as Location from 'expo-location';
+import { ArrowLeft, Calendar, Clock, Flag, Globe, Lock, Plus, ShieldAlert, Users, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -42,6 +44,7 @@ export default function CreateTripScreen() {
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const { titleColor } = getTheme(isDark);
+  const { profile } = useAuth();
 
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
@@ -50,6 +53,7 @@ export default function CreateTripScreen() {
   const inputBg = isDark ? 'bg-[#111B2E]' : 'bg-white';
   const inputText = isDark ? 'text-white' : 'text-[#17233F]';
   const placeholderColor = isDark ? '#64748B' : '#9AA3B1';
+  const isVerified = profile?.verification_status === 'approved';
 
   const [title, setTitle] = useState('');
   const [origin, setOrigin] = useState('');
@@ -106,6 +110,18 @@ export default function CreateTripScreen() {
     setSubmitting(true);
     setErrorMessage(null);
 
+    let destinationLat: number | null = null;
+    let destinationLng: number | null = null;
+    try {
+      const geocoded = await Location.geocodeAsync(destination.trim());
+      if (geocoded[0]) {
+        destinationLat = geocoded[0].latitude;
+        destinationLng = geocoded[0].longitude;
+      }
+    } catch {
+      // Best-effort only -- trip creation still succeeds without geofence support.
+    }
+
     const { data, error } = await createTrip({
       title: title.trim(),
       origin: origin.trim(),
@@ -116,6 +132,8 @@ export default function CreateTripScreen() {
       seatsTotal: seats,
       totalCost: cost,
       notes: notes.trim() || null,
+      destinationLat,
+      destinationLng,
     });
 
     setSubmitting(false);
@@ -139,6 +157,27 @@ export default function CreateTripScreen() {
         </View>
       </View>
 
+      {!isVerified ? (
+        <View className="flex-1 items-center justify-center gap-4 px-8">
+          <ShieldAlert size={40} color="#D88700" />
+          <Text className={`text-center text-lg font-bold ${primary}`}>Verify your identity to create a trip</Text>
+          <Text className={`text-center text-sm leading-5 ${secondary}`}>
+            {profile?.verification_status === 'pending'
+              ? 'Your ID verification is still under review. This usually takes 1-2 hours.'
+              : profile?.verification_status === 'rejected'
+                ? 'Your last ID verification was rejected. Resubmit clearer documents to continue.'
+                : 'Upload a government ID and a selfie to unlock trip creation.'}
+          </Text>
+          {profile?.verification_status !== 'pending' && (
+            <TouchableOpacity onPress={() => router.push('/verify-id')} className="mt-2 rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+              <Text className="text-base font-bold text-white">
+                {profile?.verification_status === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+      <>
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-10 pt-5" keyboardShouldPersistTaps="handled">
         {errorMessage ? (
           <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
@@ -358,6 +397,8 @@ export default function CreateTripScreen() {
         onClose={() => setShowEndTimePicker(false)}
         onSelect={(date) => setEndDate(date)}
       />
+      </>
+      )}
     </KeyboardAvoidingView>
   );
 }

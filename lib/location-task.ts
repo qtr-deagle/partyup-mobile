@@ -43,4 +43,20 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
     accuracy_m: accuracy,
     captured_at: capturedAt,
   });
+
+  try {
+    const { data: session } = await supabase
+      .from('safety_sessions')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('status', 'monitoring')
+      .lte('expires_at', new Date().toISOString())
+      .maybeSingle();
+
+    if (session) {
+      await supabase.rpc('escalate_safety_session', { p_session_id: session.id });
+    }
+  } catch (escalationError) {
+    console.error('[location-task] auto-escalation sweep failed', escalationError);
+  }
 });

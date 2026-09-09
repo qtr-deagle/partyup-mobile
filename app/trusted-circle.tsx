@@ -359,21 +359,28 @@ export default function TrustedCircleScreen() {
               <ShieldAlert size={20} color="#E32727" />
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Emergency Alert</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Tap SOS to instantly alert all enabled contacts</Text>
+                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Tap Emergency SOS on Home to instantly alert all enabled contacts</Text>
+              </View>
+            </View>
+            <View className="flex-row items-start gap-3">
+              <Clock size={20} color="#D88700" />
+              <View className="flex-1">
+                <Text className={`text-[15px] font-bold ${primary}`}>Warning Mode</Text>
+                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Activate a 60-second countdown that auto-alerts your contacts if you don&apos;t cancel it</Text>
               </View>
             </View>
             <View className="flex-row items-start gap-3">
               <MapPin size={20} color="#2647B8" />
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Real-Time Location</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Share your live location with trusted people</Text>
+                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Your location is included with alerts sent to trusted contacts</Text>
               </View>
             </View>
             <View className="flex-row items-start gap-3">
               <Shield size={20} color="#00A56A" />
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Secure & Private</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Info only shared in emergencies with verified contacts</Text>
+                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Info only shared in emergencies with contacts who confirmed and enabled alerts</Text>
               </View>
             </View>
           </View>

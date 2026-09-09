@@ -1,10 +1,11 @@
+import WarningModeModal from '@/components/WarningModeModal';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getNearbyTravelers, requestLocationPermissions, setLocationVisibility, startBackgroundLocationTracking, upsertCurrentLocation, type NearbyTraveler } from '@/lib/location';
 import { createOrGetDirectThread, getFriendRequestStatuses, respondToFriendRequest, sendFriendRequest } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
 import * as Location from 'expo-location';
 import { useFocusEffect } from 'expo-router';
-import { Check, Eye, EyeOff, MapPin, UserPlus, X } from 'lucide-react-native';
+import { Check, Eye, EyeOff, MapPin, Shield, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Circle, Marker, PROVIDER_GOOGLE, UrlTile, type Region } from 'react-native-maps';
@@ -34,6 +35,7 @@ export default function MapScreen() {
   const [requestingId, setRequestingId] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [warningModeVisible, setWarningModeVisible] = useState(false);
 
   const channelsRef = useRef<Map<string, ReturnType<typeof supabase.channel>>>(new Map());
 
@@ -272,6 +274,13 @@ export default function MapScreen() {
                 {isVisible ? <EyeOff size={20} color="#65728B" /> : <Eye size={20} color="#65728B" />}
               </TouchableOpacity>
 
+              <TouchableOpacity
+                onPress={() => setWarningModeVisible(true)}
+                className="absolute right-3 top-[68px] h-12 w-12 items-center justify-center rounded-full bg-[#E32727] shadow-sm shadow-black/20"
+                accessibilityLabel="Activate Warning Mode">
+                <Shield size={20} color="#FFFFFF" />
+              </TouchableOpacity>
+
               {Platform.OS === 'android' && (
                 <View className={`absolute bottom-3 left-3 right-3 rounded-full px-2 py-1 shadow-sm ${isDark ? 'bg-[#0F172A]/80 shadow-black/20' : 'bg-white/80 shadow-black/10'}`}>
                   <Text className={`text-[11px] ${secondaryText}`}>© OpenStreetMap contributors © CARTO</Text>
@@ -389,6 +398,7 @@ export default function MapScreen() {
           )}
         </View>
       </View>
+      <WarningModeModal visible={warningModeVisible} onClose={() => setWarningModeVisible(false)} isDark={isDark} />
     </ScrollView>
   );
 }

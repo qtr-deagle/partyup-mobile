@@ -95,6 +95,8 @@ export async function createTrip(input: {
   seatsTotal?: number | null;
   totalCost?: number | null;
   notes?: string | null;
+  destinationLat?: number | null;
+  destinationLng?: number | null;
 }) {
   return withRequestTimeout(
     supabase.rpc('create_trip', {
@@ -107,9 +109,15 @@ export async function createTrip(input: {
       p_seats_total: input.seatsTotal ?? null,
       p_total_cost: input.totalCost ?? null,
       p_notes: input.notes ?? null,
+      p_destination_lat: input.destinationLat ?? null,
+      p_destination_lng: input.destinationLng ?? null,
     }),
     'Creating trip'
   );
+}
+
+export async function startTrip(tripId: string) {
+  return withRequestTimeout(supabase.rpc('start_trip', { p_trip_id: tripId }), 'Starting trip');
 }
 
 export async function getTripDetail(tripId: string) {
