@@ -32,6 +32,30 @@ function formatTimeLabel(date: Date | null) {
   return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+// Driver + at least one rider.
+const MIN_TOTAL_SEATS = 2;
+
+// Up to ₱999,999.99 -- well under trips.total_cost's numeric(10,2) limit.
+const COST_PATTERN = /^\d{1,6}(\.\d{1,2})?$/;
+
+function sanitizeCost(text: string) {
+  const [whole = '', ...rest] = text.replace(/[^\d.]/g, '').split('.');
+  const wholePart = whole.slice(0, 6);
+  return rest.length > 0 ? `${wholePart}.${rest.join('').slice(0, 2)}` : wholePart;
+}
+
+function seatSummary(seatsText: string) {
+  const total = Number.parseInt(seatsText, 10);
+  if (!seatsText || Number.isNaN(total)) {
+    return 'Including you as the driver. Leave blank for no limit.';
+  }
+  if (total < MIN_TOTAL_SEATS) {
+    return 'Needs at least 2: you + 1 rider.';
+  }
+  const riders = total - 1;
+  return `You + ${riders} rider${riders === 1 ? '' : 's'}`;
+}
+
 function mergeDate(current: Date | null, datePart: Date) {
   const next = new Date(datePart);
   if (current) {
@@ -119,15 +143,21 @@ export default function CreateTripScreen() {
       return;
     }
 
-    const seats = seatsTotal.trim() ? Number.parseInt(seatsTotal.trim(), 10) : null;
-    if (seatsTotal.trim() && (Number.isNaN(seats) || (seats ?? 0) <= 0)) {
-      setErrorMessage('Seats must be a positive number.');
+    // The form asks for total seats including the driver (what people naturally
+    // count), but trips.seats_total is rider seats -- the DB computes
+    // seats_available as seats_total minus accepted riders, driver excluded.
+    const totalSeatsText = seatsTotal.trim();
+    const totalSeats = totalSeatsText ? Number.parseInt(totalSeatsText, 10) : null;
+    if (totalSeatsText && (!/^\d{1,2}$/.test(totalSeatsText) || totalSeats === null || totalSeats < MIN_TOTAL_SEATS)) {
+      setErrorMessage(`Total seats must be ${MIN_TOTAL_SEATS} to 99, including you as the driver.`);
       return;
     }
+    const riderSeats = totalSeats !== null ? totalSeats - 1 : null;
 
-    const cost = totalCost.trim() ? Number.parseFloat(totalCost.trim()) : null;
-    if (totalCost.trim() && (Number.isNaN(cost) || (cost ?? 0) <= 0)) {
-      setErrorMessage('Total cost must be a positive number.');
+    const costText = totalCost.trim();
+    const cost = costText ? Number.parseFloat(costText) : null;
+    if (costText && (!COST_PATTERN.test(costText) || cost === null || cost <= 0)) {
+      setErrorMessage('Total cost must be more than ₱0 and up to ₱999,999.99.');
       return;
     }
 
@@ -158,7 +188,7 @@ export default function CreateTripScreen() {
       startAt: startDate ? startDate.toISOString() : null,
       endAt: includeEnd && endDate ? endDate.toISOString() : null,
       visibility,
-      seatsTotal: seats,
+      seatsTotal: riderSeats,
       totalCost: cost,
       notes: notes.trim() || null,
       destinationLat,
@@ -236,6 +266,7 @@ export default function CreateTripScreen() {
             className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
             placeholder="e.g., Weekday commute to Makati"
             placeholderTextColor={placeholderColor}
+            maxLength={60}
             value={title}
             onChangeText={setTitle}
           />
@@ -248,6 +279,7 @@ export default function CreateTripScreen() {
               className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
               placeholder="Quezon City"
               placeholderTextColor={placeholderColor}
+              maxLength={80}
               value={origin}
               onChangeText={setOrigin}
             />
@@ -258,6 +290,7 @@ export default function CreateTripScreen() {
               className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
               placeholder="Makati"
               placeholderTextColor={placeholderColor}
+              maxLength={80}
               value={destination}
               onChangeText={setDestination}
             />
@@ -382,15 +415,19 @@ export default function CreateTripScreen() {
 
         <View className="flex-row gap-3">
           <View className="flex-1">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>SEAT CAP (OPTIONAL)</Text>
+            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL SEATS (OPTIONAL)</Text>
             <TextInput
               className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="e.g., 4"
+              placeholder="e.g., 7"
               placeholderTextColor={placeholderColor}
               keyboardType="number-pad"
+              maxLength={2}
               value={seatsTotal}
-              onChangeText={setSeatsTotal}
+              onChangeText={(text) => setSeatsTotal(text.replace(/\D/g, '').slice(0, 2))}
             />
+            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>
+              {seatSummary(seatsTotal)}
+            </Text>
           </View>
           <View className="flex-1">
             <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL TRIP COST (₱)</Text>
@@ -399,9 +436,11 @@ export default function CreateTripScreen() {
               placeholder="e.g., 800"
               placeholderTextColor={placeholderColor}
               keyboardType="decimal-pad"
+              maxLength={9}
               value={totalCost}
-              onChangeText={setTotalCost}
+              onChangeText={(text) => setTotalCost(sanitizeCost(text))}
             />
+            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>For the whole trip, up to ₱999,999.99</Text>
           </View>
         </View>
 
@@ -418,6 +457,7 @@ export default function CreateTripScreen() {
             className={`min-h-[88px] rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
             placeholder="Pickup point, luggage space, etc."
             placeholderTextColor={placeholderColor}
+            maxLength={300}
             multiline
             value={notes}
             onChangeText={setNotes}

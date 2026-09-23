@@ -15,6 +15,7 @@ import {
   useFonts,
 } from '@expo-google-fonts/inter';
 import { Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, useFonts as usePoppinsFonts } from '@expo-google-fonts/poppins';
+import SosAlertOverlay from '@/components/SosAlertOverlay';
 import { AuthProvider, useAuth } from '@/hooks/auth-provider';
 import { ThemePreferenceProvider, useColorScheme } from '@/hooks/use-color-scheme';
 import { ActivityIndicator, View } from 'react-native';
@@ -81,6 +82,7 @@ function RootLayoutContent() {
         <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="trip/join/[code]" options={{ headerShown: false }} />
       </Stack>
+      <SosAlertOverlay />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </ThemeProvider>
   );

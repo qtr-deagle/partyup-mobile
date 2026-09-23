@@ -5,6 +5,8 @@ import { toByteArray } from 'base64-js';
 
 export type VehicleVerificationStatus = 'unverified' | 'pending' | 'approved' | 'rejected';
 
+export type VehicleOwnershipType = 'owned' | 'borrowed';
+
 export type Vehicle = {
   id: string;
   user_id: string;
@@ -19,6 +21,11 @@ export type Vehicle = {
   exterior_image_path: string | null;
   orcr_image_path: string | null;
   plate_image_path: string | null;
+  ownership_type: VehicleOwnershipType;
+  authorization_letter_path: string | null;
+  owner_id_front_path: string | null;
+  owner_id_back_path: string | null;
+  owner_signatures_path: string | null;
   reviewer_notes: string | null;
   submitted_at: string | null;
   reviewed_at: string | null;
@@ -43,13 +50,25 @@ export type CreateVehicleInput = {
 
 export type UpdateVehicleInput = Partial<CreateVehicleInput>;
 
+export type BorrowedVehicleDocuments = {
+  authorizationLetterUri: string;
+  ownerIdFrontUri: string;
+  ownerIdBackUri: string;
+  ownerSignaturesUri: string;
+};
+
 export type SubmitVehicleVerificationInput = {
   exteriorUri: string;
   orcrUri: string;
   plateUri: string;
+  ownershipType: VehicleOwnershipType;
+  // Required when ownershipType is 'borrowed'.
+  borrowed?: BorrowedVehicleDocuments;
 };
 
-async function uploadVehiclePhoto(userId: string, label: 'exterior' | 'orcr' | 'plate', uri: string) {
+type VehiclePhotoLabel = 'exterior' | 'orcr' | 'plate' | 'authorization-letter' | 'owner-id-front' | 'owner-id-back' | 'owner-signatures';
+
+async function uploadVehiclePhoto(userId: string, label: VehiclePhotoLabel, uri: string) {
   // Same re-encode-to-JPEG + base64-js decode approach as ID verification's
   // uploadVerificationImage: source photos can arrive as HEIC or other
   // formats the capture UI doesn't fully control, and fetch(uri).arrayBuffer()
@@ -150,11 +169,20 @@ export async function submitVehicleForVerification(vehicleId: string, input: Sub
   }
 
   const userId = userData.user.id;
+  const borrowed = input.ownershipType === 'borrowed' ? input.borrowed : undefined;
+
+  if (input.ownershipType === 'borrowed' && !borrowed) {
+    return { error: new Error('Borrowed vehicles need the letter of authorization, owner ID, and owner signatures.') };
+  }
 
   try {
     const exteriorPath = await uploadVehiclePhoto(userId, 'exterior', input.exteriorUri);
     const orcrPath = await uploadVehiclePhoto(userId, 'orcr', input.orcrUri);
     const platePath = await uploadVehiclePhoto(userId, 'plate', input.plateUri);
+    const authorizationLetterPath = borrowed ? await uploadVehiclePhoto(userId, 'authorization-letter', borrowed.authorizationLetterUri) : null;
+    const ownerIdFrontPath = borrowed ? await uploadVehiclePhoto(userId, 'owner-id-front', borrowed.ownerIdFrontUri) : null;
+    const ownerIdBackPath = borrowed ? await uploadVehiclePhoto(userId, 'owner-id-back', borrowed.ownerIdBackUri) : null;
+    const ownerSignaturesPath = borrowed ? await uploadVehiclePhoto(userId, 'owner-signatures', borrowed.ownerSignaturesUri) : null;
 
     const { error: updateError } = await withRequestTimeout(
       supabase
@@ -163,6 +191,11 @@ export async function submitVehicleForVerification(vehicleId: string, input: Sub
           exterior_image_path: exteriorPath,
           orcr_image_path: orcrPath,
           plate_image_path: platePath,
+          ownership_type: input.ownershipType,
+          authorization_letter_path: authorizationLetterPath,
+          owner_id_front_path: ownerIdFrontPath,
+          owner_id_back_path: ownerIdBackPath,
+          owner_signatures_path: ownerSignaturesPath,
           verification_status: 'pending',
           submitted_at: new Date().toISOString(),
         })

@@ -39,18 +39,35 @@ export async function cancelSafetySession(sessionId: string) {
   return withRequestTimeout(supabase.rpc('cancel_safety_session', { p_session_id: sessionId }), 'Cancelling Warning Mode');
 }
 
+// Fire-and-forget: the in-app notification rows already exist, this adds the
+// high-priority push so trusted contacts see it even with the app closed.
+export async function sendSosPush(sosAlertId: string) {
+  const { error } = await supabase.functions.invoke('send-sos-push', { body: { sosAlertId } });
+  if (error) {
+    console.error('[safety] SOS push failed', error);
+  }
+}
+
 export async function escalateSafetySession(sessionId: string) {
-  return withRequestTimeout(
+  const result = (await withRequestTimeout(
     supabase.rpc('escalate_safety_session', { p_session_id: sessionId }),
     'Escalating safety alert'
-  ) as Promise<{ data: SosAlert | null; error: Error | null }>;
+  )) as { data: SosAlert | null; error: Error | null };
+  if (result.data?.id) {
+    void sendSosPush(result.data.id);
+  }
+  return result;
 }
 
 export async function triggerSosAlert(tripId?: string | null) {
-  return withRequestTimeout(
+  const result = (await withRequestTimeout(
     supabase.rpc('trigger_sos_alert', { p_trip_id: tripId ?? null, p_safety_session_id: null, p_trigger_reason: 'manual' }),
     'Sending emergency alert'
-  ) as Promise<{ data: SosAlert | null; error: Error | null }>;
+  )) as { data: SosAlert | null; error: Error | null };
+  if (result.data?.id) {
+    void sendSosPush(result.data.id);
+  }
+  return result;
 }
 
 export async function setSafetyPreferences(prefs: { warningAlertsEnabled?: boolean; emergencySosEnabled?: boolean }) {

@@ -8,6 +8,7 @@ export type AppNotification = {
   message: string;
   created_at: string;
   read: boolean;
+  data?: Record<string, unknown> | null;
 };
 
 export async function listNotifications() {

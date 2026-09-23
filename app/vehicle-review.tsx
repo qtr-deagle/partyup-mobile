@@ -179,6 +179,11 @@ export default function VehicleReviewScreen() {
                   </Text>
                   {row.plate_number ? <Text className={`text-sm ${secondary}`}>Plate: {row.plate_number}</Text> : null}
                 </View>
+                <View className={`rounded-full px-3 py-1 ${row.ownership_type === 'borrowed' ? 'bg-[#FEF3C7]' : 'bg-[#E0F2EA]'}`}>
+                  <Text className={`text-xs font-bold ${row.ownership_type === 'borrowed' ? 'text-[#92400E]' : 'text-[#146C4A]'}`}>
+                    {row.ownership_type === 'borrowed' ? 'Borrowed' : 'Owned'}
+                  </Text>
+                </View>
               </View>
 
               <View className="flex-row gap-2">
@@ -186,6 +191,20 @@ export default function VehicleReviewScreen() {
                 <VehicleImage path={row.orcr_image_path} label="OR/CR" isDark={isDark} />
                 <VehicleImage path={row.plate_image_path} label="Plate" isDark={isDark} />
               </View>
+
+              {row.ownership_type === 'borrowed' ? (
+                <>
+                  <Text className={`text-sm font-bold ${primary}`}>Owner's authorization</Text>
+                  <View className="flex-row gap-2">
+                    <VehicleImage path={row.authorization_letter_path} label="Authorization letter" isDark={isDark} />
+                    <VehicleImage path={row.owner_signatures_path} label="3 signatures" isDark={isDark} />
+                  </View>
+                  <View className="flex-row gap-2">
+                    <VehicleImage path={row.owner_id_front_path} label="Owner ID (front)" isDark={isDark} />
+                    <VehicleImage path={row.owner_id_back_path} label="Owner ID (back)" isDark={isDark} />
+                  </View>
+                </>
+              ) : null}
 
               {rejectingId === row.id ? (
                 <View className="gap-2">

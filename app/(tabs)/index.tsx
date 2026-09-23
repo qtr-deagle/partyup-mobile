@@ -218,7 +218,9 @@ export default function HomeScreen() {
               accessibilityLabel="View notifications"
               className={`relative rounded-full p-2 ${isDark ? 'border border-[#22324B] bg-[#111B2E]' : 'border border-black/10 bg-white'}`}>
               <Bell size={20} color={isDark ? '#E2E8F0' : '#24314A'} />
-              <View className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: destructiveColor }} />
+              {(incomingRequests.length > 0 || dbNotifications.some((notification) => !notification.read)) && (
+                <View className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: destructiveColor }} />
+              )}
             </AnimatedPressable>
           </View>
         </View>

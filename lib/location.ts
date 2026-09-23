@@ -12,7 +12,45 @@ export type NearbyTraveler = {
   is_friend: boolean;
   latitude: number | null;
   longitude: number | null;
+  share_kind: ShareKind | null;
 };
+
+// 'trusted': trusted circle, visible 24/7.
+// 'pair': connected travelers, visible until they meet (within 10 m).
+export type ShareKind = 'trusted' | 'pair';
+
+export type SharedLocation = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  latitude: number;
+  longitude: number;
+  updated_at: string;
+  distance_m: number | null;
+  share_kind: ShareKind;
+};
+
+export async function listSharedLocations() {
+  let response;
+  try {
+    response = await withRequestTimeout(supabase.rpc('list_shared_locations'), 'Loading shared locations');
+  } catch (error) {
+    return { data: [] as SharedLocation[], error: error instanceof Error ? error : new Error('Unable to load shared locations.') };
+  }
+  const { data, error } = response;
+  return {
+    data: ((data ?? []) as SharedLocation[]).map((row) => ({ ...row, latitude: Number(row.latitude), longitude: Number(row.longitude) })),
+    error,
+  };
+}
+
+export async function restartLocationShare(otherUserId: string) {
+  return withRequestTimeout(supabase.rpc('restart_location_share', { p_other_user_id: otherUserId }), 'Sharing location');
+}
+
+export async function endLocationShare(otherUserId: string) {
+  return withRequestTimeout(supabase.rpc('end_location_share', { p_other_user_id: otherUserId }), 'Stopping location sharing');
+}
 
 export async function getNearbyTravelers(radiusKm = 5) {
   let response;
@@ -70,23 +108,33 @@ export async function getLocationPermissionStatus(): Promise<LocationPermissionR
   };
 }
 
-export async function startBackgroundLocationTracking() {
+let trackingPrecise: boolean | null = null;
+
+// Precise mode (High accuracy, ~5 m steps) is used while a pair session is
+// active so the server can detect the 10 m meet-up; otherwise stay battery-friendly.
+export async function startBackgroundLocationTracking(options: { precise?: boolean } = {}) {
+  // Callers that don't care (Home, Warning Mode) keep whatever mode the map chose.
+  const precise = options.precise ?? trackingPrecise ?? false;
   const alreadyRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
   const alreadyStarted = alreadyRegistered && (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME));
-  if (alreadyStarted) {
+  if (alreadyStarted && (trackingPrecise === precise || (trackingPrecise === null && !precise))) {
     return;
+  }
+  if (alreadyStarted) {
+    await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   }
 
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: Location.Accuracy.Balanced,
-    timeInterval: 30000,
-    distanceInterval: 50,
+    accuracy: precise ? Location.Accuracy.High : Location.Accuracy.Balanced,
+    timeInterval: precise ? 10000 : 30000,
+    distanceInterval: precise ? 5 : 50,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'PartyUp',
-      notificationBody: 'Sharing your location with matched travelers',
+      notificationBody: 'Sharing your location with your trusted circle & connections',
     },
   });
+  trackingPrecise = precise;
 }
 
 export async function stopLocationTracking() {
@@ -98,4 +146,5 @@ export async function stopLocationTracking() {
   if (isStarted) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   }
+  trackingPrecise = null;
 }

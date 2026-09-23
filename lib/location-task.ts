@@ -1,3 +1,4 @@
+import { escalateSafetySession } from '@/lib/safety';
 import { supabase } from '@/lib/supabase';
 import * as TaskManager from 'expo-task-manager';
 import type { LocationObject } from 'expo-location';
@@ -54,7 +55,7 @@ TaskManager.defineTask(LOCATION_TASK_NAME, async ({ data, error }) => {
       .maybeSingle();
 
     if (session) {
-      await supabase.rpc('escalate_safety_session', { p_session_id: session.id });
+      await escalateSafetySession(session.id);
     }
   } catch (escalationError) {
     console.error('[location-task] auto-escalation sweep failed', escalationError);

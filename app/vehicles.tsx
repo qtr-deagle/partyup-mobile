@@ -120,9 +120,17 @@ export default function VehiclesScreen() {
       return;
     }
 
-    const year = form.year.trim() ? Number.parseInt(form.year.trim(), 10) : null;
-    if (form.year.trim() && Number.isNaN(year)) {
-      setFormError('Year must be a number.');
+    const yearText = form.year.trim();
+    const year = yearText ? Number.parseInt(yearText, 10) : null;
+    const maxYear = new Date().getFullYear() + 1;
+    if (yearText && (!/^\d{4}$/.test(yearText) || year === null || year < 1900 || year > maxYear)) {
+      setFormError('Year must be a 4-digit year (e.g., 2023).');
+      return;
+    }
+
+    const plateNumber = form.plateNumber.trim().toUpperCase();
+    if (plateNumber && !/^[A-Z0-9][A-Z0-9 -]{1,7}$/.test(plateNumber)) {
+      setFormError('Plate number must be up to 8 letters/numbers (e.g., ABC 1234).');
       return;
     }
 
@@ -134,7 +142,7 @@ export default function VehiclesScreen() {
       model: form.model,
       year,
       color: form.color || null,
-      plateNumber: form.plateNumber || null,
+      plateNumber: plateNumber || null,
     };
 
     const { error } = editingId ? await updateVehicle(editingId, input) : await createVehicle(input);
@@ -226,9 +234,12 @@ export default function VehiclesScreen() {
                 ) : null}
 
                 <View className="mt-4 flex-row gap-3">
-                  <TouchableOpacity onPress={() => openEditForm(vehicle)} className={`flex-1 rounded-2xl py-3.5 ${softButtonBg}`}>
-                    <Text className="text-center text-[16px] font-bold" style={{ color: primaryTextColor }}>Edit</Text>
-                  </TouchableOpacity>
+                  {/* Under review / verified vehicles are locked (also enforced by a DB trigger) so staff approve exactly what they reviewed. */}
+                  {vehicle.verification_status === 'unverified' || vehicle.verification_status === 'rejected' ? (
+                    <TouchableOpacity onPress={() => openEditForm(vehicle)} className={`flex-1 rounded-2xl py-3.5 ${softButtonBg}`}>
+                      <Text className="text-center text-[16px] font-bold" style={{ color: primaryTextColor }}>Edit</Text>
+                    </TouchableOpacity>
+                  ) : null}
 
                   {vehicle.verification_status === 'unverified' || vehicle.verification_status === 'rejected' ? (
                     <TouchableOpacity
@@ -303,8 +314,9 @@ export default function VehiclesScreen() {
                       placeholder="2023"
                       placeholderTextColor={placeholderColor}
                       keyboardType="number-pad"
+                      maxLength={4}
                       value={form.year}
-                      onChangeText={(text) => setForm((current) => ({ ...current, year: text }))}
+                      onChangeText={(text) => setForm((current) => ({ ...current, year: text.replace(/\D/g, '').slice(0, 4) }))}
                     />
                   </View>
                   <View className="flex-1">
@@ -328,8 +340,11 @@ export default function VehiclesScreen() {
                     placeholder="e.g., ABC 1234"
                     placeholderTextColor={placeholderColor}
                     autoCapitalize="characters"
+                    maxLength={8}
                     value={form.plateNumber}
-                    onChangeText={(text) => setForm((current) => ({ ...current, plateNumber: text }))}
+                    onChangeText={(text) =>
+                      setForm((current) => ({ ...current, plateNumber: text.toUpperCase().replace(/[^A-Z0-9 -]/g, '').slice(0, 8) }))
+                    }
                   />
                 </View>
 
