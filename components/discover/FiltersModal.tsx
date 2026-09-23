@@ -132,7 +132,7 @@ export function FiltersModal({ visible, value, isDark, onApply, onClose }: Filte
       <Pressable className="flex-1 items-center justify-center bg-black/40 px-4" onPress={onClose}>
         <Pressable onPress={() => {}} className={`max-h-[85%] w-full max-w-[420px] rounded-[28px] ${background}`}>
           <View className="flex-row items-center justify-between px-5 pb-2 pt-5">
-            <Text className={`text-xl font-black ${textPrimary}`}>Filters</Text>
+            <Text className={`text-headline-20 font-bold ${textPrimary}`}>Filters</Text>
             <TouchableOpacity onPress={onClose}><X size={22} color={isDark ? '#E2E8F0' : '#182847'} /></TouchableOpacity>
           </View>
 

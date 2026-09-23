@@ -1,3 +1,4 @@
+import { ReportUserModal } from '@/components/ReportUserModal';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { parseTimestamp } from '@/lib/datetime';
@@ -25,6 +26,7 @@ export default function ChatScreen() {
   const [sending, setSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
   const appliedThreadParam = useRef(false);
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-white';
   const borderColor = isDark ? 'border-[#22324B]' : 'border-[#E7EAF2]';
@@ -108,7 +110,14 @@ export default function ChatScreen() {
         {errorMessage ? <Text className="m-4 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
         <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingVertical: 16 }}>{messages.map((message) => { const mine = message.sender_id === session?.user.id; return <View key={message.id} className={`mb-3 flex-row ${mine ? 'justify-end' : 'justify-start'}`}><View className={`max-w-[80%] rounded-2xl px-4 py-3 ${mine ? 'bg-[#284BD6]' : `border ${borderColor} ${panelBackground}`}`}><Text className={`text-base ${mine ? 'text-white' : textPrimary}`}>{message.body}</Text><Text className={`mt-1 text-xs ${mine ? 'text-white/75' : textSecondary}`}>{formatTime(message.created_at)}</Text></View></View>; })}</ScrollView>
         <View className={`flex-row items-center gap-2 border-t px-4 py-3 ${borderColor}`}><TextInput value={messageText} onChangeText={setMessageText} onSubmitEditing={() => void sendMessage()} placeholder="Type a message" placeholderTextColor="#94A3B8" className={`flex-1 rounded-full border px-4 py-3 ${borderColor} ${panelBackground} ${textPrimary}`} /><TouchableOpacity onPress={() => void sendMessage()} disabled={sending} className="h-12 w-12 items-center justify-center rounded-full bg-[#284BD6]">{sending ? <ActivityIndicator color="#FFFFFF" /> : <Send size={18} color="#FFFFFF" />}</TouchableOpacity></View>
-        <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}><Pressable className="flex-1 bg-black/30" onPress={() => setMenuVisible(false)}><View className={`absolute right-4 top-16 w-64 rounded-2xl p-2 shadow-lg ${isDark ? 'bg-[#252525]' : 'bg-white'}`}><Text className={`px-3 py-2 text-sm font-bold ${textPrimary}`}>{selected.display_name}</Text>{['Mark as unread', 'Mute notifications', 'Report', 'Delete chat'].map((option) => <TouchableOpacity key={option} onPress={() => setMenuVisible(false)} className="px-3 py-3"><Text className={`text-base ${textPrimary}`}>{option}</Text></TouchableOpacity>)}</View></Pressable></Modal>
+        <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}><Pressable className="flex-1 bg-black/30" onPress={() => setMenuVisible(false)}><View className={`absolute right-4 top-16 w-64 rounded-2xl p-2 shadow-lg ${isDark ? 'bg-[#252525]' : 'bg-white'}`}><Text className={`px-3 py-2 text-sm font-bold ${textPrimary}`}>{selected.display_name}</Text>{['Mark as unread', 'Mute notifications', 'Report', 'Delete chat'].map((option) => <TouchableOpacity key={option} onPress={() => { setMenuVisible(false); if (option === 'Report') setReportModalVisible(true); }} className="px-3 py-3"><Text className={`text-base ${textPrimary}`}>{option}</Text></TouchableOpacity>)}</View></Pressable></Modal>
+        <ReportUserModal
+          visible={reportModalVisible}
+          onClose={() => setReportModalVisible(false)}
+          isDark={isDark}
+          reportedUserId={selected.other_user_id}
+          targetDisplayName={selected.display_name}
+        />
       </View>
     );
   }

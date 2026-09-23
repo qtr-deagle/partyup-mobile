@@ -313,7 +313,7 @@ export default function DiscoverScreen() {
             {swipeLoading ? (
               <ActivityIndicator className="mt-10" color="#284BD6" />
             ) : currentEntry ? (
-              <ScrollView className="flex-1" contentContainerClassName="px-4 pb-6" showsVerticalScrollIndicator={false}>
+              <ScrollView className="flex-1" contentContainerClassName="px-4 pb-28" showsVerticalScrollIndicator={false}>
                 <SwipeCard profile={currentEntry.profile} trip={currentEntry.trip} score={currentEntry.score} isDark={isDark} onConnect={(profile) => void connectWithProfile(profile)} onPass={passProfile} />
 
                 <View className="mt-4 flex-row items-center justify-center gap-6">
@@ -367,7 +367,7 @@ export default function DiscoverScreen() {
                   accessibilityLabel={`View ${profile.display_name}'s profile`}
                 >
                   <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{profile.display_name.charAt(0).toUpperCase()}</Text></View>
-                  <View className="flex-1"><Text className={`text-xl font-black ${textPrimary}`}>{profile.display_name}</Text><Text className={`mt-1 text-sm ${textSecondary}`}>{profile.interests.length ? profile.interests.join('  •  ') : 'No interests selected'}</Text></View>
+                  <View className="flex-1"><Text className={`text-headline-20 font-bold ${textPrimary}`}>{profile.display_name}</Text><Text className={`mt-1 text-sm ${textSecondary}`}>{profile.interests.length ? profile.interests.join('  •  ') : 'No interests selected'}</Text></View>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => void handleRequest(profile.id)} disabled={requestingId === profile.id} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${profile.request_status === 'accepted' || profile.request_status === 'outgoing_pending' ? 'bg-[#9EAFE9]' : 'bg-[#284BD6]'}`}>
                   {requestingId === profile.id ? <ActivityIndicator color="#FFFFFF" /> : <>{profile.request_status === 'accepted' || profile.request_status === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : profile.request_status === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{profile.request_status === 'accepted' ? 'Friends' : profile.request_status === 'outgoing_pending' ? 'Cancel request' : profile.request_status === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}

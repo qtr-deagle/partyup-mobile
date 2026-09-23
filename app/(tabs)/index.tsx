@@ -13,22 +13,10 @@ import { listIncomingFriendRequests, type IncomingFriendRequest } from '@/lib/so
 import { getTheme, typography } from '@/lib/theme';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Bell, MapPin, Navigation, Send, Shield, Sparkles, Users } from 'lucide-react-native';
+import { Bell, MapPin, Navigation, Send, Shield, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-
-const quickStats = [
-  { label: 'Trusted circle', value: '8 people' },
-  { label: 'Trips completed', value: '24' },
-  { label: 'Safety score', value: '92%' },
-];
-
-const activityItems = [
-  { id: 1, title: 'Sarah accepted your request', meta: '2 min ago' },
-  { id: 2, title: 'Pickup time updated to 2:00 PM', meta: '15 min ago' },
-  { id: 3, title: 'Route adjusted for traffic', meta: '1 hour ago' },
-];
 
 const TRIP_STATUS_LABELS: Record<ActiveTripSummary['status'], string> = {
   draft: 'Draft',
@@ -236,14 +224,15 @@ export default function HomeScreen() {
         </View>
 
         <View className="mt-8">
-          <Text className={`${typography.pageTitle} ${titleColor}`}>What&apos;s happening now</Text>
-          <Text className={`mt-2 text-base ${subtitleColor}`}>Your live dashboard</Text>
+          <Text className={`${typography.pageTitle} ${titleColor}`}>Home</Text>
+          <Text className={`mt-2 text-base ${subtitleColor}`}>Your trip and safety status</Text>
         </View>
       </Animated.View>
 
       <View className="px-4 pt-6 flex flex-col gap-4">
         {activeTrip ? (
           <Animated.View
+            key="active-trip-card"
             entering={FadeInDown.delay(80).duration(400).springify().damping(16)}
             className={`rounded-[24px] border-2 p-4 shadow-sm ${isDark ? 'border-[#3B82F6] bg-[#111B2E] shadow-black/20' : 'border-[#1E40AF] bg-[#EAF0FF] shadow-[#1E40AF]/10'}`}>
             <View className="flex-row items-center justify-between">
@@ -254,13 +243,13 @@ export default function HomeScreen() {
               <Send size={20} color={primaryColor} />
             </View>
 
-            <Text className={`mt-4 text-3xl font-black ${primaryText}`}>{activeTrip.destination}</Text>
+            <Text className={`mt-4 text-headline-32 font-bold ${primaryText}`}>{activeTrip.destination}</Text>
             <Text className={`mt-1 text-base ${mutedText}`}>{activeTrip.buddy_display_name ? `With ${activeTrip.buddy_display_name}` : 'No trip buddy yet'}</Text>
 
             <View className={`mt-4 rounded-2xl p-4 ${mutedPanel}`}>
               <View className="flex-row items-center justify-between">
                 <Text className={`text-base ${mutedText}`}>{countdownLabel ? 'Pickup in' : 'Status'}</Text>
-                <Text className={`text-2xl font-black ${primaryText}`}>{countdownLabel ?? TRIP_STATUS_LABELS[activeTrip.status]}</Text>
+                <Text className={`text-headline-24 font-bold ${primaryText}`}>{countdownLabel ?? TRIP_STATUS_LABELS[activeTrip.status]}</Text>
               </View>
               <View className="mt-3 flex-row items-center justify-between">
                 <Text className={`text-base ${mutedText}`}>Destination</Text>
@@ -301,6 +290,7 @@ export default function HomeScreen() {
           </Animated.View>
         ) : (
           <Animated.View
+            key="no-active-trip-card"
             entering={FadeInDown.delay(80).duration(400).springify().damping(16)}
             className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
             <Text className={`${typography.sectionTitle} ${primaryText}`}>No active trip</Text>
@@ -354,7 +344,7 @@ export default function HomeScreen() {
                     style={{ width: `${safety?.trust_score ?? 0}%`, backgroundColor: accentColor }}
                   />
                 </View>
-                <Text className="text-2xl font-black" style={{ color: accentColor }}>{safety?.trust_score ?? 0}%</Text>
+                <Text className="text-headline-24 font-bold" style={{ color: accentColor }}>{safety?.trust_score ?? 0}%</Text>
               </View>
             </View>
 
@@ -371,41 +361,27 @@ export default function HomeScreen() {
         <Animated.View
           entering={FadeInDown.delay(200).duration(400).springify().damping(16)}
           className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
-          <View className="flex-row items-center gap-2">
-            <Sparkles size={18} color={primaryColor} />
-            <Text className={`${typography.sectionTitle} ${primaryText}`}>Quick Stats</Text>
-          </View>
-
-          <View className="mt-4 flex-row gap-4">
-            {quickStats.map((item) => (
-              <View key={item.label} className={`flex-1 rounded-2xl p-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>
-                <Text className={`text-xs ${mutedText}`}>{item.label}</Text>
-                <Text className={`mt-2 text-base font-bold ${primaryText}`}>{item.value}</Text>
-              </View>
-            ))}
-          </View>
-        </Animated.View>
-
-        <Animated.View
-          entering={FadeInDown.delay(260).duration(400).springify().damping(16)}
-          className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
           <View className="flex-row items-center justify-between">
-            <Text className={`${typography.sectionTitle} ${primaryText}`}>Live Activity</Text>
-            <AnimatedPressable hitSlop={8}>
+            <Text className={`${typography.sectionTitle} ${primaryText}`}>Recent Activity</Text>
+            <AnimatedPressable hitSlop={8} onPress={() => setNotificationVisible(true)}>
               <Text className="text-sm font-semibold" style={{ color: primaryColor }}>View all</Text>
             </AnimatedPressable>
           </View>
 
           <View className="mt-4 flex flex-col gap-3">
-            {activityItems.map((item) => (
-              <View key={item.id} className={`flex-row items-start gap-3 rounded-2xl p-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>
-                <View className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: primaryColor }} />
-                <View className="flex-1">
-                  <Text className={`text-sm font-semibold ${primaryText}`}>{item.title}</Text>
-                  <Text className={`mt-1 text-xs ${mutedText}`}>{item.meta}</Text>
+            {notifications.length === 0 ? (
+              <Text className={`text-sm ${mutedText}`}>No recent activity yet.</Text>
+            ) : (
+              notifications.slice(0, 3).map((item) => (
+                <View key={item.id} className={`flex-row items-start gap-3 rounded-2xl p-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>
+                  <View className="mt-1 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: primaryColor }} />
+                  <View className="flex-1">
+                    <Text className={`text-sm font-semibold ${primaryText}`}>{item.title}</Text>
+                    <Text className={`mt-1 text-xs ${mutedText}`}>{item.timestamp}</Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              ))
+            )}
           </View>
         </Animated.View>
 

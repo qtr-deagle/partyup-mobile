@@ -19,6 +19,17 @@ export type IdVerification = {
   reviewer_notes: string | null;
   submitted_at: string;
   reviewed_at: string | null;
+  ai_similarity_score: number | null;
+  ai_age_low: number | null;
+  ai_age_high: number | null;
+  ai_flag: 'high_confidence' | 'needs_review' | 'low_similarity' | 'error' | null;
+  ai_underage_flag: boolean;
+  ai_error: string | null;
+};
+
+export type PendingVerification = IdVerification & {
+  display_name: string;
+  avatar_url: string | null;
 };
 
 export type SubmitIdVerificationInput = {
@@ -115,6 +126,52 @@ export async function submitIdVerification(input: SubmitIdVerificationInput) {
   } catch (error) {
     return { error: error instanceof Error ? error : new Error('Failed to submit verification.') };
   }
+}
+
+// Staff/admin only -- RLS on id_verifications only lets non-staff see their
+// own row, so this naturally returns nothing for a regular traveler account.
+export async function listPendingVerifications() {
+  let response;
+  try {
+    response = await withRequestTimeout(
+      supabase.from('id_verifications').select('*').eq('status', 'pending').order('submitted_at', { ascending: true }),
+      'Loading pending verifications'
+    );
+  } catch (error) {
+    return { data: [] as PendingVerification[], error: error instanceof Error ? error : new Error('Unable to load pending verifications.') };
+  }
+  const { data, error } = response;
+  if (error || !data?.length) {
+    return { data: [] as PendingVerification[], error };
+  }
+
+  const rows = data as IdVerification[];
+  const userIds = Array.from(new Set(rows.map((row) => row.user_id)));
+  const { data: profiles } = await supabase.from('profiles').select('id, display_name, avatar_url').in('id', userIds);
+  const profileById = new Map((profiles ?? []).map((row) => [row.id as string, row]));
+
+  const merged: PendingVerification[] = rows.map((row) => ({
+    ...row,
+    display_name: (profileById.get(row.user_id)?.display_name as string) ?? 'Unknown traveler',
+    avatar_url: (profileById.get(row.user_id)?.avatar_url as string | null) ?? null,
+  }));
+
+  return { data: merged, error: null };
+}
+
+export async function getVerificationImageUrl(path: string) {
+  const { data, error } = await supabase.storage.from('id-verifications').createSignedUrl(path, 600);
+  if (error || !data) {
+    return null;
+  }
+  return data.signedUrl;
+}
+
+export async function reviewVerification(verificationId: string, decision: 'approved' | 'rejected', notes?: string) {
+  return withRequestTimeout(
+    supabase.rpc('review_id_verification', { p_verification_id: verificationId, p_decision: decision, p_notes: notes ?? null }),
+    'Submitting review'
+  );
 }
 
 export async function getMyVerification() {

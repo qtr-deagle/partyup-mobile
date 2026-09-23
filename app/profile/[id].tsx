@@ -1,7 +1,9 @@
+import { ReportUserModal } from '@/components/ReportUserModal';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { blockUser, unblockUser } from '@/lib/blocking';
 import { createOrGetDirectThread, getFriendRequestStatuses, getProfileById, removeFriend, respondToFriendRequest, sendFriendRequest, type SearchProfile } from '@/lib/social';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, BadgeCheck, Check, MapPin, Star, UserPlus, X } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, Check, Flag, MapPin, Shield, ShieldOff, Star, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -27,6 +29,8 @@ export default function PublicProfileScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fullProfile, setFullProfile] = useState<SearchProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
   const displayName = fullProfile?.display_name ?? params.displayName ?? 'PartyUp traveler';
   const interests = useMemo(() => {
     if (fullProfile) return fullProfile.interests;
@@ -129,6 +133,39 @@ export default function PublicProfileScreen() {
     setRequestId('');
   }
 
+  function confirmBlock() {
+    Alert.alert('Block this traveler?', `You won't see ${displayName} in Discover, nearby travelers, or search, and any friend connection will be removed.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Block', style: 'destructive', onPress: () => void handleBlock() },
+    ]);
+  }
+
+  async function handleBlock() {
+    setBlockBusy(true);
+    setErrorMessage(null);
+    const { error } = await blockUser(params.id);
+    setBlockBusy(false);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+    setFullProfile((current) => (current ? { ...current, is_blocked_by_me: true } : current));
+    setRequestStatus('');
+    setRequestId('');
+  }
+
+  async function handleUnblock() {
+    setBlockBusy(true);
+    setErrorMessage(null);
+    const { error } = await unblockUser(params.id);
+    setBlockBusy(false);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+    setFullProfile((current) => (current ? { ...current, is_blocked_by_me: false } : current));
+  }
+
   return (
     <ScrollView
       className={`flex-1 ${background}`}
@@ -144,7 +181,7 @@ export default function PublicProfileScreen() {
             <Text className="text-[34px] font-bold text-[#24314A]">{displayName.charAt(0).toUpperCase()}</Text>
           </View>
           <View className="mt-4 flex-row items-center gap-1.5">
-            <Text className={`text-[26px] font-black ${primary}`}>{displayName}</Text>
+            <Text className={`text-headline-28 font-bold ${primary}`}>{displayName}</Text>
             {verified ? <BadgeCheck size={20} color="#179B67" /> : null}
           </View>
 
@@ -184,7 +221,7 @@ export default function PublicProfileScreen() {
         </View>
 
         <View className="mt-7 border-t border-[#E4EAF2] pt-5">
-          <Text className={`text-lg font-black ${primary}`}>Travel interests</Text>
+          <Text className={`text-headline-18 font-bold ${primary}`}>Travel interests</Text>
           {interests.length ? (
             <View className="mt-3 flex-row flex-wrap gap-2">
               {interests.map((interest) => <View key={interest} className="rounded-full bg-[#EEF2FF] px-3 py-2"><Text className="text-sm text-[#284BD6]">{interest}</Text></View>)}
@@ -193,10 +230,47 @@ export default function PublicProfileScreen() {
         </View>
 
         {errorMessage ? <Text className="mt-5 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
-        <TouchableOpacity onPress={requestStatus === 'accepted' ? confirmRemoveFriend : () => void handleRequest()} disabled={requesting} className={`mt-7 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${requestStatus === 'accepted' || requestStatus === 'outgoing_pending' ? 'bg-[#9EAFE9]' : 'bg-[#284BD6]'}`}>
-          {requesting ? <ActivityIndicator color="#FFFFFF" /> : <>{requestStatus === 'accepted' || requestStatus === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : requestStatus === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{requestStatus === 'accepted' ? 'Friends' : requestStatus === 'outgoing_pending' ? 'Cancel request' : requestStatus === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
-        </TouchableOpacity>
+
+        {!fullProfile?.is_blocked_by_me ? (
+          <TouchableOpacity onPress={requestStatus === 'accepted' ? confirmRemoveFriend : () => void handleRequest()} disabled={requesting} className={`mt-7 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${requestStatus === 'accepted' || requestStatus === 'outgoing_pending' ? 'bg-[#9EAFE9]' : 'bg-[#284BD6]'}`}>
+            {requesting ? <ActivityIndicator color="#FFFFFF" /> : <>{requestStatus === 'accepted' || requestStatus === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : requestStatus === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{requestStatus === 'accepted' ? 'Friends' : requestStatus === 'outgoing_pending' ? 'Cancel request' : requestStatus === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
+          </TouchableOpacity>
+        ) : null}
+
+        <View className="mt-3 flex-row gap-3">
+          <TouchableOpacity onPress={() => setReportModalVisible(true)} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${card}`}>
+            <Flag size={16} color={isDark ? '#94A3B8' : '#6C7A95'} />
+            <Text className={`font-bold ${secondary}`}>Report</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={fullProfile?.is_blocked_by_me ? () => void handleUnblock() : confirmBlock}
+            disabled={blockBusy}
+            className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${card}`}
+          >
+            {blockBusy ? (
+              <ActivityIndicator color="#B91C1C" />
+            ) : fullProfile?.is_blocked_by_me ? (
+              <>
+                <ShieldOff size={16} color="#B91C1C" />
+                <Text className="font-bold text-[#B91C1C]">Unblock</Text>
+              </>
+            ) : (
+              <>
+                <Shield size={16} color="#B91C1C" />
+                <Text className="font-bold text-[#B91C1C]">Block</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
+
+      <ReportUserModal
+        visible={reportModalVisible}
+        onClose={() => setReportModalVisible(false)}
+        isDark={isDark}
+        reportedUserId={params.id}
+        targetDisplayName={displayName}
+      />
     </ScrollView>
   );
 }

@@ -74,7 +74,7 @@ export function TimePickerModal({ visible, title, value, isDark, onClose, onSele
             </View>
 
             <View className="mt-4 flex-row items-center justify-between">
-              <Text className="text-[22px] font-black" style={{ color: primaryText }}>
+              <Text className="text-headline-24 font-bold" style={{ color: primaryText }}>
                 {title}
               </Text>
               <TouchableOpacity

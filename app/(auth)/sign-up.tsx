@@ -1,11 +1,12 @@
 import { supabase } from '@/lib/supabase';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Link, useRouter } from 'expo-router';
-import { ArrowRight, Calendar, Check, Eye, EyeOff, Github, Lock, Mail, User } from 'lucide-react-native';
+import { ArrowRight, Calendar, Check, Eye, EyeOff, Lock, Mail, User } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useAuth } from '@/hooks/auth-provider';
+import TermsModal from '@/components/TermsModal';
 
 export default function SignUpScreen() {
   const router = useRouter();
@@ -23,6 +24,8 @@ export default function SignUpScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   useEffect(() => {
     if (!loading && session) {
@@ -35,6 +38,11 @@ export default function SignUpScreen() {
 
     if (!fullName.trim() || !normalizedEmail || !password || !confirmPassword || !dateOfBirth.trim() || interests.length === 0) {
       setErrorMessage('Please complete all profile details and select at least one interest.');
+      return;
+    }
+
+    if (!termsAccepted) {
+      setErrorMessage('Please accept the Terms and Conditions to continue.');
       return;
     }
 
@@ -92,6 +100,7 @@ export default function SignUpScreen() {
           display_name: fullName.trim(),
           date_of_birth: dateOfBirth.trim(),
           interests,
+          terms_accepted_at: new Date().toISOString(),
         })
         .eq('id', data.session.user.id);
 
@@ -184,7 +193,7 @@ export default function SignUpScreen() {
       <ScrollView contentContainerClassName="flex-grow justify-center px-2 py-7" keyboardShouldPersistTaps="handled">
         <View className="w-full rounded-[14px] bg-white px-5 py-5 shadow-lg shadow-black/10">
           <View className="items-center">
-            <Text className="text-[22px] font-black text-[#2445B8]">Join PartyUp</Text>
+            <Text className="text-headline-24 font-bold text-[#2445B8]">Join PartyUp</Text>
             <Text className="mt-1 text-[10px] text-[#697386]">{step === 1 ? 'Create your account' : step === 2 ? 'Complete your profile' : 'Select your interests'}</Text>
           </View>
 
@@ -223,6 +232,20 @@ export default function SignUpScreen() {
             </> : null}
 
             {step === 3 ? <View className="flex-row flex-wrap justify-between gap-y-2">{interestOptions.map(([interest, icon]) => <TouchableOpacity key={interest} onPress={() => toggleInterest(interest)} className={`h-[48px] w-[48%] items-center justify-center rounded-[8px] border ${interests.includes(interest) ? 'border-[#2445B8] bg-[#E9EEFF]' : 'border-[#E2E5E9] bg-[#F4F5F6]'}`}><Text className="text-[14px]">{icon}</Text><Text className="mt-0.5 text-[9px] font-medium text-[#273142]">{interest}</Text>{interests.includes(interest) ? <Check size={11} color="#2445B8" /> : null}</TouchableOpacity>)}</View> : null}
+
+            {step === 3 ? (
+              <TouchableOpacity onPress={() => setTermsAccepted((accepted) => !accepted)} className="mt-1 flex-row items-start gap-2">
+                <View className={`mt-0.5 h-[16px] w-[16px] items-center justify-center rounded-[4px] border ${termsAccepted ? 'border-[#2445B8] bg-[#2445B8]' : 'border-[#E2E5E9] bg-white'}`}>
+                  {termsAccepted ? <Check size={11} color="#FFFFFF" /> : null}
+                </View>
+                <Text className="flex-1 text-[10px] leading-4 text-[#697386]">
+                  I agree to the{' '}
+                  <Text className="font-semibold text-[#2445B8]" onPress={() => setShowTermsModal(true)}>
+                    Terms and Conditions
+                  </Text>
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
           {errorMessage ? <Text className="mt-4 text-[14px] text-[#FB7185]">{errorMessage}</Text> : null}
@@ -230,19 +253,21 @@ export default function SignUpScreen() {
 
           <View className="mt-4 flex-row gap-2">
             {step > 1 ? <TouchableOpacity onPress={() => { setErrorMessage(null); setStep((currentStep) => currentStep - 1); }} className="h-[34px] flex-1 items-center justify-center rounded-[8px] bg-[#F0F1F3]"><Text className="text-[10px] font-medium text-[#273142]">&#8592; Back</Text></TouchableOpacity> : null}
-            <TouchableOpacity onPress={step === 3 ? handleSignUp : goToNextStep} disabled={submitting} className="h-[34px] flex-1 flex-row items-center justify-center rounded-[8px] bg-[#2445B8]">
+            <TouchableOpacity
+              onPress={step === 3 ? handleSignUp : goToNextStep}
+              disabled={submitting || (step === 3 && !termsAccepted)}
+              className={`h-[34px] flex-1 flex-row items-center justify-center rounded-[8px] ${step === 3 && !termsAccepted ? 'bg-[#A9B6E0]' : 'bg-[#2445B8]'}`}>
               {submitting ? <ActivityIndicator color="#FFFFFF" /> : <><Text className="text-center text-[10px] font-bold text-white">{step === 3 ? 'Create Account' : 'Next'}{step < 3 ? ' ' : ''}</Text>{step < 3 ? <ArrowRight size={12} color="#FFFFFF" /> : null}</>}
             </TouchableOpacity>
           </View>
 
           {step === 1 ? <>
-            <View className="mt-4 flex-row items-center"><View className="h-px flex-1 bg-[#E8EAED]" /><Text className="px-2 text-[10px] text-[#8A919D]">Or continue with</Text><View className="h-px flex-1 bg-[#E8EAED]" /></View>
-            <View className="mt-3 flex-row gap-2"><TouchableOpacity className="h-[30px] flex-1 flex-row items-center justify-center rounded-[8px] border border-[#E4E6E9] bg-[#F4F5F6]" accessibilityLabel="Continue with Google"><Text className="mr-1.5 text-[12px] font-bold text-[#4285F4]">G</Text><Text className="text-[10px] font-medium text-[#273142]">Google</Text></TouchableOpacity><TouchableOpacity className="h-[30px] flex-1 flex-row items-center justify-center rounded-[8px] border border-[#E4E6E9] bg-[#F4F5F6]" accessibilityLabel="Continue with GitHub"><Github size={12} color="#383443" /><Text className="ml-1.5 text-[10px] font-medium text-[#273142]">GitHub</Text></TouchableOpacity></View>
             <Text className="mt-4 text-center text-[10px] text-[#697386]">Already have an account? <Link href="/(auth)/sign-in" className="font-semibold text-[#2445B8]">Sign in</Link></Text>
           </> : null}
         </View>
-        <Text className="mt-5 px-3 text-center text-[9px] leading-3 text-[#697386]">By signing up, you agree to our Terms of Service and{`\n`}Privacy Policy</Text>
+        {step !== 3 ? <Text className="mt-5 px-3 text-center text-[9px] leading-3 text-[#697386]">By signing up, you agree to our Terms of Service and{`\n`}Privacy Policy</Text> : null}
       </ScrollView>
+      <TermsModal visible={showTermsModal} onClose={() => setShowTermsModal(false)} />
     </KeyboardAvoidingView>
   );
 }

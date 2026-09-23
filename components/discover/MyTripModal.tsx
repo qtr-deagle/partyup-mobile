@@ -46,7 +46,7 @@ export function MyTripModal({ visible, value, isDark, onSave, onClose }: MyTripM
         <Pressable onPress={() => {}} className={`w-full max-w-[420px] rounded-[28px] px-5 pb-5 pt-5 ${background}`}>
           <View className="flex-row items-center justify-between pb-4">
             <View>
-              <Text className={`text-xl font-black ${textPrimary}`}>Your trip</Text>
+              <Text className={`text-headline-20 font-bold ${textPrimary}`}>Your trip</Text>
               <Text className={`mt-1 text-sm ${textSecondary}`}>Used to score how well travelers match your plans</Text>
             </View>
             <TouchableOpacity onPress={onClose}><X size={22} color={isDark ? '#E2E8F0' : '#182847'} /></TouchableOpacity>

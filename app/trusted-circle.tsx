@@ -203,7 +203,7 @@ export default function TrustedCircleScreen() {
             </View>
             <View className="flex-1">
               <View className="flex-row items-center gap-1.5">
-                <Text className={`text-[19px] font-black ${primary}`}>{contact.display_name}</Text>
+                <Text className={`text-headline-20 font-bold ${primary}`}>{contact.display_name}</Text>
                 {contact.status === 'accepted' ? <CheckCircle2 size={17} color="#00A56A" /> : null}
               </View>
               <View className={`mt-1.5 self-start rounded-full px-3 py-1 ${colors.bg}`}>
@@ -353,7 +353,7 @@ export default function TrustedCircleScreen() {
         {!loading ? contacts.map(renderContact) : null}
 
         <View className={`rounded-[22px] border p-4 ${card}`}>
-          <Text className={`text-[18px] font-black ${primary}`}>How It Works</Text>
+          <Text className={`text-headline-18 font-bold ${primary}`}>How It Works</Text>
           <View className="mt-3 gap-3">
             <View className="flex-row items-start gap-3">
               <ShieldAlert size={20} color="#E32727" />
@@ -392,7 +392,7 @@ export default function TrustedCircleScreen() {
           <View className={`w-full max-w-[440px] rounded-[28px] px-4 py-5 shadow-lg shadow-black/25 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
             <View className={`flex-row items-start justify-between gap-4 border-b pb-4 ${border}`}>
               <View className="flex-1">
-                <Text className={`text-[22px] font-black ${primary}`}>Add Emergency Contact</Text>
+                <Text className={`text-headline-24 font-bold ${primary}`}>Add Emergency Contact</Text>
                 <Text className={`mt-1 text-[14px] ${secondary}`}>Step {step} of 2: {step === 1 ? 'Choose a Friend' : 'Emergency Information'}</Text>
               </View>
               <TouchableOpacity onPress={closeAddModal} className={`h-9 w-9 items-center justify-center rounded-full ${mutedFill}`} accessibilityLabel="Close">

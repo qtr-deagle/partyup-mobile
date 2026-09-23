@@ -224,7 +224,7 @@ export default function FriendsScreen() {
       <View key={connection.user_id} className={`rounded-[22px] border p-4 ${card}`}>
         <TouchableOpacity onPress={() => openProfile(connection)} className="flex-row items-center gap-3" accessibilityLabel={`View ${connection.display_name}'s profile`}>
           <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text></View>
-          <View className="flex-1"><Text className={`text-lg font-black ${primary}`}>{connection.display_name}</Text><Text numberOfLines={1} className={`mt-1 text-sm ${secondary}`}>{connection.interests.length ? connection.interests.join('  •  ') : 'No interests selected'}</Text></View>
+          <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text numberOfLines={1} className={`mt-1 text-sm ${secondary}`}>{connection.interests.length ? connection.interests.join('  •  ') : 'No interests selected'}</Text></View>
         </TouchableOpacity>
         <View className="mt-4 flex-row gap-2">
           {incoming ? <>
@@ -246,7 +246,7 @@ export default function FriendsScreen() {
       <View key={connection.user_id} className={`rounded-[22px] border p-4 ${card}`}>
         <View className="flex-row items-center gap-3">
           <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text></View>
-          <View className="flex-1"><Text className={`text-lg font-black ${primary}`}>{connection.display_name}</Text><Text className={`mt-1 text-sm ${secondary}`}>Awaiting response</Text></View>
+          <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text className={`mt-1 text-sm ${secondary}`}>Awaiting response</Text></View>
         </View>
         <TouchableOpacity onPress={() => void updateRequest(connection, 'cancelled')} disabled={busy} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>
           <X size={16} color="#64748B" /><Text className={`font-bold ${secondary}`}>Cancel request</Text>
@@ -267,7 +267,7 @@ export default function FriendsScreen() {
               <Text className="text-lg font-bold text-[#24314A]">{contact.display_name.charAt(0).toUpperCase()}</Text>
             </View>
             <View className="flex-1">
-              <Text className={`text-[17px] font-black ${primary}`}>{contact.display_name}</Text>
+              <Text className={`text-headline-18 font-bold ${primary}`}>{contact.display_name}</Text>
               <View className={`mt-1.5 self-start rounded-full px-3 py-1 ${colors.bg}`}>
                 <Text className={`text-[12px] font-bold ${colors.text}`}>{contact.relationship}</Text>
               </View>
@@ -328,7 +328,7 @@ export default function FriendsScreen() {
         <View className="flex-row items-center gap-3">
           <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{request.display_name.charAt(0).toUpperCase()}</Text></View>
           <View className="flex-1">
-            <Text className={`text-lg font-black ${primary}`}>{request.display_name}</Text>
+            <Text className={`text-headline-18 font-bold ${primary}`}>{request.display_name}</Text>
             <Text className={`mt-1 text-sm ${secondary}`}>Wants to add you as their</Text>
             <View className={`mt-1.5 self-start rounded-full px-3 py-1 ${colors.bg}`}>
               <Text className={`text-[12px] font-bold ${colors.text}`}>{request.relationship}</Text>
@@ -405,13 +405,13 @@ export default function FriendsScreen() {
           <>
             {incomingFriendRequests.length ? (
               <View className="gap-3">
-                <Text className={`text-xl font-black ${primary}`}>Friend requests <Text className={`text-base font-normal ${secondary}`}>({incomingFriendRequests.length})</Text></Text>
+                <Text className={`text-headline-20 font-bold ${primary}`}>Friend requests <Text className={`text-base font-normal ${secondary}`}>({incomingFriendRequests.length})</Text></Text>
                 {incomingFriendRequests.map(renderConnection)}
               </View>
             ) : null}
 
             <View className="gap-3">
-              <Text className={`text-xl font-black ${primary}`}>Friends <Text className={`text-base font-normal ${secondary}`}>({acceptedFriends.length})</Text></Text>
+              <Text className={`text-headline-20 font-bold ${primary}`}>Friends <Text className={`text-base font-normal ${secondary}`}>({acceptedFriends.length})</Text></Text>
               {acceptedFriends.length ? acceptedFriends.map(renderConnection) : (
                 <View className="items-center px-8 py-10"><UserPlus size={40} color="#94A3B8" /><Text className={`mt-4 text-center text-base ${secondary}`}>No friends yet. Find people in Discover to get started.</Text></View>
               )}
@@ -419,7 +419,7 @@ export default function FriendsScreen() {
 
             {sentRequests.length ? (
               <View className="gap-3">
-                <Text className={`text-xl font-black ${primary}`}>Sent requests <Text className={`text-base font-normal ${secondary}`}>({sentRequests.length})</Text></Text>
+                <Text className={`text-headline-20 font-bold ${primary}`}>Sent requests <Text className={`text-base font-normal ${secondary}`}>({sentRequests.length})</Text></Text>
                 {sentRequests.map(renderSentRequest)}
               </View>
             ) : null}
@@ -430,14 +430,14 @@ export default function FriendsScreen() {
           <>
             {incomingTrustedRequests.length ? (
               <View className="gap-3">
-                <Text className={`text-xl font-black ${primary}`}>Pending confirmation <Text className={`text-base font-normal ${secondary}`}>({incomingTrustedRequests.length})</Text></Text>
+                <Text className={`text-headline-20 font-bold ${primary}`}>Pending confirmation <Text className={`text-base font-normal ${secondary}`}>({incomingTrustedRequests.length})</Text></Text>
                 {incomingTrustedRequests.map(renderIncomingTrustedRequest)}
               </View>
             ) : null}
 
             <View className="gap-3">
               <View className="flex-row items-center justify-between">
-                <Text className={`text-xl font-black ${primary}`}>My trusted circle <Text className={`text-base font-normal ${secondary}`}>({trustedContacts.length})</Text></Text>
+                <Text className={`text-headline-20 font-bold ${primary}`}>My trusted circle <Text className={`text-base font-normal ${secondary}`}>({trustedContacts.length})</Text></Text>
                 <TouchableOpacity onPress={() => router.push('/trusted-circle')} className="flex-row items-center gap-1.5 rounded-full bg-[#284BD6] px-3.5 py-2">
                   <Plus size={15} color="#FFFFFF" /><Text className="text-[13px] font-bold text-white">Add</Text>
                 </TouchableOpacity>

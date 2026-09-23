@@ -4,15 +4,16 @@ import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createTrip, type TripVisibility } from '@/lib/carpool';
 import { getTheme, typography } from '@/lib/theme';
-import { useRouter } from 'expo-router';
+import { listMyApprovedVehicles, type Vehicle } from '@/lib/vehicles';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { ArrowLeft, Calendar, Clock, Flag, Globe, Lock, Plus, ShieldAlert, Users, X } from 'lucide-react-native';
-import { useState } from 'react';
+import { ArrowLeft, Calendar, Car, Clock, Flag, Globe, Lock, Plus, ShieldAlert, Users, X } from 'lucide-react-native';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const visibilityOptions: { key: TripVisibility; label: string; description: string; icon: typeof Globe }[] = [
-  { key: 'public', label: 'Public', description: 'Anyone with the invite link can join instantly', icon: Globe },
+  { key: 'public', label: 'Public', description: 'Shows up in Browse for anyone to find and join instantly', icon: Globe },
   { key: 'trusted_circle', label: 'Trusted Circle', description: 'You approve each join request', icon: Users },
   { key: 'private', label: 'Private', description: 'You approve each join request', icon: Lock },
 ];
@@ -55,6 +56,29 @@ export default function CreateTripScreen() {
   const placeholderColor = isDark ? '#64748B' : '#9AA3B1';
   const isVerified = profile?.verification_status === 'approved';
 
+  const [approvedVehicles, setApprovedVehicles] = useState<Vehicle[]>([]);
+  const [vehiclesLoading, setVehiclesLoading] = useState(true);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!isVerified) {
+        return;
+      }
+      let cancelled = false;
+      setVehiclesLoading(true);
+      void listMyApprovedVehicles().then(({ data }) => {
+        if (cancelled) return;
+        setApprovedVehicles(data);
+        setSelectedVehicleId((current) => (current && data.some((v) => v.id === current) ? current : (data[0]?.id ?? null)));
+        setVehiclesLoading(false);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [isVerified])
+  );
+
   const [title, setTitle] = useState('');
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -87,6 +111,11 @@ export default function CreateTripScreen() {
   async function handleSubmit() {
     if (!title.trim() || !origin.trim() || !destination.trim()) {
       setErrorMessage('Title, origin, and destination are required.');
+      return;
+    }
+
+    if (!selectedVehicleId) {
+      setErrorMessage('Select a vehicle for this trip.');
       return;
     }
 
@@ -134,6 +163,7 @@ export default function CreateTripScreen() {
       notes: notes.trim() || null,
       destinationLat,
       destinationLng,
+      vehicleId: selectedVehicleId,
     });
 
     setSubmitting(false);
@@ -176,6 +206,21 @@ export default function CreateTripScreen() {
             </TouchableOpacity>
           )}
         </View>
+      ) : vehiclesLoading ? (
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator color="#2A55D4" />
+        </View>
+      ) : approvedVehicles.length === 0 ? (
+        <View className="flex-1 items-center justify-center gap-4 px-8">
+          <ShieldAlert size={40} color="#D88700" />
+          <Text className={`text-center text-lg font-bold ${primary}`}>Add and verify a vehicle to create a carpool trip</Text>
+          <Text className={`text-center text-sm leading-5 ${secondary}`}>
+            Riders need to know they&apos;re getting into a verified vehicle. Add your vehicle and submit it for review.
+          </Text>
+          <TouchableOpacity onPress={() => router.push('/vehicles')} className="mt-2 rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+            <Text className="text-base font-bold text-white">Add Vehicle</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
       <>
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-10 pt-5" keyboardShouldPersistTaps="handled">
@@ -216,6 +261,27 @@ export default function CreateTripScreen() {
               value={destination}
               onChangeText={setDestination}
             />
+          </View>
+        </View>
+
+        <View>
+          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>VEHICLE</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {approvedVehicles.map((vehicle) => {
+              const selected = selectedVehicleId === vehicle.id;
+              return (
+                <TouchableOpacity
+                  key={vehicle.id}
+                  onPress={() => setSelectedVehicleId(vehicle.id)}
+                  className={`flex-row items-center gap-2 rounded-full px-4 py-2.5 ${selected ? 'bg-[#2A55D4]' : `border ${border} ${inputBg}`}`}
+                >
+                  <Car size={16} color={selected ? '#FFFFFF' : '#8A93A6'} />
+                  <Text className={`text-[15px] font-semibold ${selected ? 'text-white' : primary}`}>
+                    {vehicle.make} {vehicle.model}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 

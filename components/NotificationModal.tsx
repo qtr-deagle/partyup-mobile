@@ -143,7 +143,7 @@ export default function NotificationModal({
           <View className={`px-6 py-4 border-b pt-14 ${isDark ? 'bg-[#0F172A] border-[#1E293B]' : 'bg-white border-gray-100'}`}>
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
-                <Text className={`text-2xl font-bold ${isDark ? 'text-white' : 'text-black'}`}>Notifications</Text>
+                <Text className={`text-headline-24 font-bold ${isDark ? 'text-white' : 'text-black'}`}>Notifications</Text>
                 {unreadCount > 0 && (
                   <View className="bg-red-500 rounded-full px-2 py-1">
                     <Text className="text-white text-xs font-bold">{unreadCount}</Text>

@@ -1,3 +1,98 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+ * Inter is loaded as static per-weight font files (app/_layout.tsx), and RN
+ * ignores `font-weight` on custom fonts -- each weight needs its own
+ * fontFamily name. These rules piggyback on the existing font-* weight
+ * utilities (used across the app) so every className that already sets a
+ * weight also picks up the matching Inter file, without touching call sites.
+ */
+* {
+  font-family: 'Inter_400Regular';
+}
+
+.font-normal {
+  font-family: 'Inter_400Regular';
+}
+
+.font-medium {
+  font-family: 'Inter_500Medium';
+}
+
+.font-semibold {
+  font-family: 'Inter_600SemiBold';
+}
+
+.font-bold {
+  font-family: 'Inter_700Bold';
+}
+
+.font-extrabold {
+  font-family: 'Inter_800ExtraBold';
+}
+
+.font-black {
+  font-family: 'Inter_900Black';
+}
+
+/*
+ * Headings use Poppins (PartyUp web design tokens: Inter for body/UI,
+ * Poppins for h1-h6, semibold by default). These compound selectors target
+ * the app's heading classes specifically -- text-headline-* (the custom
+ * scale in tailwind.config.js) and the shared typography.sectionTitle /
+ * cardHeadline / valueLarge tokens in lib/theme.ts -- so body text using the
+ * same font-* weight utilities elsewhere is unaffected. Two-class selectors
+ * outrank the single-class font-* rules above regardless of source order.
+ */
+.text-headline-18,
+.text-headline-20,
+.text-headline-24,
+.text-headline-28,
+.text-headline-32 {
+  font-family: 'Poppins_600SemiBold';
+}
+
+.text-headline-18.font-medium,
+.text-headline-20.font-medium,
+.text-headline-24.font-medium,
+.text-headline-28.font-medium,
+.text-headline-32.font-medium {
+  font-family: 'Poppins_600SemiBold';
+}
+
+.text-headline-18.font-semibold,
+.text-headline-20.font-semibold,
+.text-headline-24.font-semibold,
+.text-headline-28.font-semibold,
+.text-headline-32.font-semibold {
+  font-family: 'Poppins_600SemiBold';
+}
+
+.text-headline-18.font-bold,
+.text-headline-20.font-bold,
+.text-headline-24.font-bold,
+.text-headline-28.font-bold,
+.text-headline-32.font-bold {
+  font-family: 'Poppins_700Bold';
+}
+
+.text-headline-18.font-extrabold,
+.text-headline-20.font-extrabold,
+.text-headline-24.font-extrabold,
+.text-headline-28.font-extrabold,
+.text-headline-32.font-extrabold,
+.text-headline-18.font-black,
+.text-headline-20.font-black,
+.text-headline-24.font-black,
+.text-headline-28.font-black,
+.text-headline-32.font-black {
+  font-family: 'Poppins_800ExtraBold';
+}
+
+.text-xl.font-black,
+.text-2xl.font-black,
+.text-3xl.font-black {
+  font-family: 'Poppins_800ExtraBold';
+}

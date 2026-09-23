@@ -4,6 +4,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Redirect, Tabs } from 'expo-router';
 import { Briefcase, Compass, Home, Map, MessageCircle, UserRound } from 'lucide-react-native';
 import React from 'react';
+import { Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
@@ -45,21 +46,28 @@ export default function TabLayout() {
           shadowOpacity: 0,
           height: 58 + Math.max(insets.bottom, 8),
           paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 10,
+          paddingTop: 2,
           paddingHorizontal: 12,
         },
         tabBarItemStyle: {
           alignItems: 'center',
           justifyContent: 'center',
-          paddingVertical: 2,
+          paddingTop: 0,
+          paddingBottom: 12,
         },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-          lineHeight: 14,
-          marginTop: 4,
-          marginBottom: 0,
-        },
+        tabBarLabel: ({ focused, children }) => (
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: 10,
+              fontWeight: '500',
+              lineHeight: 13,
+              marginTop: 1,
+              color: focused ? activeTintColor : inactiveTintColor,
+            }}>
+            {children}
+          </Text>
+        ),
         tabBarIconStyle: {
           marginBottom: 0,
         },

@@ -84,7 +84,7 @@ export function SwipeCard({ profile, trip, score, isDark, onConnect, onPass }: S
         <View className={`flex-row items-start justify-between px-5 pb-4 pt-5 ${headerBackground}`}>
           <View className="flex-1 pr-3">
             <View className="flex-row items-center gap-1.5">
-              <Text className={`text-2xl font-black ${textPrimary}`}>{profile.display_name}{age !== null ? `, ${age}` : ''}</Text>
+              <Text className={`text-headline-24 font-bold ${textPrimary}`}>{profile.display_name}{age !== null ? `, ${age}` : ''}</Text>
               {verified ? <BadgeCheck size={20} color="#179B67" /> : null}
             </View>
             <Text numberOfLines={1} className={`mt-2 text-[15px] leading-5 ${textSecondary}`}>{profile.bio || 'This traveler hasn’t added a bio yet.'}</Text>

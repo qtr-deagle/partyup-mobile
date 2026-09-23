@@ -18,7 +18,7 @@ export function getTheme(isDark: boolean) {
 }
 
 export const typography = {
-  pageTitle: 'text-[32px] leading-9 font-black',
+  pageTitle: 'text-headline-24 font-bold',
   sectionTitle: 'text-xl font-black',
   cardHeadline: 'text-3xl font-black',
   label: 'text-sm',

@@ -22,6 +22,7 @@ export type UserProfile = {
   is_active: boolean;
   warning_alerts_enabled: boolean;
   emergency_sos_enabled: boolean;
+  terms_accepted_at: string | null;
   created_at: string;
   updated_at: string;
 };

@@ -36,6 +36,7 @@ export default function MapScreen() {
   const [isVisible, setIsVisible] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [warningModeVisible, setWarningModeVisible] = useState(false);
+  const [locationUnavailable, setLocationUnavailable] = useState(false);
 
   const channelsRef = useRef<Map<string, ReturnType<typeof supabase.channel>>>(new Map());
 
@@ -70,6 +71,30 @@ export default function MapScreen() {
     return result;
   }, []);
 
+  const fetchPosition = useCallback(async () => {
+    try {
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setMyPosition({ latitude: position.coords.latitude, longitude: position.coords.longitude });
+      setRegion({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        latitudeDelta: DEFAULT_DELTA,
+        longitudeDelta: DEFAULT_DELTA,
+      });
+      await upsertCurrentLocation({
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      });
+      setLocationUnavailable(false);
+      return true;
+    } catch {
+      // Most commonly the device's Location Services (GPS) are turned off.
+      setLocationUnavailable(true);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -80,25 +105,9 @@ export default function MapScreen() {
         return;
       }
 
-      try {
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (cancelled) {
-          return;
-        }
-        setMyPosition({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-        setRegion({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          latitudeDelta: DEFAULT_DELTA,
-          longitudeDelta: DEFAULT_DELTA,
-        });
-        await upsertCurrentLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        });
-      } catch {
-        // Background task will populate the location shortly.
+      await fetchPosition();
+      if (cancelled) {
+        return;
       }
 
       await startBackgroundLocationTracking();
@@ -110,7 +119,7 @@ export default function MapScreen() {
     return () => {
       cancelled = true;
     };
-  }, [requestPermissions]);
+  }, [requestPermissions, fetchPosition]);
 
   useFocusEffect(
     useCallback(() => {
@@ -287,6 +296,19 @@ export default function MapScreen() {
                 </View>
               )}
             </>
+          ) : locationUnavailable ? (
+            <View className="flex-1 items-center justify-center gap-3 px-6">
+              <MapPin size={28} color="#65728B" />
+              <Text className={`text-center text-[15px] ${secondaryText}`}>Couldn&apos;t get your location — check that Location Services is turned on.</Text>
+              <View className="flex-row gap-3">
+                <TouchableOpacity onPress={() => void fetchPosition()} className="rounded-full bg-[#2246C7] px-5 py-2.5">
+                  <Text className="font-semibold text-white">Try Again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => void Linking.openSettings()} className="rounded-full border border-[#2246C7] px-5 py-2.5">
+                  <Text className="font-semibold text-[#2246C7]">Open Settings</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           ) : (
             <View className="flex-1 items-center justify-center">
               <ActivityIndicator color="#2246C7" />
@@ -319,7 +341,7 @@ export default function MapScreen() {
 
         {errorMessage && <Text className="mt-3 text-[13px] text-[#D93025]">{errorMessage}</Text>}
 
-        <Text className={`mt-5 text-[28px] font-black ${primaryText}`}>Nearby Travelers</Text>
+        <Text className={`mt-5 text-headline-28 font-bold ${primaryText}`}>Nearby Travelers</Text>
 
         <View className="mt-5 gap-3">
           {travelers.length === 0 ? (

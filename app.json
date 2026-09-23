@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "partyup-mobile",
+    "name": "PartyUp",
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
@@ -44,7 +44,7 @@
       ],
       "config": {
         "googleMaps": {
-          "apiKey": "unused-placeholder-key-osm-tiles-in-use"
+          "apiKey": "AIzaSyCoIRf4tcTyLvvAm3kpSmwdJerxqGFQaI4"
         }
       }
     },

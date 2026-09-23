@@ -38,7 +38,7 @@ function SettingRow({
     <View className={`flex-row items-center gap-3 rounded-[18px] px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F8]'}`}>
       <View className="mt-0.5">{icon}</View>
       <View className="flex-1 pr-2">
-        <Text className={`text-[18px] font-black ${isDark ? 'text-white' : 'text-[#182847]'}`}>{title}</Text>
+        <Text className={`text-headline-18 font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>{title}</Text>
         <Text className={`mt-1 text-[15px] leading-5 ${isDark ? 'text-[#94A3B8]' : 'text-[#67748D]'}`}>{description}</Text>
       </View>
       <Switch
@@ -125,7 +125,7 @@ export default function ModalScreen() {
         <SettingsCard isDark={isDark}>
           <View className="flex-row items-center gap-2">
             <SunMedium size={22} color={isDark ? '#E2E8F0' : '#182847'} />
-            <Text className={`text-[22px] font-black ${isDark ? 'text-white' : 'text-[#182847]'}`}>Appearance</Text>
+            <Text className={`text-headline-24 font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>Appearance</Text>
           </View>
 
           <View className="mt-4">
@@ -143,7 +143,7 @@ export default function ModalScreen() {
         <SettingsCard isDark={isDark}>
           <View className="flex-row items-center gap-2">
             <Shield size={22} color="#00A56A" />
-            <Text className={`text-[22px] font-black ${isDark ? 'text-white' : 'text-[#182847]'}`}>Safety Features</Text>
+            <Text className={`text-headline-24 font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>Safety Features</Text>
           </View>
 
           <View className="mt-4 gap-4">
@@ -186,7 +186,7 @@ export default function ModalScreen() {
         <SettingsCard isDark={isDark}>
           <View className="flex-row items-center gap-2">
             <ShieldCheck size={22} color="#00A56A" />
-            <Text className={`text-[22px] font-black ${isDark ? 'text-white' : 'text-[#182847]'}`}>Verification</Text>
+            <Text className={`text-headline-24 font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>Verification</Text>
           </View>
 
           <View className="mt-4 gap-3">
@@ -202,6 +202,16 @@ export default function ModalScreen() {
         <TouchableOpacity onPress={() => router.push('/trusted-circle')} className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
           <Text className={`text-center text-[17px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Manage Safety Contacts</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => router.push('/blocked-users')} className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
+          <Text className={`text-center text-[17px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Manage Blocked Users</Text>
+        </TouchableOpacity>
+
+        {profile?.role === 'staff' || profile?.role === 'admin' ? (
+          <TouchableOpacity onPress={() => router.push('/id-review')} className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
+            <Text className={`text-center text-[17px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Review ID Verifications</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity className={`rounded-2xl border py-4 ${isDark ? 'border-[#7F1D1D] bg-[#111827]' : 'border-[#E32727] bg-white'}`}>
           <Text className="text-center text-[17px] font-medium text-[#E32727]">Delete Account</Text>

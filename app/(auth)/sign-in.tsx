@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { Link, useLocalSearchParams, useRouter } from 'expo-router';
-import { Eye, EyeOff, Github, Lock, Mail } from 'lucide-react-native';
+import { Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -51,7 +51,7 @@ export default function SignInScreen() {
       <ScrollView contentContainerClassName="flex-grow justify-center px-2 py-8" keyboardShouldPersistTaps="handled">
         <View className="w-full rounded-[14px] bg-white px-6 py-7 shadow-lg shadow-black/10">
           <View className="items-center">
-            <Text className="text-[27px] font-black text-[#2445B8]">PartyUp</Text>
+            <Text className="text-headline-28 font-bold text-[#2445B8]">PartyUp</Text>
             <Text className="mt-1 text-[12px] text-[#697386]">Travel Buddy Matching Platform</Text>
           </View>
 
@@ -96,23 +96,6 @@ export default function SignInScreen() {
           <TouchableOpacity onPress={handleSignIn} disabled={submitting} className="mt-4 h-[42px] justify-center rounded-[9px] bg-[#2445B8]">
             {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-[16px] font-bold text-white">Sign In</Text>}
           </TouchableOpacity>
-
-          <View className="mt-5 flex-row items-center">
-            <View className="h-px flex-1 bg-[#E8EAED]" />
-            <Text className="px-3 text-[12px] text-[#8A919D]">Or continue with</Text>
-            <View className="h-px flex-1 bg-[#E8EAED]" />
-          </View>
-
-          <View className="mt-4 flex-row gap-2">
-            <TouchableOpacity className="h-[36px] flex-1 flex-row items-center justify-center rounded-[9px] border border-[#E4E6E9] bg-[#F4F5F6]" accessibilityLabel="Continue with Google">
-              <Text className="mr-2 text-[14px] font-bold text-[#4285F4]">G</Text>
-              <Text className="text-[12px] font-medium text-[#273142]">Google</Text>
-            </TouchableOpacity>
-            <TouchableOpacity className="h-[36px] flex-1 flex-row items-center justify-center rounded-[9px] border border-[#E4E6E9] bg-[#F4F5F6]" accessibilityLabel="Continue with GitHub">
-              <Github size={14} color="#383443" />
-              <Text className="ml-2 text-[12px] font-medium text-[#273142]">GitHub</Text>
-            </TouchableOpacity>
-          </View>
 
           <Text className="mt-5 text-center text-[12px] text-[#697386]">
             Don&apos;t have an account?{' '}

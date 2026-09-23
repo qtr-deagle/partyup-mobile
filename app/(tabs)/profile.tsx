@@ -102,7 +102,7 @@ export default function ProfileScreen() {
           <TouchableOpacity onPress={() => router.push('/modal')} className="h-10 w-10 items-center justify-center rounded-full">
             <Cog size={22} color={isDark ? '#E2E8F0' : '#2647B8'} />
           </TouchableOpacity>
-          <Text className={`${typography.pageTitle} ${titleColor}`}>{profile?.display_name ?? 'Alex'}</Text>
+          <Text className={`${typography.pageTitle} ${titleColor}`}>Profile</Text>
           <View className="h-10 w-10" />
         </View>
       </View>
@@ -113,7 +113,7 @@ export default function ProfileScreen() {
             <View className={`h-28 w-28 rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#D5E4EE]'}`} />
 
             <View className="mt-6 flex-row items-center gap-2">
-              <Text className={`text-[30px] font-black ${textPrimary}`}>{profile?.display_name ?? 'Alex'}</Text>
+              <Text className={`text-headline-28 font-bold ${textPrimary}`}>{profile?.display_name ?? 'Alex'}</Text>
               <ShieldCheck size={20} color="#00A56A" />
             </View>
 
@@ -140,7 +140,7 @@ export default function ProfileScreen() {
             </Text>
 
             <View className="mt-6 w-full border-t border-[#E8ECF3] pt-6">
-              <Text className={`text-[18px] font-black ${textPrimary}`}>Travel Experience</Text>
+              <Text className={`text-headline-18 font-bold ${textPrimary}`}>Travel Experience</Text>
 
               <View className="mt-4 gap-4">
                 {[
@@ -157,7 +157,7 @@ export default function ProfileScreen() {
             </View>
 
             <View className="mt-6 w-full border-t border-[#E8ECF3] pt-6">
-              <Text className={`text-[18px] font-black ${textPrimary}`}>Interests</Text>
+              <Text className={`text-headline-18 font-bold ${textPrimary}`}>Interests</Text>
               <View className="mt-4 flex-row flex-wrap gap-2.5">
                 {profile?.interests?.length ? profile.interests.map((interest) => (
                   <View key={interest} className={`rounded-full px-4 py-2 ${softFill}`}>
@@ -186,7 +186,7 @@ export default function ProfileScreen() {
               <View className="flex-row items-start gap-3">
                 {styles.icon}
                 <View className="flex-1">
-                  <Text className={`text-[18px] font-black ${textPrimary}`}>ID Verification</Text>
+                  <Text className={`text-headline-18 font-bold ${textPrimary}`}>ID Verification</Text>
                   <Text className="text-[18px]" style={{ color: styles.labelColor }}>{styles.label}</Text>
 
                   {status === 'approved' && (
@@ -219,7 +219,7 @@ export default function ProfileScreen() {
         <SectionCard>
           <View className="flex-row items-center gap-2">
             <Shield size={22} color="#00A56A" />
-            <Text className={`text-[22px] font-black ${textPrimary}`}>Other Verifications</Text>
+            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Other Verifications</Text>
           </View>
 
           <View className="mt-4 gap-3">
@@ -235,7 +235,7 @@ export default function ProfileScreen() {
         <SectionCard>
           <View className="flex-row items-center gap-2">
             <Users size={22} color="#2647B8" />
-            <Text className={`text-[22px] font-black ${textPrimary}`}>Trusted Circle</Text>
+            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Trusted Circle</Text>
           </View>
 
           <TouchableOpacity onPress={() => router.push('/friends')} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DDE8] bg-white'}`}>
@@ -262,7 +262,7 @@ export default function ProfileScreen() {
         </SectionCard>
 
         <SectionCard>
-            <Text className={`text-[22px] font-black ${textPrimary}`}>Recent Reviews</Text>
+            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Recent Reviews</Text>
 
           <View className="mt-4 gap-4">
             {reviews.map((review, index) => (
@@ -285,7 +285,7 @@ export default function ProfileScreen() {
         <SectionCard>
           <View className="flex-row items-center gap-2">
             <AlertCircle size={22} color="#E32727" />
-            <Text className={`text-[22px] font-black ${textPrimary}`}>Emergency Settings</Text>
+            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Emergency Settings</Text>
           </View>
           <Text className={`mt-4 text-[17px] leading-6 ${textSecondary}`}>
             When you activate SOS, your location will be shared with your trusted circle and our safety team.
@@ -299,7 +299,7 @@ export default function ProfileScreen() {
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
               <Wallet size={22} color="#2647B8" />
-              <Text className={`text-[22px] font-black ${textPrimary}`}>Payment Methods</Text>
+              <Text className={`text-headline-18 font-bold ${textPrimary}`}>Payment Methods</Text>
             </View>
             {!editingPayment ? (
               <TouchableOpacity onPress={startEditingPayment}>

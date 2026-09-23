@@ -33,6 +33,8 @@ export type SearchProfile = {
   updated_at: string;
   request_status: 'incoming_pending' | 'outgoing_pending' | 'accepted' | null;
   request_id: string | null;
+  is_blocked_by_me?: boolean;
+  has_blocked_me?: boolean;
 };
 
 export type IncomingFriendRequest = {
@@ -97,11 +99,19 @@ export async function searchProfiles(query: string) {
 }
 
 export async function getProfileById(id: string) {
-  const result = await searchProfiles('');
-  if (result.error) {
-    return { data: null, error: result.error };
+  let response;
+  try {
+    response = await withRequestTimeout(supabase.rpc('get_profile_by_id', { p_user_id: id }), 'Loading profile');
+  } catch (error) {
+    return { data: null, error: error instanceof Error ? error : new Error('Unable to load profile.') };
   }
-  return { data: result.data.find((profile) => profile.id === id) ?? null, error: null };
+  const { data, error } = response;
+  if (error) {
+    return { data: null, error };
+  }
+  const rows = (data ?? []) as SearchProfile[];
+  const profile = rows[0];
+  return { data: profile ? { ...profile, request_status: null, request_id: null } : null, error: null };
 }
 
 export async function getFriendRequestStatuses(profileIds: string[]) {

@@ -1,12 +1,14 @@
 import { supabase } from '@/lib/supabase';
 import { withRequestTimeout } from '@/lib/social';
 
+export type TripType = 'carpool' | 'tour';
 export type TripVisibility = 'public' | 'trusted_circle' | 'private';
 export type TripStatus = 'draft' | 'open' | 'full' | 'ongoing' | 'completed' | 'cancelled';
 export type MemberRole = 'member' | 'driver' | 'coordinator';
 export type MemberStatus = 'pending' | 'accepted' | 'rejected' | 'left';
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid';
 export type PaymentMethod = 'gcash' | 'paymaya';
+export type PaymentChannel = 'manual' | 'gateway';
 
 export type MyTrip = {
   id: string;
@@ -15,26 +17,35 @@ export type MyTrip = {
   destination: string;
   start_at: string | null;
   end_at: string | null;
+  duration_days: number | null;
   status: TripStatus;
   visibility: TripVisibility;
   seats_total: number | null;
   seats_available: number | null;
   total_cost: number | null;
   price_per_person: number | null;
+  interest_tags: string[];
   rider_count: number;
   my_role: MemberRole;
   my_status: MemberStatus;
   pending_join_requests_count: number;
+  organizer_id: string;
+  organizer_display_name: string;
+  organizer_avatar_url: string | null;
+  organizer_verified: boolean;
+  is_favorited: boolean;
   created_at: string;
 };
 
 export type TripDetail = {
   id: string;
   title: string;
+  trip_type: TripType;
   origin: string;
   destination: string;
   start_at: string | null;
   end_at: string | null;
+  duration_days: number | null;
   status: TripStatus;
   visibility: TripVisibility;
   seats_total: number | null;
@@ -43,6 +54,7 @@ export type TripDetail = {
   total_cost: number | null;
   price_per_person: number | null;
   rider_count: number;
+  interest_tags: string[];
   invite_code: string;
   driver_id: string;
   driver_display_name: string;
@@ -53,6 +65,7 @@ export type TripDetail = {
   my_status: MemberStatus | null;
   my_payment_status: PaymentStatus | null;
   my_payment_amount: number | null;
+  my_payment_channel: PaymentChannel | null;
   my_invited_by_display_name: string | null;
 };
 
@@ -68,13 +81,15 @@ export type TripMember = {
   payment_status: PaymentStatus;
   payment_amount: number | null;
   payment_reference: string | null;
+  payment_channel: PaymentChannel;
+  payment_intent_id: string | null;
   payment_reported_at: string | null;
   payment_confirmed_at: string | null;
   joined_at: string | null;
   created_at: string;
 };
 
-export async function listMyTrips(tripType: 'carpool' | 'tour' = 'carpool') {
+export async function listMyTrips(tripType: TripType = 'carpool') {
   let response;
   try {
     response = await withRequestTimeout(supabase.rpc('list_my_trips', { p_trip_type: tripType }), 'Loading your trips');
@@ -97,6 +112,12 @@ export async function createTrip(input: {
   notes?: string | null;
   destinationLat?: number | null;
   destinationLng?: number | null;
+  tripType?: TripType;
+  pricePerPerson?: number | null;
+  durationDays?: number | null;
+  interests?: string[];
+  itinerary?: { dayNumber: number; description: string }[];
+  vehicleId?: string | null;
 }) {
   return withRequestTimeout(
     supabase.rpc('create_trip', {
@@ -111,6 +132,12 @@ export async function createTrip(input: {
       p_notes: input.notes ?? null,
       p_destination_lat: input.destinationLat ?? null,
       p_destination_lng: input.destinationLng ?? null,
+      p_trip_type: input.tripType ?? 'carpool',
+      p_price_per_person: input.pricePerPerson ?? null,
+      p_duration_days: input.durationDays ?? null,
+      p_interests: input.interests ?? [],
+      p_itinerary: (input.itinerary ?? []).map((day) => ({ day_number: day.dayNumber, description: day.description })),
+      p_vehicle_id: input.vehicleId ?? null,
     }),
     'Creating trip'
   );
@@ -118,6 +145,10 @@ export async function createTrip(input: {
 
 export async function startTrip(tripId: string) {
   return withRequestTimeout(supabase.rpc('start_trip', { p_trip_id: tripId }), 'Starting trip');
+}
+
+export async function completeTrip(tripId: string) {
+  return withRequestTimeout(supabase.rpc('complete_trip', { p_trip_id: tripId }), 'Completing trip');
 }
 
 export async function getTripDetail(tripId: string) {
@@ -197,6 +228,46 @@ export async function reportPayment(tripId: string, reference?: string) {
 
 export async function confirmPaymentReceived(tripMemberId: string) {
   return withRequestTimeout(supabase.rpc('confirm_payment_received', { p_trip_member_id: tripMemberId }), 'Confirming payment');
+}
+
+// supabase-js's FunctionsHttpError only exposes a generic "Edge Function
+// returned a non-2xx status code" message -- the function's actual JSON
+// error body is on error.context (a Response). Unwrap it so the real reason
+// (bad request, PayMongo rejection, etc.) reaches the user/logs instead.
+async function extractFunctionErrorMessage(error: unknown, fallback: string): Promise<string> {
+  const context = (error as { context?: Response } | null)?.context;
+  if (context && typeof context.json === 'function') {
+    try {
+      const body = await context.clone().json();
+      if (body?.error) {
+        return String(body.error);
+      }
+    } catch {
+      // Response body wasn't JSON -- fall through to the generic message.
+    }
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+// Starts a real (sandbox/test-mode only) PayMongo payment for the caller's
+// share of the trip and returns PayMongo's hosted checkout URL to open in
+// an in-app browser. The payment is only marked 'paid' once the
+// paymongo-webhook Edge Function verifies PayMongo's webhook signature --
+// this call itself only moves the rider to 'pending'.
+export async function startGatewayPayment(tripId: string, method: PaymentMethod) {
+  try {
+    const { data, error } = await withRequestTimeout(
+      supabase.functions.invoke('create-gateway-payment', { body: { tripId, method } }),
+      'Starting payment'
+    );
+    if (error) {
+      const message = await extractFunctionErrorMessage(error, 'Unable to start payment.');
+      return { data: null, error: new Error(message) };
+    }
+    return { data: data as { checkoutUrl: string; paymentIntentId: string }, error: null };
+  } catch (error) {
+    return { data: null, error: error instanceof Error ? error : new Error('Unable to start payment.') };
+  }
 }
 
 export function buildInviteUrl(inviteCode: string, referrerUserId: string) {

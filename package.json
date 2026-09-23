@@ -6,12 +6,17 @@
     "start": "expo start --localhost",
     "start:device": "expo start --lan",
     "reset-project": "node ./scripts/reset-project.js",
+    "demo:seed": "node ./scripts/demo-seed.mjs seed",
+    "demo:reset": "node ./scripts/demo-seed.mjs reset",
     "android": "expo start --android --localhost",
-    "ios": "expo start --ios",
+    "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "postinstall": "patch-package"
   },
   "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@quidone/react-native-wheel-picker": "^1.7.1",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -64,6 +69,7 @@
     "@types/react": "~19.2.4",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~57.0.2",
+    "patch-package": "^8.0.1",
     "typescript": "~6.0.3"
   },
   "private": true

@@ -7,7 +7,7 @@ import { Clock, MapPin, Shield, ShieldAlert, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Modal, Text, TouchableOpacity, View } from 'react-native';
 
-const DURATION_SECONDS = 60;
+const DURATION_SECONDS = 10;
 
 type Phase = 'idle' | 'activating' | 'monitoring' | 'escalated' | 'error';
 
@@ -152,7 +152,7 @@ export default function WarningModeModal({
                 <View className={`h-14 w-14 items-center justify-center rounded-full ${isDark ? 'bg-[#3A1B29]' : 'bg-[#FFE1DC]'}`}>
                   <ShieldAlert size={28} color="#E32727" />
                 </View>
-                <Text className={`mt-4 text-center text-[22px] font-black ${primary}`}>Activate Warning Mode?</Text>
+                <Text className={`mt-4 text-center text-headline-24 font-bold ${primary}`}>Activate Warning Mode?</Text>
               </View>
 
               {!warningAlertsEnabled ? (
@@ -225,7 +225,7 @@ export default function WarningModeModal({
               <View className={`h-14 w-14 items-center justify-center rounded-full ${isDark ? 'bg-[#3A1B29]' : 'bg-[#FFE1DC]'}`}>
                 <ShieldAlert size={28} color="#E32727" />
               </View>
-              <Text className={`mt-4 text-center text-[18px] font-black ${primary}`}>Warning Mode Active</Text>
+              <Text className={`mt-4 text-center text-headline-18 font-bold ${primary}`}>Warning Mode Active</Text>
               <Text className={`mt-1 text-center text-[14px] ${secondary}`}>Sharing your location with trusted contacts</Text>
 
               <Text className="mt-6 text-[56px] font-black text-[#E32727]">{secondsLeft}s</Text>
@@ -242,7 +242,7 @@ export default function WarningModeModal({
               <View className={`h-14 w-14 items-center justify-center rounded-full ${isDark ? 'bg-[#0F3D2E]' : 'bg-[#DDF4EA]'}`}>
                 <Shield size={28} color="#00A56A" />
               </View>
-              <Text className={`mt-4 text-center text-[18px] font-black ${primary}`}>Alert Sent</Text>
+              <Text className={`mt-4 text-center text-headline-18 font-bold ${primary}`}>Alert Sent</Text>
               <Text className={`mt-2 text-center text-[14px] leading-5 ${secondary}`}>
                 {recipientCount > 0
                   ? `${recipientCount} trusted contact${recipientCount === 1 ? '' : 's'} notified with your location.`
