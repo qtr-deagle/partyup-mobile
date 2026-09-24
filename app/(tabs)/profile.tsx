@@ -1,13 +1,15 @@
 import { useAuth } from '@/hooks/auth-provider';
+import { uploadAvatar } from '@/lib/avatar';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getTheme, typography } from '@/lib/theme';
 import { getProfileStats, listUserReviews, type ProfileStats, type UserReview } from '@/lib/ratings';
 import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
 import { getMyVerification, type IdVerification } from '@/lib/verification';
+import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Car, CheckCircle2, Clock, Cog, LogOut, Shield, ShieldAlert, ShieldCheck, Star, Users } from 'lucide-react-native';
+import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LogOut, Shield, ShieldAlert, ShieldCheck, Star, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 function formatRelativeDate(iso: string) {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -63,6 +65,33 @@ export default function ProfileScreen() {
   const location = [profile?.city, profile?.country].filter(Boolean).join(', ');
   const emailVerified = Boolean(session?.user.email_confirmed_at);
 
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  async function handleChangeAvatar() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission needed', 'Photo library access is needed to set a profile photo.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+
+    setAvatarUploading(true);
+    const { error } = await uploadAvatar(result.assets[0].uri);
+    if (error) {
+      Alert.alert('Upload failed', error.message);
+    } else {
+      await refreshProfile();
+    }
+    setAvatarUploading(false);
+  }
+
   useFocusEffect(
     useCallback(() => {
       void refreshProfile();
@@ -106,17 +135,27 @@ export default function ProfileScreen() {
       <View className="px-4 pt-4 gap-5">
         <SectionCard>
           <View className="items-center">
-            {profile?.avatar_url ? (
-              <Image source={{ uri: profile.avatar_url }} className="h-28 w-28 rounded-full" />
-            ) : (
-              <View className={`h-28 w-28 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#D5E4EE]'}`}>
-                <Text className={`text-[40px] font-bold ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{profile?.display_name?.trim().charAt(0).toUpperCase() ?? ''}</Text>
+            <TouchableOpacity onPress={handleChangeAvatar} disabled={avatarUploading} activeOpacity={0.8}>
+              {profile?.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} className="h-20 w-20 rounded-full" />
+              ) : (
+                <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#D5E4EE]'}`}>
+                  <Text className={`text-[32px] font-bold ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{profile?.display_name?.trim().charAt(0).toUpperCase() ?? ''}</Text>
+                </View>
+              )}
+              {avatarUploading ? (
+                <View className="absolute inset-0 items-center justify-center rounded-full bg-black/50">
+                  <ActivityIndicator color="#FFFFFF" />
+                </View>
+              ) : null}
+              <View className={`absolute -bottom-0.5 -right-0.5 h-7 w-7 items-center justify-center rounded-full border-2 bg-[#2747C7] ${isDark ? 'border-[#111B2E]' : 'border-white'}`}>
+                <Camera size={14} color="#FFFFFF" />
               </View>
-            )}
+            </TouchableOpacity>
 
-            <View className="mt-6 flex-row items-center gap-2">
-              <Text className={`text-headline-28 font-bold ${textPrimary}`}>{profile?.display_name ?? ''}</Text>
-              {profile?.verification_status === 'approved' ? <ShieldCheck size={20} color="#00A56A" /> : null}
+            <View className="mt-4 max-w-full flex-row items-center justify-center gap-1.5 px-2">
+              <Text className={`shrink text-center text-headline-20 font-bold ${textPrimary}`} numberOfLines={2}>{profile?.display_name ?? ''}</Text>
+              {profile?.verification_status === 'approved' ? <ShieldCheck size={18} color="#00A56A" /> : null}
             </View>
 
             {profileAge ? (
@@ -127,28 +166,28 @@ export default function ProfileScreen() {
               </View>
             ) : null}
 
-            {location ? <Text className={`mt-2 text-[18px] ${textSecondary}`}>{location}</Text> : null}
+            {location ? <Text className={`mt-2 text-[15px] ${textSecondary}`}>{location}</Text> : null}
 
             <View className="mt-3">
-              <StarRow rating={stats?.avg_rating ?? 0} size={18} />
+              <StarRow rating={stats?.avg_rating ?? 0} size={16} />
             </View>
 
-            <Text className={`mt-1 text-[16px] ${textSecondary}`}>
+            <Text className={`mt-1 text-[14px] ${textSecondary}`}>
               {stats?.rating_count && stats.avg_rating != null
                 ? `${stats.avg_rating.toFixed(1)} rating (${stats.rating_count} ${stats.rating_count === 1 ? 'review' : 'reviews'})`
                 : 'No ratings yet'}
             </Text>
 
             {profile?.bio?.trim() ? (
-              <Text className={`mt-6 self-stretch text-[17px] leading-7 ${textPrimary}`}>{profile.bio.trim()}</Text>
+              <Text className={`mt-4 self-stretch text-[15px] leading-6 ${textPrimary}`}>{profile.bio.trim()}</Text>
             ) : (
-              <Text className={`mt-6 text-[16px] italic ${textSecondary}`}>No bio yet.</Text>
+              <Text className={`mt-4 text-[14px] italic ${textSecondary}`}>No bio yet.</Text>
             )}
 
-            <View className="mt-6 w-full border-t border-[#E8ECF3] pt-6">
-              <Text className={`text-headline-18 font-bold ${textPrimary}`}>Travel Experience</Text>
+            <View className={`mt-5 w-full border-t ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'} pt-5`}>
+              <Text className={`text-[16px] font-bold ${textPrimary}`}>Travel Experience</Text>
 
-              <View className="mt-4 gap-4">
+              <View className="mt-3 gap-3">
                 {[
                   ['Trips Completed', String(stats?.trips_completed ?? 0)],
                   ['Places Visited', String(stats?.places_visited ?? 0)],
@@ -156,15 +195,15 @@ export default function ProfileScreen() {
                   ['Tours', String(stats?.tours_completed ?? 0)],
                 ].map(([label, value]) => (
                   <View key={label} className="flex-row items-center justify-between">
-                    <Text className={`text-[18px] ${textSecondary}`}>{label}</Text>
-                    <Text className={`text-[18px] font-extrabold ${textPrimary}`}>{value}</Text>
+                    <Text className={`text-[15px] ${textSecondary}`}>{label}</Text>
+                    <Text className={`text-[15px] font-bold ${textPrimary}`}>{value}</Text>
                   </View>
                 ))}
               </View>
             </View>
 
-            <View className="mt-6 w-full border-t border-[#E8ECF3] pt-6">
-              <Text className={`text-headline-18 font-bold ${textPrimary}`}>Interests</Text>
+            <View className={`mt-5 w-full border-t ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'} pt-5`}>
+              <Text className={`text-[16px] font-bold ${textPrimary}`}>Interests</Text>
               <View className="mt-4 flex-row flex-wrap gap-2.5">
                 {profile?.interests?.length ? profile.interests.map((interest) => (
                   <View key={interest} className={`rounded-full px-4 py-2 ${softFill}`}>
@@ -193,12 +232,12 @@ export default function ProfileScreen() {
               <View className="flex-row items-start gap-3">
                 {styles.icon}
                 <View className="flex-1">
-                  <Text className={`text-headline-18 font-bold ${textPrimary}`}>ID Verification</Text>
-                  <Text className="text-[18px]" style={{ color: styles.labelColor }}>{styles.label}</Text>
+                  <Text className={`text-[16px] font-bold ${textPrimary}`}>ID Verification</Text>
+                  <Text className="text-[15px]" style={{ color: styles.labelColor }}>{styles.label}</Text>
 
                   {status === 'approved' && (
                     <View className={`mt-3 rounded-xl px-4 py-4 ${isDark ? 'bg-[#153224]' : 'bg-[#D9F8E4]'}`}>
-                      <Text className={`text-[17px] leading-6 ${isDark ? 'text-[#A7F3D0]' : 'text-[#0F7B4B]'}`}>
+                      <Text className={`text-[15px] leading-6 ${isDark ? 'text-[#A7F3D0]' : 'text-[#0F7B4B]'}`}>
                         ✓ Your identity is verified. You can now create and join trips!
                       </Text>
                     </View>
@@ -225,15 +264,15 @@ export default function ProfileScreen() {
 
         <SectionCard>
           <View className="flex-row items-center gap-2">
-            <Shield size={22} color="#00A56A" />
-            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Email Verification</Text>
+            <Shield size={18} color="#00A56A" />
+            <Text className={`text-[16px] font-bold ${textPrimary}`}>Email Verification</Text>
           </View>
 
           <View className="mt-4 gap-3">
             <View className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
-              <Text className={`text-[17px] ${textPrimary}`}>Email</Text>
+              <Text className={`text-[15px] ${textPrimary}`}>Email</Text>
               {emailVerified ? (
-                <Text className="text-[16px] font-semibold text-[#00A56A]">✓ Verified</Text>
+                <Text className="text-[14px] font-semibold text-[#00A56A]">✓ Verified</Text>
               ) : (
                 <Text className={`text-[15px] ${textSecondary}`}>Not verified</Text>
               )}
@@ -243,77 +282,77 @@ export default function ProfileScreen() {
 
         <SectionCard>
           <View className="flex-row items-center gap-2">
-            <Users size={22} color="#2647B8" />
-            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Trusted Circle</Text>
+            <Users size={18} color="#2647B8" />
+            <Text className={`text-[16px] font-bold ${textPrimary}`}>Trusted Circle</Text>
           </View>
 
           <TouchableOpacity onPress={() => router.push('/friends')} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DDE8] bg-white'}`}>
             <Users size={18} color="#2647B8" />
-            <Text className={`text-[17px] font-medium ${textPrimary}`}>View Friends</Text>
+            <Text className={`text-[15px] font-medium ${textPrimary}`}>View Friends</Text>
           </TouchableOpacity>
 
           <View className="mt-4 gap-3">
             {confirmedTrustedContacts.length ? (
               confirmedTrustedContacts.slice(0, 3).map((contact) => (
                 <View key={contact.id} className={`rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F7]'}`}>
-                  <Text className={`text-[18px] ${textPrimary}`}>{contact.display_name}</Text>
+                  <Text className={`text-[15px] ${textPrimary}`}>{contact.display_name}</Text>
                   <Text className={`mt-1 text-[15px] ${textSecondary}`}>{contact.relationship}</Text>
                 </View>
               ))
             ) : (
-              <Text className={`text-[16px] ${textSecondary}`}>No confirmed emergency contacts yet.</Text>
+              <Text className={`text-[14px] ${textSecondary}`}>No confirmed emergency contacts yet.</Text>
             )}
           </View>
 
           <TouchableOpacity onPress={() => router.push('/trusted-circle')} className={`mt-4 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#D7DDE8] bg-white'}`}>
-            <Text className={`text-center text-[17px] ${textPrimary}`}>{confirmedTrustedContacts.length ? 'Manage Emergency Contacts' : 'Add Emergency Contact'}</Text>
+            <Text className={`text-center text-[15px] ${textPrimary}`}>{confirmedTrustedContacts.length ? 'Manage Emergency Contacts' : 'Add Emergency Contact'}</Text>
           </TouchableOpacity>
         </SectionCard>
 
         <SectionCard>
-            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Recent Reviews</Text>
+            <Text className={`text-[16px] font-bold ${textPrimary}`}>Recent Reviews</Text>
 
-          <View className="mt-4 gap-4">
+          <View className="mt-3 gap-3">
             {reviews.length ? (
               reviews.map((review, index) => (
-                <View key={review.id} className={`${index > 0 ? 'border-t border-[#E8ECF3] pt-4' : ''}`}>
+                <View key={review.id} className={`${index > 0 ? `border-t pt-4 ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'}` : ''}`}>
                   <View className="flex-row items-center justify-between">
-                    <Text className={`text-[18px] ${textPrimary}`}>{review.author_name}</Text>
+                    <Text className={`text-[15px] ${textPrimary}`}>{review.author_name}</Text>
                     <Text className={`text-[15px] ${textSecondary}`}>{formatRelativeDate(review.created_at)}</Text>
                   </View>
                   <View className="mt-2">
                     <StarRow rating={review.rating} size={15} />
                   </View>
-                  {review.comment ? <Text className={`mt-2 text-[17px] leading-6 ${textSecondary}`}>{review.comment}</Text> : null}
+                  {review.comment ? <Text className={`mt-2 text-[15px] leading-6 ${textSecondary}`}>{review.comment}</Text> : null}
                 </View>
               ))
             ) : (
-              <Text className={`text-[16px] ${textSecondary}`}>No reviews yet. Travelers can rate you after a completed trip.</Text>
+              <Text className={`text-[14px] ${textSecondary}`}>No reviews yet. Travelers can rate you after a completed trip.</Text>
             )}
           </View>
         </SectionCard>
 
         <SectionCard>
           <View className="flex-row items-center gap-2">
-            <AlertCircle size={22} color="#E32727" />
-            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Emergency Settings</Text>
+            <AlertCircle size={18} color="#E32727" />
+            <Text className={`text-[16px] font-bold ${textPrimary}`}>Emergency Settings</Text>
           </View>
-          <Text className={`mt-4 text-[17px] leading-6 ${textSecondary}`}>
+          <Text className={`mt-4 text-[15px] leading-6 ${textSecondary}`}>
             When you activate SOS, your location will be shared with your trusted circle and our safety team.
           </Text>
           <TouchableOpacity onPress={() => router.push('/trusted-circle')} className="mt-4 rounded-2xl bg-[#E32727] py-4">
-            <Text className="text-center text-[17px] font-bold text-white">Manage Emergency Contacts</Text>
+            <Text className="text-center text-[15px] font-bold text-white">Manage Emergency Contacts</Text>
           </TouchableOpacity>
         </SectionCard>
 
         <TouchableOpacity onPress={() => router.push('/vehicles')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
           <Car size={20} color="#2647B8" />
-          <Text className={`text-[17px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>My Vehicles</Text>
+          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>My Vehicles</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={signOut} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#7A2D2D] bg-[#111827]' : 'border-[#FF4D4D] bg-white'}`}>
           <LogOut size={20} color="#E32727" />
-          <Text className={`text-[17px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#E32727]'}`}>Sign Out</Text>
+          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#E32727]'}`}>Sign Out</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
