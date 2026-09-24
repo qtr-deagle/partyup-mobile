@@ -1,9 +1,9 @@
 import { useAuth } from '@/hooks/auth-provider';
 import { markNotificationRead } from '@/lib/notifications';
-import { registerForPushNotifications } from '@/lib/push';
+import { getNotifications, registerForPushNotifications } from '@/lib/push';
 import { supabase } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
-import * as Notifications from 'expo-notifications';
+import type { NotificationResponse } from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { MapPin, ShieldAlert } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
@@ -70,25 +70,36 @@ export default function SosAlertOverlay() {
     };
   }, [userId, enqueue]);
 
-  // Tapping the push notification (app in background or closed).
-  const lastResponse = Notifications.useLastNotificationResponse();
+  // Tapping the push notification (app in background or closed). Not
+  // available in Android Expo Go, where getNotifications() returns null.
   useEffect(() => {
-    const data = lastResponse?.notification.request.content.data as { type?: string; notification_id?: string } | undefined;
-    if (!userId || data?.type !== 'sos' || !data.notification_id) {
+    const Notifications = getNotifications();
+    if (!userId || !Notifications) {
       return;
     }
-    // The last response survives relaunches, so only show it if still unacknowledged.
-    void (async () => {
-      const { data: row } = await supabase
-        .from('notifications')
-        .select('id, title, message, created_at, data, read')
-        .eq('id', data.notification_id!)
-        .maybeSingle();
-      if (row && !row.read) {
-        enqueue(row as SosNotification);
+
+    const handleResponse = (response: NotificationResponse | null) => {
+      const data = response?.notification.request.content.data as { type?: string; notification_id?: string } | undefined;
+      if (data?.type !== 'sos' || !data.notification_id) {
+        return;
       }
-    })();
-  }, [lastResponse, userId, enqueue]);
+      // The last response survives relaunches, so only show it if still unacknowledged.
+      void (async () => {
+        const { data: row } = await supabase
+          .from('notifications')
+          .select('id, title, message, created_at, data, read')
+          .eq('id', data.notification_id!)
+          .maybeSingle();
+        if (row && !row.read) {
+          enqueue(row as SosNotification);
+        }
+      })();
+    };
+
+    void Notifications.getLastNotificationResponseAsync().then(handleResponse);
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    return () => subscription.remove();
+  }, [userId, enqueue]);
 
   useEffect(() => {
     if (!current) {

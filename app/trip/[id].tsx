@@ -6,14 +6,14 @@ import {
   buildInviteUrl,
   cancelTrip,
   completeTrip,
-  confirmPaymentReceived,
   formatCurrency,
   getTripDetail,
   getTripInviteLink,
   leaveTrip,
   listTripMembers,
   paymentStatusColors,
-  reportPayment,
+  PLATFORM_FEE_RATE,
+  splitPlatformFee,
   respondToJoinRequest,
   startGatewayPayment,
   startTrip,
@@ -29,7 +29,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { ArrowLeft, BadgeCheck, Calendar, Check, Flag, MapPin, Share2, Sparkles, Star, Users, Wallet, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, Share, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -55,7 +55,7 @@ function formatDateTime(value: string | null) {
 export default function TripDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { session, profile, refreshProfile } = useAuth();
+  const { session } = useAuth();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const { titleColor } = getTheme(isDark);
@@ -65,7 +65,6 @@ export default function TripDetailScreen() {
   const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
   const primary = isDark ? 'text-white' : 'text-[#1B2340]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
-  const inputBg = isDark ? 'bg-[#18253C]' : 'bg-[#F4F6FB]';
 
   const [detail, setDetail] = useState<TripDetail | null>(null);
   const [members, setMembers] = useState<TripMember[]>([]);
@@ -78,11 +77,6 @@ export default function TripDetailScreen() {
   const [givenRatings, setGivenRatings] = useState<Map<string, GivenRating>>(new Map());
   const [reportTarget, setReportTarget] = useState<{ userId: string; displayName: string } | null>(null);
   const [rateTarget, setRateTarget] = useState<{ userId: string; displayName: string } | null>(null);
-  const [referenceInput, setReferenceInput] = useState('');
-  const [editingHandles, setEditingHandles] = useState(false);
-  const [gcashInput, setGcashInput] = useState('');
-  const [paymayaInput, setPaymayaInput] = useState('');
-  const [savingHandles, setSavingHandles] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -196,32 +190,6 @@ export default function TripDetailScreen() {
     setBusyId(null);
   }
 
-  async function handleConfirmPayment(memberId: string) {
-    setBusyId(memberId);
-    const { error } = await confirmPaymentReceived(memberId);
-    if (error) {
-      Alert.alert('Unable to confirm payment', error.message);
-    } else {
-      await load();
-    }
-    setBusyId(null);
-  }
-
-  async function handleReportPayment() {
-    if (!id) {
-      return;
-    }
-    setBusyId('report');
-    const { error } = await reportPayment(id, referenceInput.trim() || undefined);
-    setBusyId(null);
-    if (error) {
-      Alert.alert('Unable to report payment', error.message);
-    } else {
-      setReferenceInput('');
-      await load();
-    }
-  }
-
   async function handleGatewayPayment(method: 'gcash' | 'paymaya') {
     if (!id) {
       return;
@@ -318,30 +286,6 @@ export default function TripDetailScreen() {
     } else {
       void load();
     }
-  }
-
-  function startEditingHandles() {
-    setGcashInput(profile?.gcash_handle ?? '');
-    setPaymayaInput(profile?.paymaya_handle ?? '');
-    setEditingHandles(true);
-  }
-
-  async function handleSaveHandles() {
-    if (!session?.user.id) {
-      return;
-    }
-    setSavingHandles(true);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ gcash_handle: gcashInput.trim() || null, paymaya_handle: paymayaInput.trim() || null })
-      .eq('id', session.user.id);
-    setSavingHandles(false);
-    if (error) {
-      Alert.alert('Unable to save payment info', error.message);
-      return;
-    }
-    await refreshProfile();
-    setEditingHandles(false);
   }
 
   if (loading && !detail && !previewTour) {
@@ -451,8 +395,12 @@ export default function TripDetailScreen() {
 
   const isTour = detail.trip_type === 'tour';
   const pendingRequests = members.filter((m) => m.status === 'pending');
-  const awaitingConfirmation = members.filter((m) => m.member_role === 'member' && m.status === 'accepted' && m.payment_status === 'pending');
-  const settledRiders = members.filter((m) => m.member_role === 'member' && m.status === 'accepted' && m.payment_status !== 'pending');
+  const acceptedRiders = members.filter((m) => m.member_role === 'member' && m.status === 'accepted');
+  const riderFare = (member: TripMember) => member.payment_amount ?? detail.price_per_person ?? 0;
+  const expectedTotal = acceptedRiders.reduce((sum, member) => sum + riderFare(member), 0);
+  const collectedTotal = acceptedRiders.filter((m) => m.payment_status === 'paid').reduce((sum, member) => sum + riderFare(member), 0);
+  const earnings = splitPlatformFee(collectedTotal);
+  const feePercent = `${Math.round(PLATFORM_FEE_RATE * 100)}%`;
 
   return (
     <View className={`flex-1 ${background}`}>
@@ -588,51 +536,6 @@ export default function TripDetailScreen() {
 
         {detail.is_driver ? (
           <>
-            <View className={`rounded-[22px] border p-4 ${card}`}>
-              <View className="flex-row items-center justify-between">
-                <Text className={`text-headline-18 font-bold ${primary}`}>Your Payment Info</Text>
-                <TouchableOpacity onPress={startEditingHandles}>
-                  <Text className="text-sm font-bold text-[#2A55D4]">{detail.driver_gcash_handle || detail.driver_paymaya_handle ? 'Edit' : 'Add'}</Text>
-                </TouchableOpacity>
-              </View>
-              {editingHandles ? (
-                <View className="mt-3 gap-3">
-                  <TextInput
-                    className={`rounded-2xl px-4 py-3.5 text-base ${inputBg} ${primary}`}
-                    placeholder="GCash number"
-                    placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
-                    value={gcashInput}
-                    onChangeText={setGcashInput}
-                    keyboardType="phone-pad"
-                  />
-                  <TextInput
-                    className={`rounded-2xl px-4 py-3.5 text-base ${inputBg} ${primary}`}
-                    placeholder="PayMaya number"
-                    placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
-                    value={paymayaInput}
-                    onChangeText={setPaymayaInput}
-                    keyboardType="phone-pad"
-                  />
-                  <View className="flex-row gap-2">
-                    <TouchableOpacity onPress={() => setEditingHandles(false)} className={`flex-1 items-center rounded-2xl border py-3 ${border}`}>
-                      <Text className={`font-bold ${primary}`}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={handleSaveHandles} disabled={savingHandles} className="flex-1 items-center rounded-2xl bg-[#2A55D4] py-3">
-                      {savingHandles ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-bold text-white">Save</Text>}
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <View className="mt-3 gap-2">
-                  <Text className={`text-base ${secondary}`}>GCash: {detail.driver_gcash_handle || 'Not set'}</Text>
-                  <Text className={`text-base ${secondary}`}>PayMaya: {detail.driver_paymaya_handle || 'Not set'}</Text>
-                  {!detail.driver_gcash_handle && !detail.driver_paymaya_handle ? (
-                    <Text className="text-sm text-[#B4650B]">Add a payment handle so riders know where to send their fare.</Text>
-                  ) : null}
-                </View>
-              )}
-            </View>
-
             {pendingRequests.length ? (
               <View className="gap-3">
                 <Text className={`text-headline-18 font-bold ${primary}`}>Pending requests ({pendingRequests.length})</Text>
@@ -663,33 +566,10 @@ export default function TripDetailScreen() {
               </View>
             ) : null}
 
-            {awaitingConfirmation.length ? (
+            {acceptedRiders.length ? (
               <View className="gap-3">
-                <Text className={`text-headline-18 font-bold ${primary}`}>Awaiting confirmation ({awaitingConfirmation.length})</Text>
-                {awaitingConfirmation.map((member) => (
-                  <View key={member.id} className={`rounded-2xl border p-4 ${card}`}>
-                    <View className="flex-row items-center justify-between">
-                      <Text className={`text-base font-bold ${primary}`}>{member.display_name}</Text>
-                      <Text className={`text-base font-bold ${primary}`}>{formatCurrency(member.payment_amount)}</Text>
-                    </View>
-                    {member.payment_reference ? <Text className={`mt-1 text-sm ${secondary}`}>Ref: {member.payment_reference}</Text> : null}
-                    <TouchableOpacity
-                      onPress={() => void handleConfirmPayment(member.id)}
-                      disabled={busyId === member.id}
-                      className="mt-3 flex-row items-center justify-center gap-2 rounded-2xl bg-[#19A06B] py-2.5"
-                    >
-                      {busyId === member.id ? <ActivityIndicator color="#FFFFFF" /> : <Check size={16} color="#FFFFFF" />}
-                      <Text className="font-bold text-white">Confirm Received</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-
-            {settledRiders.length ? (
-              <View className="gap-3">
-                <Text className={`text-headline-18 font-bold ${primary}`}>{isTour ? 'Participants' : 'Riders'} ({settledRiders.length})</Text>
-                {settledRiders.map((member) => {
+                <Text className={`text-headline-18 font-bold ${primary}`}>{isTour ? 'Participants' : 'Riders'} ({acceptedRiders.length})</Text>
+                {acceptedRiders.map((member) => {
                   const colors = paymentStatusColors(member.payment_status, isDark);
                   return (
                     <View key={member.id} className={`flex-row items-center justify-between rounded-2xl border p-4 ${card}`}>
@@ -698,7 +578,7 @@ export default function TripDetailScreen() {
                         {member.invited_by_display_name ? <Text className={`mt-0.5 text-sm ${secondary}`}>Invited by {member.invited_by_display_name}</Text> : null}
                       </View>
                       <View className={`rounded-full px-3 py-1.5 ${colors.bg}`}>
-                        <Text className={`text-sm font-bold ${colors.text}`}>{member.payment_status === 'paid' ? 'Paid' : 'Unpaid'}</Text>
+                        <Text className={`text-sm font-bold ${colors.text}`}>{member.payment_status === 'paid' ? 'Paid' : member.payment_status === 'pending' ? 'Processing' : 'Unpaid'}</Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => setReportTarget({ userId: member.user_id, displayName: member.display_name })}
@@ -710,6 +590,32 @@ export default function TripDetailScreen() {
                     </View>
                   );
                 })}
+              </View>
+            ) : null}
+
+            {acceptedRiders.length ? (
+              <View className={`rounded-[22px] border p-4 ${card}`}>
+                <View className="flex-row items-center gap-2">
+                  <Wallet size={18} color="#2A55D4" />
+                  <Text className={`text-headline-18 font-bold ${primary}`}>Your Earnings</Text>
+                </View>
+                <View className="mt-3 gap-2">
+                  <View className="flex-row justify-between">
+                    <Text className={`text-base ${secondary}`}>Collected</Text>
+                    <Text className={`text-base ${primary}`}>
+                      {formatCurrency(collectedTotal)} <Text className={`text-sm ${secondary}`}>of {formatCurrency(expectedTotal)}</Text>
+                    </Text>
+                  </View>
+                  <View className="flex-row justify-between">
+                    <Text className={`text-base ${secondary}`}>PartyUp service fee ({feePercent})</Text>
+                    <Text className="text-base text-[#E32727]">−{formatCurrency(earnings.fee)}</Text>
+                  </View>
+                  <View className={`mt-1 flex-row justify-between border-t pt-2 ${border}`}>
+                    <Text className={`text-base font-bold ${primary}`}>You receive</Text>
+                    <Text className="text-base font-extrabold text-[#19A06B]">{formatCurrency(earnings.net)}</Text>
+                  </View>
+                </View>
+                <Text className={`mt-3 text-xs ${secondary}`}>Test mode: shown for illustration. No payouts are made yet.</Text>
               </View>
             ) : null}
 
@@ -743,11 +649,11 @@ export default function TripDetailScreen() {
               <View className={`rounded-[22px] border p-4 ${card}`}>
                 <View className="flex-row items-center gap-2">
                   <Wallet size={18} color="#2A55D4" />
-                  <Text className={`text-headline-18 font-bold ${primary}`}>Pay Instantly (Sandbox)</Text>
+                  <Text className={`text-headline-18 font-bold ${primary}`}>Pay Your Share</Text>
                 </View>
                 <Text className={`mt-2 text-sm ${secondary}`}>
-                  Pay your share ({formatCurrency(detail.my_payment_amount ?? detail.price_per_person)}) through PayMongo. Sandbox/test mode — no real money
-                  moves.
+                  Pay {formatCurrency(detail.my_payment_amount ?? detail.price_per_person)} securely with GCash or PayMaya through PayMongo. PartyUp keeps a {Math.round(PLATFORM_FEE_RATE * 100)}%
+                  service fee and the rest goes to the {isTour ? 'organizer' : 'driver'}. Test mode — no real money moves.
                 </Text>
                 <View className="mt-3 flex-row gap-2">
                   <TouchableOpacity
@@ -768,21 +674,6 @@ export default function TripDetailScreen() {
               </View>
             ) : null}
 
-            <View className={`rounded-[22px] border p-4 ${card}`}>
-              <View className="flex-row items-center gap-2">
-                <Wallet size={18} color="#2A55D4" />
-                <Text className={`text-headline-18 font-bold ${primary}`}>{isTour ? 'Pay the Organizer' : 'Pay the Driver'}</Text>
-              </View>
-              <Text className={`mt-2 text-sm ${secondary}`}>
-                Send payment directly to the {isTour ? 'organizer' : 'driver'} via GCash or PayMaya, then report it below. PartyUp does not process the payment
-                — it only records it.
-              </Text>
-              <View className="mt-3 gap-2">
-                <Text className={`text-base ${secondary}`}>GCash: {detail.driver_gcash_handle || 'Not set yet'}</Text>
-                <Text className={`text-base ${secondary}`}>PayMaya: {detail.driver_paymaya_handle || 'Not set yet'}</Text>
-              </View>
-            </View>
-
             {detail.my_payment_status === 'paid' ? (
               <View className={`items-center gap-2 rounded-[22px] border p-6 ${card}`}>
                 <Check size={28} color="#19A06B" />
@@ -791,24 +682,10 @@ export default function TripDetailScreen() {
             ) : detail.my_payment_status === 'pending' ? (
               <View className={`items-center rounded-[22px] border p-6 ${card}`}>
                 <Text className={`text-center text-base ${secondary}`}>
-                  {detail.my_payment_channel === 'gateway' ? 'Verifying with PayMongo…' : 'Waiting for the driver to confirm your payment.'}
+                  Verifying your payment with PayMongo…
                 </Text>
               </View>
-            ) : (
-              <View className={`rounded-[22px] border p-4 ${card}`}>
-                <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>REFERENCE NUMBER (OPTIONAL)</Text>
-                <TextInput
-                  className={`rounded-2xl px-4 py-3.5 text-base ${inputBg} ${primary}`}
-                  placeholder="e.g., GC-1234567890"
-                  placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
-                  value={referenceInput}
-                  onChangeText={setReferenceInput}
-                />
-                <TouchableOpacity onPress={handleReportPayment} disabled={busyId === 'report'} className="mt-3 rounded-2xl bg-[#2A55D4] py-3.5">
-                  {busyId === 'report' ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center font-bold text-white">I&apos;ve Paid</Text>}
-                </TouchableOpacity>
-              </View>
-            )}
+            ) : null}
 
             <TouchableOpacity onPress={confirmLeave} disabled={busyId === 'leave'} className="items-center rounded-2xl border border-[#E32727] py-3.5">
               <Text className="font-bold text-[#E32727]">Leave Trip</Text>

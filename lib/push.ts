@@ -1,20 +1,35 @@
 import { supabase } from '@/lib/supabase';
 import Constants from 'expo-constants';
-import * as Notifications from 'expo-notifications';
+import type * as NotificationsModule from 'expo-notifications';
 import { Platform } from 'react-native';
 
 export const SOS_CHANNEL_ID = 'sos';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+// Expo Go on Android dropped remote push support (SDK 53+), and merely
+// importing expo-notifications there throws -- which took down the whole root
+// layout via SosAlertOverlay. So the module is only loaded outside Expo Go;
+// in Expo Go SOS alerts still arrive in-app via realtime, just not as pushes.
+const isAndroidExpoGo = Platform.OS === 'android' && Constants.executionEnvironment === 'storeClient';
 
-async function ensureAndroidChannels() {
+let notificationsModule: typeof NotificationsModule | null | undefined;
+
+export function getNotifications() {
+  if (notificationsModule === undefined) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- must stay lazy, see above
+    notificationsModule = Platform.OS === 'web' || isAndroidExpoGo ? null : (require('expo-notifications') as typeof NotificationsModule);
+    notificationsModule?.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+      }),
+    });
+  }
+  return notificationsModule;
+}
+
+async function ensureAndroidChannels(Notifications: typeof NotificationsModule) {
   if (Platform.OS !== 'android') {
     return;
   }
@@ -33,12 +48,13 @@ async function ensureAndroidChannels() {
 // Asks for notification permission and stores this device's Expo push token
 // for the signed-in user. Safe to call on every launch.
 export async function registerForPushNotifications() {
-  if (Platform.OS === 'web') {
+  const Notifications = getNotifications();
+  if (!Notifications) {
     return { error: null };
   }
 
   try {
-    await ensureAndroidChannels();
+    await ensureAndroidChannels(Notifications);
 
     const existing = await Notifications.getPermissionsAsync();
     let granted = existing.granted;

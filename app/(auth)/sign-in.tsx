@@ -4,6 +4,7 @@ import { Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
+import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
 import { useAuth } from '@/hooks/auth-provider';
 
 export default function SignInScreen() {
@@ -15,6 +16,10 @@ export default function SignInScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [needsEmailCode, setNeedsEmailCode] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [resendingCode, setResendingCode] = useState(false);
+  const resendCooldown = useResendCooldown();
 
   useEffect(() => {
     if (!loading && session) {
@@ -39,10 +44,39 @@ export default function SignInScreen() {
     setSubmitting(false);
 
     if (error) {
+      if (error.code === 'email_not_confirmed') {
+        await sendEmailCode();
+        setOtpCode('');
+        setNeedsEmailCode(true);
+        return;
+      }
       setErrorMessage(error.message);
       return;
     }
 
+    router.replace(redirect ? (redirect as any) : '/(tabs)');
+  }
+
+  async function sendEmailCode() {
+    setResendingCode(true);
+    const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase() });
+    setResendingCode(false);
+    if (error) {
+      setErrorMessage(error.code === 'over_email_send_rate_limit' || error.code === 'over_request_rate_limit' ? 'Too many attempts. Please wait a minute and try again.' : error.message);
+      return;
+    }
+    resendCooldown.restart();
+  }
+
+  async function handleVerifyEmail() {
+    setSubmitting(true);
+    setErrorMessage(null);
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim().toLowerCase(), token: otpCode, type: 'email' });
+    setSubmitting(false);
+    if (error) {
+      setErrorMessage(error.code === 'otp_expired' ? 'That code is wrong or has expired. Check your email or resend a new one.' : error.message);
+      return;
+    }
     router.replace(redirect ? (redirect as any) : '/(tabs)');
   }
 
@@ -55,6 +89,15 @@ export default function SignInScreen() {
             <Text className="mt-1 text-[12px] text-[#697386]">Travel Buddy Matching Platform</Text>
           </View>
 
+          {needsEmailCode ? (
+            <View className="mt-6">
+              <Text className="text-center text-[15px] font-bold text-[#273142]">Verify your email</Text>
+              <Text className="mb-4 mt-1 text-center text-[12px] leading-5 text-[#697386]">
+                Your email isn&apos;t verified yet. We sent a code to <Text className="font-semibold text-[#273142]">{email.trim().toLowerCase()}</Text>.
+              </Text>
+              <OtpCodeInput length={EMAIL_OTP_LENGTH} value={otpCode} onChangeText={setOtpCode} onResend={sendEmailCode} resendSecondsLeft={resendCooldown.secondsLeft} resending={resendingCode} />
+            </View>
+          ) : (
           <View className="mt-6 gap-3">
             <View>
               <Text className="mb-2 text-[12px] font-medium text-[#273142]">Email Address</Text>
@@ -90,12 +133,24 @@ export default function SignInScreen() {
               </View>
             </View>
           </View>
+          )}
 
           {errorMessage ? <Text className="mt-4 text-[14px] text-[#FB7185]">{errorMessage}</Text> : null}
 
-          <TouchableOpacity onPress={handleSignIn} disabled={submitting} className="mt-4 h-[42px] justify-center rounded-[9px] bg-[#2445B8]">
-            {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-[16px] font-bold text-white">Sign In</Text>}
-          </TouchableOpacity>
+          {needsEmailCode ? (
+            <>
+              <TouchableOpacity onPress={handleVerifyEmail} disabled={submitting || !isOtpComplete(otpCode, EMAIL_OTP_LENGTH)} className={`mt-4 h-[42px] justify-center rounded-[9px] ${isOtpComplete(otpCode, EMAIL_OTP_LENGTH) ? 'bg-[#2445B8]' : 'bg-[#A9B6E0]'}`}>
+                {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-[16px] font-bold text-white">Verify & Sign In</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setNeedsEmailCode(false); setErrorMessage(null); }} className="mt-3">
+                <Text className="text-center text-[12px] text-[#697386]">Use a different account</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <TouchableOpacity onPress={handleSignIn} disabled={submitting} className="mt-4 h-[42px] justify-center rounded-[9px] bg-[#2445B8]">
+              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-[16px] font-bold text-white">Sign In</Text>}
+            </TouchableOpacity>
+          )}
 
           <Text className="mt-5 text-center text-[12px] text-[#697386]">
             Don&apos;t have an account?{' '}

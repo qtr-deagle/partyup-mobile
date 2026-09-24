@@ -1,37 +1,42 @@
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { supabase } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
+import { getProfileStats, listUserReviews, type ProfileStats, type UserReview } from '@/lib/ratings';
 import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
 import { getMyVerification, type IdVerification } from '@/lib/verification';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Car, CheckCircle2, Clock, Cog, LogOut, Shield, ShieldAlert, ShieldCheck, Star, Users, Wallet } from 'lucide-react-native';
+import { AlertCircle, Car, CheckCircle2, Clock, Cog, LogOut, Shield, ShieldAlert, ShieldCheck, Star, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
-const reviews = [
-  {
-    id: 1,
-    author: 'Sarah',
-    date: '2 weeks ago',
-    rating: 5,
-    text: 'Amazing travel buddy! Very responsible and fun to be around.',
-  },
-  {
-    id: 2,
-    author: 'Mike',
-    date: '1 month ago',
-    rating: 5,
-    text: 'Great communication and very reliable. Highly recommended!',
-  },
-  {
-    id: 3,
-    author: 'Emma',
-    date: '2 months ago',
-    rating: 4,
-    text: 'Good company and flexible with plans. Would travel again!',
-  },
-];
+function formatRelativeDate(iso: string) {
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days < 1) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) {
+    const weeks = Math.floor(days / 7);
+    return `${weeks} ${weeks === 1 ? 'week' : 'weeks'} ago`;
+  }
+  if (days < 365) {
+    const months = Math.floor(days / 30);
+    return `${months} ${months === 1 ? 'month' : 'months'} ago`;
+  }
+  const years = Math.floor(days / 365);
+  return `${years} ${years === 1 ? 'year' : 'years'} ago`;
+}
+
+function StarRow({ rating, size }: { rating: number; size: number }) {
+  const isDark = useColorScheme() === 'dark';
+  const rounded = Math.round(rating);
+  return (
+    <View className="flex-row items-center gap-1">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <Star key={index} size={size} color={index < rounded ? '#F4B400' : isDark ? '#334155' : '#CBD5E1'} fill={index < rounded ? '#F4B400' : 'transparent'} />
+      ))}
+    </View>
+  );
+}
 
 function SectionCard({ children }: { children: React.ReactNode }) {
   const isDark = useColorScheme() === 'dark';
@@ -43,10 +48,8 @@ export default function ProfileScreen() {
   const { profile, session, refreshProfile, signOut } = useAuth();
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
   const [verification, setVerification] = useState<IdVerification | null>(null);
-  const [editingPayment, setEditingPayment] = useState(false);
-  const [gcashInput, setGcashInput] = useState('');
-  const [paymayaInput, setPaymayaInput] = useState('');
-  const [savingPayment, setSavingPayment] = useState(false);
+  const [stats, setStats] = useState<ProfileStats | null>(null);
+  const [reviews, setReviews] = useState<UserReview[]>([]);
   const isDark = useColorScheme() === 'dark';
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]';
   const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white';
@@ -56,6 +59,9 @@ export default function ProfileScreen() {
   const softFill = isDark ? 'bg-[#18253C]' : 'bg-[#F2F4F8]';
   const profileAge = profile?.date_of_birth ? Math.max(0, new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() - (new Date() < new Date(new Date().getFullYear(), new Date(profile.date_of_birth).getMonth(), new Date(profile.date_of_birth).getDate()) ? 1 : 0)) : null;
   const confirmedTrustedContacts = trustedContacts.filter((contact) => contact.status === 'accepted');
+  const userId = session?.user.id;
+  const location = [profile?.city, profile?.country].filter(Boolean).join(', ');
+  const emailVerified = Boolean(session?.user.email_confirmed_at);
 
   useFocusEffect(
     useCallback(() => {
@@ -70,30 +76,20 @@ export default function ProfileScreen() {
           setVerification(result.data);
         }
       });
-    }, [refreshProfile])
+      if (userId) {
+        void getProfileStats(userId).then((result) => {
+          if (!result.error) {
+            setStats(result.data);
+          }
+        });
+        void listUserReviews(userId, 5).then((result) => {
+          if (!result.error) {
+            setReviews(result.data);
+          }
+        });
+      }
+    }, [refreshProfile, userId])
   );
-
-  function startEditingPayment() {
-    setGcashInput(profile?.gcash_handle ?? '');
-    setPaymayaInput(profile?.paymaya_handle ?? '');
-    setEditingPayment(true);
-  }
-
-  async function handleSavePayment() {
-    if (!session?.user.id) {
-      return;
-    }
-    setSavingPayment(true);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ gcash_handle: gcashInput.trim() || null, paymaya_handle: paymayaInput.trim() || null })
-      .eq('id', session.user.id);
-    setSavingPayment(false);
-    if (!error) {
-      await refreshProfile();
-      setEditingPayment(false);
-    }
-  }
 
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
@@ -110,11 +106,17 @@ export default function ProfileScreen() {
       <View className="px-4 pt-4 gap-5">
         <SectionCard>
           <View className="items-center">
-            <View className={`h-28 w-28 rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#D5E4EE]'}`} />
+            {profile?.avatar_url ? (
+              <Image source={{ uri: profile.avatar_url }} className="h-28 w-28 rounded-full" />
+            ) : (
+              <View className={`h-28 w-28 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#D5E4EE]'}`}>
+                <Text className={`text-[40px] font-bold ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{profile?.display_name?.trim().charAt(0).toUpperCase() ?? ''}</Text>
+              </View>
+            )}
 
             <View className="mt-6 flex-row items-center gap-2">
-              <Text className={`text-headline-28 font-bold ${textPrimary}`}>{profile?.display_name ?? 'Alex'}</Text>
-              <ShieldCheck size={20} color="#00A56A" />
+              <Text className={`text-headline-28 font-bold ${textPrimary}`}>{profile?.display_name ?? ''}</Text>
+              {profile?.verification_status === 'approved' ? <ShieldCheck size={20} color="#00A56A" /> : null}
             </View>
 
             {profileAge ? (
@@ -125,28 +127,33 @@ export default function ProfileScreen() {
               </View>
             ) : null}
 
-            <Text className={`mt-2 text-[18px] ${textSecondary}`}>{profile?.city && profile?.country ? `${profile.city}, ${profile.country}` : 'San Francisco, CA'}</Text>
+            {location ? <Text className={`mt-2 text-[18px] ${textSecondary}`}>{location}</Text> : null}
 
-            <View className="mt-3 flex-row items-center gap-1">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Star key={index} size={18} color="#F4B400" fill="#F4B400" />
-              ))}
+            <View className="mt-3">
+              <StarRow rating={stats?.avg_rating ?? 0} size={18} />
             </View>
 
-            <Text className={`mt-1 text-[16px] ${textSecondary}`}>4.9 rating (12 reviews)</Text>
-
-            <Text className={`mt-6 text-[17px] leading-7 ${textPrimary}`}>
-              Adventure seeker and travel enthusiast! Love exploring new cultures, trying local food, and making new friends. Always up for hiking, museums, and spontaneous adventures.
+            <Text className={`mt-1 text-[16px] ${textSecondary}`}>
+              {stats?.rating_count && stats.avg_rating != null
+                ? `${stats.avg_rating.toFixed(1)} rating (${stats.rating_count} ${stats.rating_count === 1 ? 'review' : 'reviews'})`
+                : 'No ratings yet'}
             </Text>
+
+            {profile?.bio?.trim() ? (
+              <Text className={`mt-6 self-stretch text-[17px] leading-7 ${textPrimary}`}>{profile.bio.trim()}</Text>
+            ) : (
+              <Text className={`mt-6 text-[16px] italic ${textSecondary}`}>No bio yet.</Text>
+            )}
 
             <View className="mt-6 w-full border-t border-[#E8ECF3] pt-6">
               <Text className={`text-headline-18 font-bold ${textPrimary}`}>Travel Experience</Text>
 
               <View className="mt-4 gap-4">
                 {[
-                  ['Countries Visited', '12'],
-                  ['Solo Trips', '8'],
-                  ['Group Trips', '4'],
+                  ['Trips Completed', String(stats?.trips_completed ?? 0)],
+                  ['Places Visited', String(stats?.places_visited ?? 0)],
+                  ['Carpools', String(stats?.carpools_completed ?? 0)],
+                  ['Tours', String(stats?.tours_completed ?? 0)],
                 ].map(([label, value]) => (
                   <View key={label} className="flex-row items-center justify-between">
                     <Text className={`text-[18px] ${textSecondary}`}>{label}</Text>
@@ -219,16 +226,18 @@ export default function ProfileScreen() {
         <SectionCard>
           <View className="flex-row items-center gap-2">
             <Shield size={22} color="#00A56A" />
-            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Other Verifications</Text>
+            <Text className={`text-headline-18 font-bold ${textPrimary}`}>Email Verification</Text>
           </View>
 
           <View className="mt-4 gap-3">
-            {['Email Verified', 'Phone Verified'].map((item) => (
-              <View key={item} className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
-                <Text className={`text-[17px] ${textPrimary}`}>{item}</Text>
-                <Text className="text-[20px] text-[#00A56A]">✓</Text>
-              </View>
-            ))}
+            <View className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
+              <Text className={`text-[17px] ${textPrimary}`}>Email</Text>
+              {emailVerified ? (
+                <Text className="text-[16px] font-semibold text-[#00A56A]">✓ Verified</Text>
+              ) : (
+                <Text className={`text-[15px] ${textSecondary}`}>Not verified</Text>
+              )}
+            </View>
           </View>
         </SectionCard>
 
@@ -265,20 +274,22 @@ export default function ProfileScreen() {
             <Text className={`text-headline-18 font-bold ${textPrimary}`}>Recent Reviews</Text>
 
           <View className="mt-4 gap-4">
-            {reviews.map((review, index) => (
-              <View key={review.id} className={`${index > 0 ? 'border-t border-[#E8ECF3] pt-4' : ''}`}>
-                <View className="flex-row items-center justify-between">
-                  <Text className={`text-[18px] ${textPrimary}`}>{review.author}</Text>
-                  <Text className={`text-[15px] ${textSecondary}`}>{review.date}</Text>
+            {reviews.length ? (
+              reviews.map((review, index) => (
+                <View key={review.id} className={`${index > 0 ? 'border-t border-[#E8ECF3] pt-4' : ''}`}>
+                  <View className="flex-row items-center justify-between">
+                    <Text className={`text-[18px] ${textPrimary}`}>{review.author_name}</Text>
+                    <Text className={`text-[15px] ${textSecondary}`}>{formatRelativeDate(review.created_at)}</Text>
+                  </View>
+                  <View className="mt-2">
+                    <StarRow rating={review.rating} size={15} />
+                  </View>
+                  {review.comment ? <Text className={`mt-2 text-[17px] leading-6 ${textSecondary}`}>{review.comment}</Text> : null}
                 </View>
-                <View className="mt-2 flex-row items-center gap-1">
-                  {Array.from({ length: review.rating }).map((_, starIndex) => (
-                    <Star key={starIndex} size={15} color="#F4B400" fill="#F4B400" />
-                  ))}
-                </View>
-                <Text className={`mt-2 text-[17px] leading-6 ${textSecondary}`}>{review.text}</Text>
-              </View>
-            ))}
+              ))
+            ) : (
+              <Text className={`text-[16px] ${textSecondary}`}>No reviews yet. Travelers can rate you after a completed trip.</Text>
+            )}
           </View>
         </SectionCard>
 
@@ -293,56 +304,6 @@ export default function ProfileScreen() {
           <TouchableOpacity onPress={() => router.push('/trusted-circle')} className="mt-4 rounded-2xl bg-[#E32727] py-4">
             <Text className="text-center text-[17px] font-bold text-white">Manage Emergency Contacts</Text>
           </TouchableOpacity>
-        </SectionCard>
-
-        <SectionCard>
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center gap-2">
-              <Wallet size={22} color="#2647B8" />
-              <Text className={`text-headline-18 font-bold ${textPrimary}`}>Payment Methods</Text>
-            </View>
-            {!editingPayment ? (
-              <TouchableOpacity onPress={startEditingPayment}>
-                <Text className="text-[16px] font-bold text-[#2647B8]">{profile?.gcash_handle || profile?.paymaya_handle ? 'Edit' : 'Add'}</Text>
-              </TouchableOpacity>
-            ) : null}
-          </View>
-          <Text className={`mt-2 text-[15px] leading-6 ${textSecondary}`}>
-            Riders send your carpool fare directly here via GCash or PayMaya — payments never pass through PartyUp.
-          </Text>
-          {editingPayment ? (
-            <View className="mt-4 gap-3">
-              <TextInput
-                className={`rounded-2xl px-4 py-3.5 text-[16px] ${softFill} ${textPrimary}`}
-                placeholder="GCash number"
-                placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
-                value={gcashInput}
-                onChangeText={setGcashInput}
-                keyboardType="phone-pad"
-              />
-              <TextInput
-                className={`rounded-2xl px-4 py-3.5 text-[16px] ${softFill} ${textPrimary}`}
-                placeholder="PayMaya number"
-                placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
-                value={paymayaInput}
-                onChangeText={setPaymayaInput}
-                keyboardType="phone-pad"
-              />
-              <View className="flex-row gap-2">
-                <TouchableOpacity onPress={() => setEditingPayment(false)} className={`flex-1 items-center rounded-2xl border py-3 ${isDark ? 'border-[#22324B]' : 'border-[#D7DDE8]'}`}>
-                  <Text className={`font-bold ${textPrimary}`}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={handleSavePayment} disabled={savingPayment} className="flex-1 items-center rounded-2xl bg-[#2647B8] py-3">
-                  {savingPayment ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-bold text-white">Save</Text>}
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <View className="mt-4 gap-2">
-              <Text className={`text-[17px] ${textPrimary}`}>GCash: {profile?.gcash_handle || 'Not set'}</Text>
-              <Text className={`text-[17px] ${textPrimary}`}>PayMaya: {profile?.paymaya_handle || 'Not set'}</Text>
-            </View>
-          )}
         </SectionCard>
 
         <TouchableOpacity onPress={() => router.push('/vehicles')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>

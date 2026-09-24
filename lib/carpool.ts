@@ -222,14 +222,6 @@ export async function cancelTrip(tripId: string) {
   return withRequestTimeout(supabase.rpc('cancel_trip', { p_trip_id: tripId }), 'Cancelling trip');
 }
 
-export async function reportPayment(tripId: string, reference?: string) {
-  return withRequestTimeout(supabase.rpc('report_payment', { p_trip_id: tripId, p_reference: reference ?? null }), 'Reporting payment');
-}
-
-export async function confirmPaymentReceived(tripMemberId: string) {
-  return withRequestTimeout(supabase.rpc('confirm_payment_received', { p_trip_member_id: tripMemberId }), 'Confirming payment');
-}
-
 // supabase-js's FunctionsHttpError only exposes a generic "Edge Function
 // returned a non-2xx status code" message -- the function's actual JSON
 // error body is on error.context (a Response). Unwrap it so the real reason
@@ -272,6 +264,16 @@ export async function startGatewayPayment(tripId: string, method: PaymentMethod)
 
 export function buildInviteUrl(inviteCode: string, referrerUserId: string) {
   return `partyupmobile://trip/join/${inviteCode}?ref=${referrerUserId}`;
+}
+
+// PartyUp's commission on every fare, taken out of the driver's/organizer's
+// share (riders pay the listed price). Display-only for now: PayMongo is in
+// test mode and there are no payouts yet, so nothing is actually split.
+export const PLATFORM_FEE_RATE = 0.02;
+
+export function splitPlatformFee(amount: number) {
+  const fee = Math.round(amount * PLATFORM_FEE_RATE * 100) / 100;
+  return { fee, net: Math.round((amount - fee) * 100) / 100 };
 }
 
 export function formatCurrency(amount: number | null | undefined, currency = 'PHP') {

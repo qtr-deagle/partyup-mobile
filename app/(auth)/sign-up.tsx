@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useAuth } from '@/hooks/auth-provider';
+import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
 import TermsModal from '@/components/TermsModal';
 
 export default function SignUpScreen() {
@@ -26,6 +27,9 @@ export default function SignUpScreen() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [resendingCode, setResendingCode] = useState(false);
+  const resendCooldown = useResendCooldown();
 
   useEffect(() => {
     if (!loading && session) {
@@ -85,38 +89,84 @@ export default function SignUpScreen() {
         message: error.message,
         status: error.status,
       });
-      if (error.code === 'over_email_send_rate_limit') {
-        setErrorMessage('Supabase email limit reached. Disable email confirmation in Supabase Auth settings, then try again.');
-      } else {
-        setErrorMessage(error.message);
-      }
+      setErrorMessage(describeAuthError(error.code, error.message));
       return;
     }
 
     if (data.session) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({
-          display_name: fullName.trim(),
-          date_of_birth: dateOfBirth.trim(),
-          interests,
-          terms_accepted_at: new Date().toISOString(),
-        })
-        .eq('id', data.session.user.id);
-
-      if (profileError) {
-        console.warn('Profile details were not saved:', profileError);
-        setErrorMessage('Account created, but profile details could not be saved. Run the onboarding migration in Supabase.');
-        await supabase.auth.signOut();
-        return;
-      }
-
-      router.replace('/(tabs)');
+      await finishSignUp(data.session.user.id);
       return;
     }
 
-    // Email confirmation required or other verification
-    setSuccessMessage('Account created successfully! Sign in to continue.');
+    // With email confirmation on, Supabase hides whether the address is taken:
+    // it returns a user with no identities and sends no email.
+    if (data.user && data.user.identities?.length === 0) {
+      setErrorMessage('An account with this email already exists. Sign in instead.');
+      return;
+    }
+
+    setOtpCode('');
+    resendCooldown.restart();
+    setStep(4);
+  }
+
+  async function handleVerifyEmail() {
+    if (!isOtpComplete(otpCode, EMAIL_OTP_LENGTH)) {
+      setErrorMessage('Enter the code from your email.');
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage(null);
+
+    const { data, error } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: otpCode,
+      type: 'email',
+    });
+
+    if (error || !data.session) {
+      setSubmitting(false);
+      setErrorMessage(error ? describeAuthError(error.code, error.message) : 'Verification failed. Try again.');
+      return;
+    }
+
+    await finishSignUp(data.session.user.id);
+    setSubmitting(false);
+  }
+
+  async function handleResendCode() {
+    setResendingCode(true);
+    setErrorMessage(null);
+    const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase() });
+    setResendingCode(false);
+    if (error) {
+      setErrorMessage(describeAuthError(error.code, error.message));
+      return;
+    }
+    resendCooldown.restart();
+    setSuccessMessage('A new code is on its way.');
+  }
+
+  async function finishSignUp(userId: string) {
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .update({
+        display_name: fullName.trim(),
+        date_of_birth: dateOfBirth.trim(),
+        interests,
+        terms_accepted_at: new Date().toISOString(),
+      })
+      .eq('id', userId);
+
+    if (profileError) {
+      console.warn('Profile details were not saved:', profileError);
+      setErrorMessage('Account created, but profile details could not be saved. Run the onboarding migration in Supabase.');
+      await supabase.auth.signOut();
+      return;
+    }
+
+    router.replace('/(tabs)');
   }
 
   function goToNextStep() {
@@ -154,6 +204,16 @@ export default function SignUpScreen() {
 
   function toggleInterest(interest: string) {
     setInterests((currentInterests) => currentInterests.includes(interest) ? currentInterests.filter((item) => item !== interest) : [...currentInterests, interest]);
+  }
+
+  function describeAuthError(code: string | undefined, message: string) {
+    if (code === 'otp_expired') {
+      return 'That code is wrong or has expired. Check your email or resend a new one.';
+    }
+    if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') {
+      return 'Too many attempts. Please wait a minute and try again.';
+    }
+    return message;
   }
 
   function isStrongPassword(value: string) {
@@ -194,11 +254,11 @@ export default function SignUpScreen() {
         <View className="w-full rounded-[14px] bg-white px-5 py-5 shadow-lg shadow-black/10">
           <View className="items-center">
             <Text className="text-headline-24 font-bold text-[#2445B8]">Join PartyUp</Text>
-            <Text className="mt-1 text-[10px] text-[#697386]">{step === 1 ? 'Create your account' : step === 2 ? 'Complete your profile' : 'Select your interests'}</Text>
+            <Text className="mt-1 text-[10px] text-[#697386]">{step === 1 ? 'Create your account' : step === 2 ? 'Complete your profile' : step === 3 ? 'Select your interests' : 'Verify your email'}</Text>
           </View>
 
           <View className="mt-7 flex-row gap-1.5">
-            {[1, 2, 3].map((item) => <View key={item} className={`h-[3px] flex-1 rounded-full ${item <= step ? 'bg-[#2445B8]' : 'bg-[#BCC7E5]'}`} />)}
+            {[1, 2, 3, 4].map((item) => <View key={item} className={`h-[3px] flex-1 rounded-full ${item <= step ? 'bg-[#2445B8]' : 'bg-[#BCC7E5]'}`} />)}
           </View>
 
           <View className="mt-4 gap-3">
@@ -233,6 +293,15 @@ export default function SignUpScreen() {
 
             {step === 3 ? <View className="flex-row flex-wrap justify-between gap-y-2">{interestOptions.map(([interest, icon]) => <TouchableOpacity key={interest} onPress={() => toggleInterest(interest)} className={`h-[48px] w-[48%] items-center justify-center rounded-[8px] border ${interests.includes(interest) ? 'border-[#2445B8] bg-[#E9EEFF]' : 'border-[#E2E5E9] bg-[#F4F5F6]'}`}><Text className="text-[14px]">{icon}</Text><Text className="mt-0.5 text-[9px] font-medium text-[#273142]">{interest}</Text>{interests.includes(interest) ? <Check size={11} color="#2445B8" /> : null}</TouchableOpacity>)}</View> : null}
 
+            {step === 4 ? (
+              <View>
+                <Text className="mb-3 text-center text-[11px] leading-4 text-[#697386]">
+                  We sent a code to <Text className="font-semibold text-[#273142]">{email.trim().toLowerCase()}</Text>. Enter it below to activate your account.
+                </Text>
+                <OtpCodeInput length={EMAIL_OTP_LENGTH} value={otpCode} onChangeText={setOtpCode} onResend={handleResendCode} resendSecondsLeft={resendCooldown.secondsLeft} resending={resendingCode} compact />
+              </View>
+            ) : null}
+
             {step === 3 ? (
               <TouchableOpacity onPress={() => setTermsAccepted((accepted) => !accepted)} className="mt-1 flex-row items-start gap-2">
                 <View className={`mt-0.5 h-[16px] w-[16px] items-center justify-center rounded-[4px] border ${termsAccepted ? 'border-[#2445B8] bg-[#2445B8]' : 'border-[#E2E5E9] bg-white'}`}>
@@ -249,15 +318,15 @@ export default function SignUpScreen() {
           </View>
 
           {errorMessage ? <Text className="mt-4 text-[14px] text-[#FB7185]">{errorMessage}</Text> : null}
-          {successMessage ? <Text className="mt-4 text-[14px] text-[#A7F3D0]">{successMessage}</Text> : null}
+          {successMessage ? <Text className="mt-4 text-[12px] text-[#0F7B4B]">{successMessage}</Text> : null}
 
           <View className="mt-4 flex-row gap-2">
-            {step > 1 ? <TouchableOpacity onPress={() => { setErrorMessage(null); setStep((currentStep) => currentStep - 1); }} className="h-[34px] flex-1 items-center justify-center rounded-[8px] bg-[#F0F1F3]"><Text className="text-[10px] font-medium text-[#273142]">&#8592; Back</Text></TouchableOpacity> : null}
+            {step > 1 && step < 4 ? <TouchableOpacity onPress={() => { setErrorMessage(null); setStep((currentStep) => currentStep - 1); }} className="h-[34px] flex-1 items-center justify-center rounded-[8px] bg-[#F0F1F3]"><Text className="text-[10px] font-medium text-[#273142]">&#8592; Back</Text></TouchableOpacity> : null}
             <TouchableOpacity
-              onPress={step === 3 ? handleSignUp : goToNextStep}
-              disabled={submitting || (step === 3 && !termsAccepted)}
-              className={`h-[34px] flex-1 flex-row items-center justify-center rounded-[8px] ${step === 3 && !termsAccepted ? 'bg-[#A9B6E0]' : 'bg-[#2445B8]'}`}>
-              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <><Text className="text-center text-[10px] font-bold text-white">{step === 3 ? 'Create Account' : 'Next'}{step < 3 ? ' ' : ''}</Text>{step < 3 ? <ArrowRight size={12} color="#FFFFFF" /> : null}</>}
+              onPress={step === 4 ? handleVerifyEmail : step === 3 ? handleSignUp : goToNextStep}
+              disabled={submitting || (step === 3 && !termsAccepted) || (step === 4 && !isOtpComplete(otpCode, EMAIL_OTP_LENGTH))}
+              className={`h-[34px] flex-1 flex-row items-center justify-center rounded-[8px] ${(step === 3 && !termsAccepted) || (step === 4 && !isOtpComplete(otpCode, EMAIL_OTP_LENGTH)) ? 'bg-[#A9B6E0]' : 'bg-[#2445B8]'}`}>
+              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <><Text className="text-center text-[10px] font-bold text-white">{step === 4 ? 'Verify & Continue' : step === 3 ? 'Create Account' : 'Next'}{step < 3 ? ' ' : ''}</Text>{step < 3 ? <ArrowRight size={12} color="#FFFFFF" /> : null}</>}
             </TouchableOpacity>
           </View>
 
@@ -265,7 +334,7 @@ export default function SignUpScreen() {
             <Text className="mt-4 text-center text-[10px] text-[#697386]">Already have an account? <Link href="/(auth)/sign-in" className="font-semibold text-[#2445B8]">Sign in</Link></Text>
           </> : null}
         </View>
-        {step !== 3 ? <Text className="mt-5 px-3 text-center text-[9px] leading-3 text-[#697386]">By signing up, you agree to our Terms of Service and{`\n`}Privacy Policy</Text> : null}
+        {step < 3 ? <Text className="mt-5 px-3 text-center text-[9px] leading-3 text-[#697386]">By signing up, you agree to our Terms of Service and{`\n`}Privacy Policy</Text> : null}
       </ScrollView>
       <TermsModal visible={showTermsModal} onClose={() => setShowTermsModal(false)} />
     </KeyboardAvoidingView>
