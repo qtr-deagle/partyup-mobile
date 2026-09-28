@@ -1,5 +1,7 @@
 import { ReportUserModal } from '@/components/ReportUserModal';
+import { formatResidence } from '@/lib/bulacan';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { blockUser, unblockUser } from '@/lib/blocking';
 import { createOrGetDirectThread, getFriendRequestStatuses, getProfileById, removeFriend, respondToFriendRequest, sendFriendRequest, type SearchProfile } from '@/lib/social';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -42,25 +44,32 @@ export default function PublicProfileScreen() {
   }, [fullProfile, params.interests]);
   const age = getAge(fullProfile?.date_of_birth ?? null);
   const verified = fullProfile?.verification_status === 'approved';
-  const location = fullProfile?.city && fullProfile?.country ? `${fullProfile.city}, ${fullProfile.country}` : null;
+  const location = formatResidence(fullProfile?.city);
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
   const primary = isDark ? 'text-white' : 'text-[#1B2340]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
 
-  useFocusEffect(
-    useCallback(() => {
-      void getFriendRequestStatuses([params.id]).then((statuses) => {
+  const loadProfile = useCallback(() => {
+    setProfileLoading(true);
+    return Promise.all([
+      getFriendRequestStatuses([params.id]).then((statuses) => {
         const relationship = statuses.get(params.id);
         setRequestStatus(relationship?.status ?? '');
         setRequestId(relationship?.requestId ?? '');
-      });
-      setProfileLoading(true);
-      void getProfileById(params.id).then((result) => {
+      }),
+      getProfileById(params.id).then((result) => {
         setFullProfile(result.data);
         setProfileLoading(false);
-      });
-    }, [params.id])
+      }),
+    ]);
+  }, [params.id]);
+  const { refreshing, refreshControl } = usePullToRefresh(loadProfile);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadProfile();
+    }, [loadProfile])
   );
 
   async function handleRequest() {
@@ -169,8 +178,9 @@ export default function PublicProfileScreen() {
   return (
     <ScrollView
       className={`flex-1 ${background}`}
-      contentContainerClassName="px-4 pb-10"
-      contentContainerStyle={{ paddingTop: insets.top + 20 }}>
+      contentContainerClassName="px-4"
+      contentContainerStyle={{ paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }}
+      refreshControl={refreshControl}>
       <TouchableOpacity onPress={() => router.back()} className="mb-5 h-10 w-10 items-center justify-center" accessibilityLabel="Go back">
         <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
       </TouchableOpacity>
@@ -202,7 +212,7 @@ export default function PublicProfileScreen() {
             <Text className={`mt-2 text-sm ${secondary}`}>PartyUp traveler</Text>
           ) : null}
 
-          {profileLoading ? (
+          {profileLoading && !refreshing ? (
             <ActivityIndicator className="mt-3" color="#284BD6" />
           ) : (
             <View className={`mt-3 flex-row items-center gap-1 rounded-full px-3 py-1.5 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>

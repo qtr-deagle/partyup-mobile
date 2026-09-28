@@ -2,6 +2,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { assessImageQuality, qualityIssueMessage } from '@/lib/imageQuality';
 
 const RETRY_MESSAGE_MS = 1200;
@@ -19,6 +20,7 @@ export default function IdCameraCapture({
   onClose: () => void;
   onCapture: (uri: string) => void;
 }) {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [phase, setPhase] = useState<Phase>('aiming');
   const [previewUri, setPreviewUri] = useState<string | null>(null);
@@ -85,11 +87,12 @@ export default function IdCameraCapture({
   }
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View className="flex-1 bg-black">
         <TouchableOpacity
           onPress={onClose}
-          className="absolute right-4 top-14 z-10 h-10 w-10 items-center justify-center rounded-full bg-black/50"
+          style={{ top: insets.top + 12 }}
+          className="absolute right-4 z-10 h-10 w-10 items-center justify-center rounded-full bg-black/50"
         >
           <X size={20} color="#fff" />
         </TouchableOpacity>
@@ -104,7 +107,7 @@ export default function IdCameraCapture({
         ) : phase === 'preview' && previewUri ? (
           <View className="flex-1">
             <Image source={{ uri: previewUri }} className="flex-1" resizeMode="contain" />
-            <View className="gap-3 px-6 pb-12 pt-4">
+            <View className="gap-3 px-6 pt-4" style={{ paddingBottom: insets.bottom + 24 }}>
               <TouchableOpacity onPress={handleUsePhoto} className="items-center rounded-2xl bg-[#2747C7] py-4">
                 <Text className="text-[16px] font-bold text-white">Use This Photo</Text>
               </TouchableOpacity>
@@ -131,7 +134,7 @@ export default function IdCameraCapture({
               </Text>
             </View>
 
-            <View className="absolute bottom-14 left-0 right-0 items-center">
+            <View className="absolute left-0 right-0 items-center" style={{ bottom: insets.bottom + 40 }}>
               {phase === 'capturing' ? (
                 <ActivityIndicator color="#fff" />
               ) : (

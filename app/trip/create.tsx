@@ -1,8 +1,9 @@
 import { DatePickerModal } from '@/components/carpool/DatePickerModal';
+import MeetupLocationPicker, { EMPTY_MEETUP, type MeetupDraft } from '@/components/MeetupLocationPicker';
 import { TimePickerModal } from '@/components/carpool/TimePickerModal';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { createTrip, type TripVisibility } from '@/lib/carpool';
+import { createTrip, formatMeetupLabel, type TripVisibility } from '@/lib/carpool';
 import { getTheme, typography } from '@/lib/theme';
 import { listMyApprovedVehicles, type Vehicle } from '@/lib/vehicles';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -104,7 +105,7 @@ export default function CreateTripScreen() {
   );
 
   const [title, setTitle] = useState('');
-  const [origin, setOrigin] = useState('');
+  const [meetup, setMeetup] = useState<MeetupDraft>(EMPTY_MEETUP);
   const [destination, setDestination] = useState('');
 
   const [startDate, setStartDate] = useState<Date | null>(null);
@@ -133,10 +134,21 @@ export default function CreateTripScreen() {
   }
 
   async function handleSubmit() {
-    if (!title.trim() || !origin.trim() || !destination.trim()) {
-      setErrorMessage('Title, origin, and destination are required.');
+    if (!title.trim() || !destination.trim()) {
+      setErrorMessage('Title and destination are required.');
       return;
     }
+
+    if (!meetup.municipality || !meetup.pin || !meetup.landmark.trim()) {
+      setErrorMessage('Set the meetup city, pin the exact spot on the map, and name a landmark.');
+      return;
+    }
+    const meetupLocation = {
+      municipality: meetup.municipality,
+      landmark: meetup.landmark.trim(),
+      latitude: meetup.pin.latitude,
+      longitude: meetup.pin.longitude,
+    };
 
     if (!selectedVehicleId) {
       setErrorMessage('Select a vehicle for this trip.');
@@ -183,7 +195,7 @@ export default function CreateTripScreen() {
 
     const { data, error } = await createTrip({
       title: title.trim(),
-      origin: origin.trim(),
+      origin: formatMeetupLabel(meetupLocation),
       destination: destination.trim(),
       startAt: startDate ? startDate.toISOString() : null,
       endAt: includeEnd && endDate ? endDate.toISOString() : null,
@@ -194,6 +206,7 @@ export default function CreateTripScreen() {
       destinationLat,
       destinationLng,
       vehicleId: selectedVehicleId,
+      meetup: meetupLocation,
     });
 
     setSubmitting(false);
@@ -203,7 +216,7 @@ export default function CreateTripScreen() {
       return;
     }
 
-    router.replace(`/trip/${(data as { id: string }).id}`);
+    router.replace({ pathname: '/trip/[id]', params: { id: (data as { id: string }).id, celebrate: 'created' } });
   }
 
   return (
@@ -253,7 +266,8 @@ export default function CreateTripScreen() {
         </View>
       ) : (
       <>
-      <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-10 pt-5" keyboardShouldPersistTaps="handled">
+      <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
         {errorMessage ? (
           <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
             <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>
@@ -272,29 +286,18 @@ export default function CreateTripScreen() {
           />
         </View>
 
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>ORIGIN</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="Quezon City"
-              placeholderTextColor={placeholderColor}
-              maxLength={80}
-              value={origin}
-              onChangeText={setOrigin}
-            />
-          </View>
-          <View className="flex-1">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DESTINATION</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="Makati"
-              placeholderTextColor={placeholderColor}
-              maxLength={80}
-              value={destination}
-              onChangeText={setDestination}
-            />
-          </View>
+        <MeetupLocationPicker label="MEETUP LOCATION" value={meetup} onChange={setMeetup} isDark={isDark} />
+
+        <View>
+          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DESTINATION</Text>
+          <TextInput
+            className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
+            placeholder="e.g., Makati"
+            placeholderTextColor={placeholderColor}
+            maxLength={80}
+            value={destination}
+            onChangeText={setDestination}
+          />
         </View>
 
         <View>
@@ -455,7 +458,7 @@ export default function CreateTripScreen() {
           <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>NOTES (OPTIONAL)</Text>
           <TextInput
             className={`min-h-[88px] rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="Pickup point, luggage space, etc."
+            placeholder="Luggage space, stopovers, etc."
             placeholderTextColor={placeholderColor}
             maxLength={300}
             multiline

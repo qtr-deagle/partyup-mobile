@@ -1,4 +1,6 @@
+import LeafletMap, { MAP_STYLE_ATTRIBUTION, type LeafletMarker, type MapStyle as TileStyle } from '@/components/LeafletMap';
 import WarningModeModal from '@/components/WarningModeModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
@@ -15,12 +17,13 @@ import {
 } from '@/lib/location';
 import { createOrGetDirectThread, getFriendRequestStatuses, respondToFriendRequest, sendFriendRequest } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { Check, Eye, EyeOff, MapPin, Navigation, Shield, UserPlus, X } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Eye, EyeOff, Layers, MapPin, Navigation, Shield, UserPlus, X } from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import MapView, { Circle, Marker, PROVIDER_GOOGLE, UrlTile, type Region } from 'react-native-maps';
+import MapView, { Circle, Marker, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 
 type RequestStatus = 'incoming_pending' | 'outgoing_pending' | 'accepted' | null;
 
@@ -32,6 +35,21 @@ type Traveler = NearbyTraveler & {
 type PermissionState = { foreground: boolean; background: boolean };
 
 const DEFAULT_DELTA = 0.06;
+const MAP_STYLE_STORAGE_KEY = 'partyup.mapStyle';
+// 'default' is the native map: Google Maps on Android, Apple Maps on iOS.
+type MapStyle = 'default' | TileStyle;
+// Google Maps renders black in Expo Go on Android, so it's only offered in real builds there.
+const DEFAULT_MAP_AVAILABLE = Platform.OS !== 'android' || Constants.executionEnvironment !== ExecutionEnvironment.StoreClient;
+const ALL_MAP_STYLES: { value: MapStyle; label: string }[] = [
+  { value: 'default', label: 'Default' },
+  { value: 'plain', label: 'Plain' },
+  { value: 'streets', label: 'Streets' },
+  { value: 'satellite', label: 'Satellite' },
+  { value: 'terrain', label: 'Terrain' },
+];
+const MAP_STYLES = ALL_MAP_STYLES.filter((option) => option.value !== 'default' || DEFAULT_MAP_AVAILABLE);
+// Apple Maps has no terrain layer, so iOS shows its standard map for it.
+const IOS_MAP_TYPE = { default: 'standard', plain: 'mutedStandard', streets: 'standard', satellite: 'hybrid', terrain: 'standard' } as const;
 const POLL_INTERVAL_MS = 45000;
 
 export default function MapScreen() {
@@ -56,6 +74,8 @@ export default function MapScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [warningModeVisible, setWarningModeVisible] = useState(false);
   const [locationUnavailable, setLocationUnavailable] = useState(false);
+  const [mapStyle, setMapStyle] = useState<MapStyle>(DEFAULT_MAP_AVAILABLE ? 'default' : 'plain');
+  const [stylePickerOpen, setStylePickerOpen] = useState(false);
 
   const channelsRef = useRef<Map<string, ReturnType<typeof supabase.channel>>>(new Map());
   const mapRef = useRef<MapView>(null);
@@ -67,6 +87,22 @@ export default function MapScreen() {
   const travelerCardBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#EBEFF7] bg-white';
   const primaryText = isDark ? 'text-white' : 'text-[#17233F]';
   const secondaryText = isDark ? 'text-[#94A3B8]' : 'text-[#64708A]';
+
+  useEffect(() => {
+    AsyncStorage.getItem(MAP_STYLE_STORAGE_KEY)
+      .then((saved) => {
+        if (MAP_STYLES.some((option) => option.value === saved)) {
+          setMapStyle(saved as MapStyle);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  function chooseMapStyle(next: MapStyle) {
+    setMapStyle(next);
+    setStylePickerOpen(false);
+    AsyncStorage.setItem(MAP_STYLE_STORAGE_KEY, next).catch(() => {});
+  }
 
   const loadShared = useCallback(async () => {
     const { data, error } = await listSharedLocations();
@@ -226,14 +262,33 @@ export default function MapScreen() {
     void startBackgroundLocationTracking({ precise: hasActivePair });
   }, [hasActivePair, permission?.foreground, loading]);
 
+  // Android draws every style except the native Google map with Leaflet.
+  const useLeaflet = Platform.OS === 'android' && mapStyle !== 'default';
+
+  const focusLat = Number(params.lat);
+  const focusLng = Number(params.lng);
+  const focus = params.lat && params.lng && Number.isFinite(focusLat) && Number.isFinite(focusLng) ? { latitude: focusLat, longitude: focusLng } : null;
+
+  const sharedMarkers = useMemo<LeafletMarker[]>(
+    () =>
+      shared.map((person) => ({
+        id: person.user_id,
+        ...(livePositions[person.user_id] ?? { latitude: person.latitude, longitude: person.longitude }),
+        title: person.display_name,
+        subtitle: person.share_kind === 'trusted' ? 'Trusted circle' : 'Sharing until you meet',
+        color: person.share_kind === 'trusted' ? '#7C3AED' : '#179B67',
+      })),
+    [shared, livePositions]
+  );
+
   useEffect(() => {
     const lat = Number(params.lat);
     const lng = Number(params.lng);
-    if (!region || !params.lat || !params.lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    if (useLeaflet || !region || !params.lat || !params.lng || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       return;
     }
     mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 600);
-  }, [params.lat, params.lng, region]);
+  }, [params.lat, params.lng, region, useLeaflet]);
 
   useEffect(() => {
     const channels = channelsRef.current;
@@ -335,40 +390,45 @@ export default function MapScreen() {
             </View>
           ) : region ? (
             <>
-              <MapView
-                ref={mapRef}
-                style={{ flex: 1 }}
-                provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-                initialRegion={region}
-                showsUserLocation
-                showsMyLocationButton={false}
-                userInterfaceStyle={isDark ? 'dark' : 'light'}>
-                {Platform.OS === 'android' && (
-                  <UrlTile
-                    urlTemplate={
-                      isDark
-                        ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                        : 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
-                    }
-                    maximumZ={19}
-                    flipY={false}
-                  />
-                )}
-                {myPosition && <Circle center={myPosition} radius={5000} strokeColor="rgba(34,70,199,0.35)" fillColor="rgba(34,70,199,0.08)" />}
-                {shared.map((person) => {
-                  const position = livePositions[person.user_id] ?? { latitude: person.latitude, longitude: person.longitude };
-                  return (
+              {useLeaflet ? (
+                // Leaflet in a WebView needs no Maps SDK or key, so it works in Expo Go too.
+                <LeafletMap
+                  // A fresh page per style, so the chosen tiles are baked in rather than swapped by injected JS.
+                  key={mapStyle}
+                  mapStyle={mapStyle}
+                  initialCenter={region}
+                  myPosition={myPosition}
+                  radiusM={5000}
+                  markers={sharedMarkers}
+                  focus={focus}
+                  isDark={isDark}
+                  onMarkerPress={setSelectedId}
+                />
+              ) : (
+                <MapView
+                  ref={mapRef}
+                  // Android only reads userInterfaceStyle when the map is created, so remount on theme change.
+                  key={Platform.OS === 'android' ? (isDark ? 'dark' : 'light') : 'map'}
+                  style={{ flex: 1 }}
+                  provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                  initialRegion={region}
+                  mapType={Platform.OS === 'android' ? 'standard' : IOS_MAP_TYPE[mapStyle]}
+                  showsUserLocation
+                  showsMyLocationButton={false}
+                  userInterfaceStyle={isDark ? 'dark' : 'light'}>
+                  {myPosition && <Circle center={myPosition} radius={5000} strokeColor="rgba(34,70,199,0.35)" fillColor="rgba(34,70,199,0.08)" />}
+                  {sharedMarkers.map((marker) => (
                     <Marker
-                      key={person.user_id}
-                      coordinate={position}
-                      title={person.display_name}
-                      description={person.share_kind === 'trusted' ? 'Trusted circle' : 'Sharing until you meet'}
-                      pinColor={person.share_kind === 'trusted' ? '#7C3AED' : '#179B67'}
-                      onPress={() => setSelectedId(person.user_id)}
+                      key={marker.id}
+                      coordinate={{ latitude: marker.latitude, longitude: marker.longitude }}
+                      title={marker.title}
+                      description={marker.subtitle}
+                      pinColor={marker.color}
+                      onPress={() => setSelectedId(marker.id)}
                     />
-                  );
-                })}
-              </MapView>
+                  ))}
+                </MapView>
+              )}
 
               <TouchableOpacity
                 onPress={() => void handleToggleVisibility()}
@@ -383,9 +443,33 @@ export default function MapScreen() {
                 <Shield size={20} color="#FFFFFF" />
               </TouchableOpacity>
 
-              {Platform.OS === 'android' && (
+              <TouchableOpacity
+                onPress={() => setStylePickerOpen((open) => !open)}
+                className={`absolute right-3 top-[124px] h-12 w-12 items-center justify-center rounded-full shadow-sm ${isDark ? 'bg-[#111B2E] shadow-black/20' : 'bg-white shadow-black/15'}`}
+                accessibilityLabel="Change map style">
+                <Layers size={20} color={stylePickerOpen ? '#2246C7' : '#65728B'} />
+              </TouchableOpacity>
+
+              {stylePickerOpen && (
+                <View className={`absolute right-[68px] top-[124px] overflow-hidden rounded-2xl shadow-md ${isDark ? 'bg-[#111B2E] shadow-black/30' : 'bg-white shadow-black/15'}`}>
+                  {MAP_STYLES.map((option) => {
+                    const active = option.value === mapStyle;
+                    return (
+                      <TouchableOpacity
+                        key={option.value}
+                        onPress={() => chooseMapStyle(option.value)}
+                        className={`flex-row items-center justify-between gap-4 px-4 py-3 ${active ? (isDark ? 'bg-[#1B2A45]' : 'bg-[#EEF3FF]') : ''}`}>
+                        <Text className={`text-[14px] ${active ? 'font-bold text-[#2246C7]' : primaryText}`}>{option.label}</Text>
+                        {active ? <Check size={16} color="#2246C7" /> : <View style={{ width: 16 }} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              {useLeaflet && (
                 <View className={`absolute bottom-3 left-3 right-3 rounded-full px-2 py-1 shadow-sm ${isDark ? 'bg-[#0F172A]/80 shadow-black/20' : 'bg-white/80 shadow-black/10'}`}>
-                  <Text className={`text-[11px] ${secondaryText}`}>© OpenStreetMap contributors © CARTO</Text>
+                  <Text numberOfLines={1} className={`text-[11px] ${secondaryText}`}>{MAP_STYLE_ATTRIBUTION[mapStyle]}</Text>
                 </View>
               )}
             </>

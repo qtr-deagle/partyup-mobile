@@ -67,6 +67,29 @@ export type TripDetail = {
   my_payment_amount: number | null;
   my_payment_channel: PaymentChannel | null;
   my_invited_by_display_name: string | null;
+  meetup_municipality: string | null;
+  meetup_landmark: string | null;
+  meetup_lat: number | null;
+  meetup_lng: number | null;
+  destination_lat: number | null;
+  destination_lng: number | null;
+};
+
+export type MeetupLocation = {
+  municipality: string;
+  landmark: string;
+  latitude: number;
+  longitude: number;
+};
+
+export type TripMemberLocation = {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  member_role: 'member' | 'driver' | 'coordinator';
+  latitude: number;
+  longitude: number;
+  updated_at: string;
 };
 
 export type TripMember = {
@@ -118,6 +141,7 @@ export async function createTrip(input: {
   interests?: string[];
   itinerary?: { dayNumber: number; description: string }[];
   vehicleId?: string | null;
+  meetup?: MeetupLocation | null;
 }) {
   return withRequestTimeout(
     supabase.rpc('create_trip', {
@@ -138,6 +162,10 @@ export async function createTrip(input: {
       p_interests: input.interests ?? [],
       p_itinerary: (input.itinerary ?? []).map((day) => ({ day_number: day.dayNumber, description: day.description })),
       p_vehicle_id: input.vehicleId ?? null,
+      p_meetup_municipality: input.meetup?.municipality ?? null,
+      p_meetup_landmark: input.meetup?.landmark ?? null,
+      p_meetup_lat: input.meetup?.latitude ?? null,
+      p_meetup_lng: input.meetup?.longitude ?? null,
     }),
     'Creating trip'
   );
@@ -175,6 +203,24 @@ export async function listTripMembers(tripId: string) {
   }
   const { data, error } = response;
   return { data: (data ?? []) as TripMember[], error };
+}
+
+// Other accepted members' live positions near meetup time (empty outside that window).
+export async function getTripMemberLocations(tripId: string) {
+  let response;
+  try {
+    response = await withRequestTimeout(supabase.rpc('get_trip_member_locations', { p_trip_id: tripId }), 'Loading member locations');
+  } catch (error) {
+    return { data: [] as TripMemberLocation[], error: error instanceof Error ? error : new Error('Unable to load member locations.') };
+  }
+  const { data, error } = response;
+  const rows = ((data ?? []) as TripMemberLocation[]).map((row) => ({ ...row, latitude: Number(row.latitude), longitude: Number(row.longitude) }));
+  return { data: rows, error };
+}
+
+// "Jollibee MacArthur, Malolos" -- stored in trips.origin so list screens show it as-is.
+export function formatMeetupLabel(meetup: MeetupLocation) {
+  return meetup.municipality === 'Outside Bulacan' ? meetup.landmark : `${meetup.landmark}, ${meetup.municipality}`;
 }
 
 export async function getTripInviteLink(tripId: string) {

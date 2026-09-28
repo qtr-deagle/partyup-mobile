@@ -1,17 +1,21 @@
 import { TourCard } from '@/components/carpool/TourCard';
+import { enterFromBelow, SkeletonCard } from '@/components/ui/motion';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { formatCurrency, joinTripViaInvite, listMyTrips, type MyTrip } from '@/lib/carpool';
 import { parseTimestamp } from '@/lib/datetime';
+import { feedback } from '@/lib/sounds';
 import { getTheme, typography } from '@/lib/theme';
-import { joinPublicTrip, listBrowseTours, listFavoriteTours, toggleTripFavorite, type TourCard as TourCardType } from '@/lib/tours';
+import { joinPublicTrip, listBrowseTours, type TourCard as TourCardType } from '@/lib/tours';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, CalendarDays, CarFront, CheckCircle2, Compass, Edit2, Heart, MapPin, Plane, Plus, Search, Sparkles, Users, XCircle } from 'lucide-react-native';
+import { AlertTriangle, CalendarDays, CarFront, CheckCircle2, Compass, Edit2, MapPin, Plane, Plus, Search, Sparkles, Users, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 type TripView = 'Carpool' | 'Tours';
-type TourView = 'Browse' | 'My Tours' | 'Interested';
-type CarpoolView = 'My Trips' | 'Browse';
+type TourView = 'My Tours' | 'Browse';
+type CarpoolView = 'My Carpools' | 'Browse';
 
 const carpoolEmptyState = {
   title: 'No carpool trips yet',
@@ -23,7 +27,6 @@ const carpoolEmptyState = {
 const tourEmptyState: Record<TourView, { title: string; description: string }> = {
   Browse: { title: 'No tours to explore yet', description: 'Be the first to create a tour for others to join.' },
   'My Tours': { title: "You haven't joined any tours", description: 'Create a tour or browse ones to join.' },
-  Interested: { title: 'Nothing favorited yet', description: 'Tap the heart on a tour to save it here.' },
 };
 
 const carpoolBrowseEmptyState = {
@@ -177,6 +180,16 @@ function TripCard({ trip, isDark, isTour, onPress }: { trip: MyTrip; isDark: boo
   );
 }
 
+function LoadingCards() {
+  return (
+    <View className="gap-4">
+      <SkeletonCard height={150} />
+      <SkeletonCard height={150} />
+      <SkeletonCard height={150} />
+    </View>
+  );
+}
+
 function TripsWithHistory({
   trips,
   isDark,
@@ -193,15 +206,19 @@ function TripsWithHistory({
 
   return (
     <View className="gap-4">
-      {active.map((trip) => (
-        <TripCard key={trip.id} trip={trip} isDark={isDark} isTour={isTour} onPress={() => onPress(trip.id)} />
+      {active.map((trip, index) => (
+        <Animated.View key={trip.id} entering={enterFromBelow(index)}>
+          <TripCard trip={trip} isDark={isDark} isTour={isTour} onPress={() => onPress(trip.id)} />
+        </Animated.View>
       ))}
 
       {history.length > 0 ? (
         <>
           <Text className={`mt-2 text-sm font-bold uppercase tracking-wide ${mutedText}`}>History</Text>
-          {history.map((trip) => (
-            <TripCard key={trip.id} trip={trip} isDark={isDark} isTour={isTour} onPress={() => onPress(trip.id)} />
+          {history.map((trip, index) => (
+            <Animated.View key={trip.id} entering={enterFromBelow(active.length + index)}>
+              <TripCard trip={trip} isDark={isDark} isTour={isTour} onPress={() => onPress(trip.id)} />
+            </Animated.View>
           ))}
         </>
       ) : null}
@@ -213,7 +230,7 @@ export default function CarpoolingScreen() {
   const router = useRouter();
   const [activeView, setActiveView] = useState<TripView>('Carpool');
   const [activeTourView, setActiveTourView] = useState<TourView>('Browse');
-  const [activeCarpoolView, setActiveCarpoolView] = useState<CarpoolView>('My Trips');
+  const [activeCarpoolView, setActiveCarpoolView] = useState<CarpoolView>('My Carpools');
   const isDark = useColorScheme() === 'dark';
 
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F8FAFD]';
@@ -224,7 +241,7 @@ export default function CarpoolingScreen() {
   const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
   const inputBg = isDark ? 'bg-[#111B2E]' : 'bg-white';
 
-  // Carpool: My Trips
+  // Carpool: My Carpools
   const [trips, setTrips] = useState<MyTrip[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -246,11 +263,6 @@ export default function CarpoolingScreen() {
   const [myTours, setMyTours] = useState<MyTrip[]>([]);
   const [myToursLoading, setMyToursLoading] = useState(true);
   const [myToursError, setMyToursError] = useState<string | null>(null);
-
-  // Tours: Interested
-  const [favoriteTours, setFavoriteTours] = useState<TourCardType[]>([]);
-  const [favoritesLoading, setFavoritesLoading] = useState(true);
-  const [favoritesError, setFavoritesError] = useState<string | null>(null);
 
   const [busyTripId, setBusyTripId] = useState<string | null>(null);
 
@@ -309,59 +321,30 @@ export default function CarpoolingScreen() {
     setMyToursLoading(false);
   }, []);
 
-  const loadFavoriteTours = useCallback(async () => {
-    setFavoritesLoading(true);
-    setFavoritesError(null);
-    const result = await listFavoriteTours();
-    if (result.error) {
-      setFavoritesError(result.error.message);
-    } else {
-      setFavoriteTours(result.data);
+  const loadActiveView = useCallback(() => {
+    if (activeView === 'Carpool') {
+      return activeCarpoolView === 'My Carpools' ? loadTrips() : loadBrowseCarpools();
     }
-    setFavoritesLoading(false);
-  }, []);
+    return activeTourView === 'Browse' ? loadBrowseTours() : loadMyTours();
+  }, [activeView, activeCarpoolView, activeTourView, loadTrips, loadBrowseCarpools, loadBrowseTours, loadMyTours]);
+  const { refreshControl } = usePullToRefresh(loadActiveView);
 
   useFocusEffect(
     useCallback(() => {
-      if (activeView === 'Carpool') {
-        if (activeCarpoolView === 'My Trips') {
-          void loadTrips();
-        } else {
-          void loadBrowseCarpools();
-        }
-        return;
-      }
-      if (activeTourView === 'Browse') {
-        void loadBrowseTours();
-      } else if (activeTourView === 'My Tours') {
-        void loadMyTours();
-      } else {
-        void loadFavoriteTours();
-      }
-    }, [activeView, activeCarpoolView, activeTourView, loadTrips, loadBrowseCarpools, loadBrowseTours, loadMyTours, loadFavoriteTours])
+      void loadActiveView();
+    }, [loadActiveView])
   );
-
-  async function handleToggleFavorite(tripId: string) {
-    setBrowseTours((current) => current.map((t) => (t.id === tripId ? { ...t, is_favorited: !t.is_favorited } : t)));
-    const { error } = await toggleTripFavorite(tripId);
-    if (error) {
-      void loadBrowseTours();
-      return;
-    }
-    if (activeTourView === 'Interested') {
-      void loadFavoriteTours();
-    }
-  }
 
   async function handleJoinCarpool(tripId: string) {
     setBusyTripId(tripId);
     const { error } = await joinPublicTrip(tripId);
     setBusyTripId(null);
     if (error) {
+      feedback.error();
       setBrowseCarpoolsError(error.message);
       return;
     }
-    router.push(`/trip/${tripId}`);
+    router.push({ pathname: '/trip/[id]', params: { id: tripId, celebrate: 'joined' } });
   }
 
   async function handleJoinTour(tripId: string) {
@@ -369,10 +352,11 @@ export default function CarpoolingScreen() {
     const { error } = await joinPublicTrip(tripId);
     setBusyTripId(null);
     if (error) {
+      feedback.error();
       setBrowseError(error.message);
       return;
     }
-    router.push(`/trip/${tripId}`);
+    router.push({ pathname: '/trip/[id]', params: { id: tripId, celebrate: 'joined' } });
   }
 
   async function handleJoinByCode() {
@@ -385,11 +369,12 @@ export default function CarpoolingScreen() {
     const { data, error } = await joinTripViaInvite(code);
     setJoiningByCode(false);
     if (error || !data) {
+      feedback.error();
       setJoinCodeError(error?.message ?? 'Invite code not found.');
       return;
     }
     setJoinCode('');
-    router.push(`/trip/${data.trip_id}`);
+    router.push({ pathname: '/trip/[id]', params: { id: data.trip_id, celebrate: data.member_status === 'accepted' ? 'joined' : 'requested' } });
   }
 
   function handleCreatePress() {
@@ -399,7 +384,7 @@ export default function CarpoolingScreen() {
   const isTours = activeView === 'Tours';
 
   return (
-    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
+    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl}>
       <View className={`px-4 pt-4 pb-5 border-b ${headerBackground}`}>
         <View className="flex-row items-center justify-between">
           <Text className={`${typography.pageTitle} ${titleColor}`}>My Trips</Text>
@@ -432,7 +417,7 @@ export default function CarpoolingScreen() {
 
         {isTours ? (
           <View className="mt-4 flex-row items-center gap-2">
-            {(['Browse', 'My Tours', 'Interested'] as TourView[]).map((tab) => {
+            {(['Browse', 'My Tours'] as TourView[]).map((tab) => {
               const selected = activeTourView === tab;
               return (
                 <TouchableOpacity
@@ -447,7 +432,7 @@ export default function CarpoolingScreen() {
           </View>
         ) : (
           <View className="mt-4 flex-row items-center gap-2">
-            {(['My Trips', 'Browse'] as CarpoolView[]).map((tab) => {
+            {(['Browse', 'My Carpools'] as CarpoolView[]).map((tab) => {
               const selected = activeCarpoolView === tab;
               return (
                 <TouchableOpacity
@@ -462,7 +447,7 @@ export default function CarpoolingScreen() {
           </View>
         )}
 
-        {!isTours && activeCarpoolView === 'My Trips' ? (
+        {!isTours && activeCarpoolView === 'My Carpools' ? (
           <View className="mt-4 gap-2">
             <View className={`flex-row items-center gap-2 rounded-2xl border px-4 py-3 ${border} ${inputBg}`}>
               <TextInput
@@ -515,7 +500,7 @@ export default function CarpoolingScreen() {
       </View>
 
       <View className="px-4 pt-4">
-        {!isTours && activeCarpoolView === 'My Trips' ? (
+        {!isTours && activeCarpoolView === 'My Carpools' ? (
           <>
             {errorMessage ? (
               <View className="mb-4 rounded-xl bg-[#FEE2E2] px-4 py-3">
@@ -523,10 +508,10 @@ export default function CarpoolingScreen() {
               </View>
             ) : null}
 
-            {loading ? (
-              <ActivityIndicator className="mt-8" color="#2A55D4" />
+            {loading && trips.length === 0 ? (
+              <LoadingCards key="loading" />
             ) : trips.length === 0 ? (
-              <View className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
+              <View key="empty" className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
                 <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
                   <CarFront size={42} color="#2A55D4" />
                 </View>
@@ -538,7 +523,7 @@ export default function CarpoolingScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <TripsWithHistory trips={trips} isDark={isDark} isTour={false} onPress={(tripId) => router.push(`/trip/${tripId}`)} />
+              <TripsWithHistory key="list" trips={trips} isDark={isDark} isTour={false} onPress={(tripId) => router.push(`/trip/${tripId}`)} />
             )}
           </>
         ) : !isTours ? (
@@ -548,10 +533,10 @@ export default function CarpoolingScreen() {
                 <Text className="text-sm text-[#B91C1C]">{browseCarpoolsError}</Text>
               </View>
             ) : null}
-            {browseCarpoolsLoading ? (
-              <ActivityIndicator className="mt-8" color="#2A55D4" />
+            {browseCarpoolsLoading && browseCarpools.length === 0 ? (
+              <LoadingCards key="loading" />
             ) : browseCarpools.length === 0 ? (
-              <View className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
+              <View key="empty" className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
                 <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
                   <CarFront size={42} color="#2A55D4" />
                 </View>
@@ -563,16 +548,17 @@ export default function CarpoolingScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View className="gap-4">
-                {browseCarpools.map((trip) => (
-                  <TourCard
-                    key={trip.id}
-                    tour={trip}
-                    isDark={isDark}
-                    primaryActionLabel="Join Ride"
-                    primaryActionBusy={busyTripId === trip.id}
-                    onPrimaryAction={() => handleJoinCarpool(trip.id)}
-                  />
+              <View key="list" className="gap-4">
+                {browseCarpools.map((trip, index) => (
+                  <Animated.View key={trip.id} entering={enterFromBelow(index)}>
+                    <TourCard
+                      tour={trip}
+                      isDark={isDark}
+                      primaryActionLabel="Join Ride"
+                      primaryActionBusy={busyTripId === trip.id}
+                      onPrimaryAction={() => handleJoinCarpool(trip.id)}
+                    />
+                  </Animated.View>
                 ))}
               </View>
             )}
@@ -584,10 +570,10 @@ export default function CarpoolingScreen() {
                 <Text className="text-sm text-[#B91C1C]">{browseError}</Text>
               </View>
             ) : null}
-            {browseLoading ? (
-              <ActivityIndicator className="mt-8" color="#2A55D4" />
+            {browseLoading && browseTours.length === 0 ? (
+              <LoadingCards key="loading" />
             ) : browseTours.length === 0 ? (
-              <View className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
+              <View key="empty" className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
                 <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
                   <Compass size={42} color="#2A55D4" />
                 </View>
@@ -599,32 +585,32 @@ export default function CarpoolingScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <View className="gap-4">
-                {browseTours.map((tour) => (
-                  <TourCard
-                    key={tour.id}
-                    tour={tour}
-                    isDark={isDark}
-                    primaryActionLabel="Join Tour"
-                    primaryActionBusy={busyTripId === tour.id}
-                    onPrimaryAction={() => handleJoinTour(tour.id)}
-                    onToggleFavorite={() => handleToggleFavorite(tour.id)}
-                  />
+              <View key="list" className="gap-4">
+                {browseTours.map((tour, index) => (
+                  <Animated.View key={tour.id} entering={enterFromBelow(index)}>
+                    <TourCard
+                      tour={tour}
+                      isDark={isDark}
+                      primaryActionLabel="Join Tour"
+                      primaryActionBusy={busyTripId === tour.id}
+                      onPrimaryAction={() => handleJoinTour(tour.id)}
+                    />
+                  </Animated.View>
                 ))}
               </View>
             )}
           </>
-        ) : activeTourView === 'My Tours' ? (
+        ) : (
           <>
             {myToursError ? (
               <View className="mb-4 rounded-xl bg-[#FEE2E2] px-4 py-3">
                 <Text className="text-sm text-[#B91C1C]">{myToursError}</Text>
               </View>
             ) : null}
-            {myToursLoading ? (
-              <ActivityIndicator className="mt-8" color="#2A55D4" />
+            {myToursLoading && myTours.length === 0 ? (
+              <LoadingCards key="loading" />
             ) : myTours.length === 0 ? (
-              <View className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
+              <View key="empty" className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
                 <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
                   <Plane size={42} color="#2A55D4" />
                 </View>
@@ -636,39 +622,7 @@ export default function CarpoolingScreen() {
                 </TouchableOpacity>
               </View>
             ) : (
-              <TripsWithHistory trips={myTours} isDark={isDark} isTour={true} onPress={(tripId) => router.push(`/trip/${tripId}`)} />
-            )}
-          </>
-        ) : (
-          <>
-            {favoritesError ? (
-              <View className="mb-4 rounded-xl bg-[#FEE2E2] px-4 py-3">
-                <Text className="text-sm text-[#B91C1C]">{favoritesError}</Text>
-              </View>
-            ) : null}
-            {favoritesLoading ? (
-              <ActivityIndicator className="mt-8" color="#2A55D4" />
-            ) : favoriteTours.length === 0 ? (
-              <View className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
-                <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
-                  <Heart size={42} color="#2A55D4" />
-                </View>
-                <Text className={`mt-6 text-headline-24 font-bold text-center ${primaryText}`}>{tourEmptyState.Interested.title}</Text>
-                <Text className={`mt-3 text-center text-base leading-6 ${mutedText}`}>{tourEmptyState.Interested.description}</Text>
-              </View>
-            ) : (
-              <View className="gap-4">
-                {favoriteTours.map((tour) => (
-                  <TourCard
-                    key={tour.id}
-                    tour={tour}
-                    isDark={isDark}
-                    primaryActionLabel="View Details"
-                    onPrimaryAction={() => router.push(`/trip/${tour.id}`)}
-                    onToggleFavorite={() => handleToggleFavorite(tour.id)}
-                  />
-                ))}
-              </View>
+              <TripsWithHistory key="list" trips={myTours} isDark={isDark} isTour={true} onPress={(tripId) => router.push(`/trip/${tripId}`)} />
             )}
           </>
         )}

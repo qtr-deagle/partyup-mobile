@@ -3,6 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { ImagePlus, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   visible: boolean;
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function ReportUserModal({ visible, onClose, isDark, reportedUserId, tripId, targetDisplayName }: Props) {
+  const insets = useSafeAreaInsets();
   const [reportType, setReportType] = useState<ReportType>('behavior');
   const [details, setDetails] = useState('');
   const [evidenceUris, setEvidenceUris] = useState<string[]>([]);
@@ -85,7 +87,7 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
     <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable style={StyleSheet.absoluteFillObject} className="bg-black/55" onPress={handleClose} />
-        <View style={{ backgroundColor: sheetBackground }} className="rounded-t-[32px] px-5 pb-9 pt-5 shadow-2xl">
+        <View style={{ backgroundColor: sheetBackground, paddingBottom: insets.bottom + 36 }} className="rounded-t-[32px] px-5 pt-5 shadow-2xl">
           <View className="flex-row items-center justify-between">
             <Text className="text-headline-24 font-bold" style={{ color: primaryText }}>
               Report {targetDisplayName}

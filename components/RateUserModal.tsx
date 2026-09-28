@@ -2,6 +2,7 @@ import { submitUserRating } from '@/lib/ratings';
 import { Star, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
   visible: boolean;
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export function RateUserModal({ visible, onClose, isDark, targetUserId, tripId, targetDisplayName, initialRating, initialComment, onSubmitted }: Props) {
+  const insets = useSafeAreaInsets();
   const [rating, setRating] = useState(initialRating ?? 0);
   const [comment, setComment] = useState(initialComment ?? '');
   const [submitting, setSubmitting] = useState(false);
@@ -54,7 +56,7 @@ export function RateUserModal({ visible, onClose, isDark, targetUserId, tripId, 
     <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
         <Pressable style={StyleSheet.absoluteFillObject} className="bg-black/55" onPress={handleClose} />
-        <View style={{ backgroundColor: sheetBackground }} className="rounded-t-[32px] px-5 pb-9 pt-5 shadow-2xl">
+        <View style={{ backgroundColor: sheetBackground, paddingBottom: insets.bottom + 36 }} className="rounded-t-[32px] px-5 pt-5 shadow-2xl">
           <View className="flex-row items-center justify-between">
             <Text className="text-headline-24 font-bold" style={{ color: primaryText }}>
               Rate {targetDisplayName}

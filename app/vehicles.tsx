@@ -188,7 +188,7 @@ export default function VehiclesScreen() {
         </Text>
       </View>
 
-      <ScrollView className="flex-1 px-4 pt-4" contentContainerClassName="pb-10">
+      <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
         {errorMessage ? (
           <View className="rounded-xl px-4 py-3" style={{ backgroundColor: errorBg }}>
             <Text className="text-sm" style={{ color: errorText }}>{errorMessage}</Text>

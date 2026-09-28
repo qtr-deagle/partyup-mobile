@@ -1,8 +1,11 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { routeForNotification } from '@/components/InAppNotifier';
 import NotificationModal from '@/components/NotificationModal';
+import { PopIn } from '@/components/ui/motion';
 import WarningModeModal from '@/components/WarningModeModal';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { startTrip } from '@/lib/carpool';
 import { formatCountdown, parseTimestamp } from '@/lib/datetime';
 import { getActiveTripSummary, getSafetyOverview, type ActiveTripSummary, type SafetyOverview } from '@/lib/homeDashboard';
@@ -10,6 +13,8 @@ import { requestLocationPermissions, startBackgroundLocationTracking, upsertCurr
 import { listNotifications, markNotificationRead, type AppNotification } from '@/lib/notifications';
 import { triggerSosAlert } from '@/lib/safety';
 import { listIncomingFriendRequests, type IncomingFriendRequest } from '@/lib/social';
+import { feedback } from '@/lib/sounds';
+import { supabase } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -29,9 +34,17 @@ const TRIP_STATUS_LABELS: Record<ActiveTripSummary['status'], string> = {
 
 const DASHBOARD_POLL_INTERVAL_MS = 45000;
 
+function greeting() {
+  const hour = Number(new Date().toLocaleString('en-US', { hour: 'numeric', hour12: false, timeZone: 'Asia/Manila' }));
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
 export default function HomeScreen() {
   const router = useRouter();
-  const { profile } = useAuth();
+  const { profile, session } = useAuth();
+  const userId = session?.user.id;
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [warningModeVisible, setWarningModeVisible] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
@@ -53,22 +66,46 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const loadHome = useCallback(
+    () =>
+      Promise.all([
+        loadDashboard(),
+        listIncomingFriendRequests().then((result) => {
+          if (!result.error) {
+            setIncomingRequests(result.data);
+          }
+        }),
+        listNotifications().then((result) => {
+          if (!result.error) {
+            setDbNotifications(result.data);
+          }
+        }),
+      ]),
+    [loadDashboard]
+  );
+  const { refreshControl } = usePullToRefresh(loadHome);
+
   useFocusEffect(
     useCallback(() => {
-      void loadDashboard();
-      void listIncomingFriendRequests().then((result) => {
-        if (!result.error) {
-          setIncomingRequests(result.data);
-        }
-      });
-      void listNotifications().then((result) => {
-        if (!result.error) {
-          setDbNotifications(result.data);
-        }
-      });
+      void loadHome();
       const intervalId = setInterval(() => void loadDashboard(), DASHBOARD_POLL_INTERVAL_MS);
-      return () => clearInterval(intervalId);
-    }, [loadDashboard])
+      // Keep the bell dot and list current while Home is open.
+      const channel = userId
+        ? supabase
+            .channel(`home-notifications:${userId}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, (payload) => {
+              const row = payload.new as AppNotification;
+              setDbNotifications((current) => (current.some((n) => n.id === row.id) ? current : [row, ...current]));
+            })
+            .subscribe()
+        : null;
+      return () => {
+        clearInterval(intervalId);
+        if (channel) {
+          void supabase.removeChannel(channel);
+        }
+      };
+    }, [loadDashboard, loadHome, userId])
   );
 
   const {
@@ -110,12 +147,19 @@ export default function HomeScreen() {
   ].sort((a, b) => b.sortTime - a.sortTime);
 
   const handleNotificationPress = (notification: { id: string; title: string; message: string; read: boolean }) => {
-    const isDbNotification = dbNotifications.some((n) => n.id === notification.id);
-    if (isDbNotification && !notification.read) {
+    const dbNotification = dbNotifications.find((n) => n.id === notification.id);
+    if (dbNotification && !notification.read) {
       setDbNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)));
       void markNotificationRead(notification.id);
     }
-    Alert.alert(notification.title, notification.message);
+    // Friend requests come from a separate list and always open Friends.
+    const href = dbNotification ? routeForNotification({ ...(dbNotification.data ?? {}), type: dbNotification.type }) : '/friends';
+    if (href) {
+      setNotificationVisible(false);
+      router.push(href);
+    } else {
+      Alert.alert(notification.title, notification.message);
+    }
   };
 
   async function handleStartTrip() {
@@ -124,9 +168,11 @@ export default function HomeScreen() {
     const { error } = await startTrip(activeTrip.trip_id);
     setStartingTrip(false);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to start trip', error.message);
       return;
     }
+    feedback.success();
     void loadDashboard();
   }
 
@@ -150,6 +196,7 @@ export default function HomeScreen() {
     }
     await startBackgroundLocationTracking();
     setSharingLocation(false);
+    feedback.success();
     Alert.alert('Location shared', 'Your live location is now being shared.');
   }
 
@@ -161,10 +208,14 @@ export default function HomeScreen() {
       ]);
       return;
     }
-    Alert.alert('Send emergency SOS?', 'This will immediately alert your trusted circle with your current location.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Send SOS', style: 'destructive', onPress: () => void sendSos() },
-    ]);
+    Alert.alert(
+      'Send emergency SOS?',
+      "This immediately alerts PartyUp staff and your trusted circle, and shares your live location until you tap \"I'm safe\".",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Send SOS', style: 'destructive', onPress: () => void sendSos() },
+      ]
+    );
   }
 
   async function sendSos() {
@@ -172,22 +223,27 @@ export default function HomeScreen() {
     const { data, error } = await triggerSosAlert(activeTrip?.trip_id ?? null);
     setSendingSos(false);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to send SOS', error.message);
       return;
     }
+    feedback.notify();
     Alert.alert(
       'SOS sent',
-      data && data.recipient_count > 0
-        ? `${data.recipient_count} trusted contact${data.recipient_count === 1 ? '' : 's'} notified with your location.`
-        : "You don't have any trusted contacts with alerts enabled yet."
+      'PartyUp staff can now see your live location' +
+        (data && data.recipient_count > 0
+          ? ` and ${data.recipient_count} trusted contact${data.recipient_count === 1 ? ' was' : 's were'} notified.`
+          : ". You don't have any trusted contacts with alerts enabled yet.") +
+        " Tap \"I'm safe\" when you're OK."
     );
   }
 
+  const firstName = profile?.display_name?.trim().split(/\s+/)[0] ?? '';
   const countdownLabel = activeTrip ? formatCountdown(activeTrip.start_at) : null;
   const isVerified = safety?.verification_status === 'approved';
 
   return (
-    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
+    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl}>
       {!isDark && <View className="absolute -top-24 -right-20 h-56 w-56 rounded-full bg-[#DCE6FF] opacity-70" />}
       {!isDark && <View className="absolute top-40 -left-24 h-52 w-52 rounded-full bg-[#DDEFE8] opacity-70" />}
 
@@ -206,11 +262,11 @@ export default function HomeScreen() {
               className={`relative rounded-full p-2 ${isDark ? 'border border-[#22324B] bg-[#111B2E]' : 'border border-black/10 bg-white'}`}>
               <Users size={20} color={isDark ? '#E2E8F0' : '#24314A'} />
               {incomingRequests.length > 0 && (
-                <View
-                  className="absolute -right-1 -top-1 h-5 min-w-[20px] items-center justify-center rounded-full px-1"
-                  style={{ backgroundColor: destructiveColor }}>
-                  <Text className="text-[11px] font-bold text-white">{incomingRequests.length}</Text>
-                </View>
+                <PopIn className="absolute -right-1 -top-1">
+                  <View className="h-5 min-w-[20px] items-center justify-center rounded-full px-1" style={{ backgroundColor: destructiveColor }}>
+                    <Text className="text-[11px] font-bold text-white">{incomingRequests.length}</Text>
+                  </View>
+                </PopIn>
               )}
             </AnimatedPressable>
             <AnimatedPressable
@@ -219,14 +275,16 @@ export default function HomeScreen() {
               className={`relative rounded-full p-2 ${isDark ? 'border border-[#22324B] bg-[#111B2E]' : 'border border-black/10 bg-white'}`}>
               <Bell size={20} color={isDark ? '#E2E8F0' : '#24314A'} />
               {(incomingRequests.length > 0 || dbNotifications.some((notification) => !notification.read)) && (
-                <View className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full" style={{ backgroundColor: destructiveColor }} />
+                <PopIn className="absolute right-2 top-2">
+                  <View className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: destructiveColor }} />
+                </PopIn>
               )}
             </AnimatedPressable>
           </View>
         </View>
 
         <View className="mt-8">
-          <Text className={`${typography.pageTitle} ${titleColor}`}>Home</Text>
+          <Text className={`${typography.pageTitle} ${titleColor}`}>{greeting()}{firstName ? `, ${firstName}` : ''} 👋</Text>
           <Text className={`mt-2 text-base ${subtitleColor}`}>Your trip and safety status</Text>
         </View>
       </Animated.View>

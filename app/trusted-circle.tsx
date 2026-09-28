@@ -1,5 +1,6 @@
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { listFriendConnections, type FriendConnection } from '@/lib/social';
 import { getTheme, typography } from '@/lib/theme';
 import {
@@ -74,11 +75,13 @@ export default function TrustedCircleScreen() {
     setFriendsLoading(false);
   }, []);
 
+  const loadAll = useCallback(() => Promise.all([loadContacts(), loadFriends()]), [loadContacts, loadFriends]);
+  const { refreshing, refreshControl } = usePullToRefresh(loadAll);
+
   useFocusEffect(
     useCallback(() => {
-      void loadContacts();
-      void loadFriends();
-    }, [loadContacts, loadFriends])
+      void loadAll();
+    }, [loadAll])
   );
 
   if (authLoading) {
@@ -320,7 +323,8 @@ export default function TrustedCircleScreen() {
         <Text className={`mt-1 text-center text-[15px] ${secondary}`}>{totalCount} contact{totalCount === 1 ? '' : 's'} • Manage emergency alerts</Text>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-10 pt-4">
+      <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} refreshControl={refreshControl}>
         <View className="flex-row gap-3">
           <View className={`flex-1 items-center rounded-2xl border px-3 py-4 ${card}`}>
             <Text className={`text-[26px] font-black ${primary}`}>{totalCount}</Text>
@@ -337,7 +341,7 @@ export default function TrustedCircleScreen() {
         </View>
 
         {errorMessage ? <Text className="rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
-        {loading ? <ActivityIndicator className="mt-4" color="#284BD6" /> : null}
+        {loading && !refreshing ? <ActivityIndicator className="mt-4" color="#284BD6" /> : null}
 
         {!loading && !contacts.length ? (
           <View className="items-center px-8 py-10">
@@ -350,7 +354,7 @@ export default function TrustedCircleScreen() {
           </View>
         ) : null}
 
-        {!loading ? contacts.map(renderContact) : null}
+        {!loading || refreshing ? contacts.map(renderContact) : null}
 
         <View className={`rounded-[22px] border p-4 ${card}`}>
           <Text className={`text-headline-18 font-bold ${primary}`}>How It Works</Text>

@@ -127,7 +127,7 @@ export default function VerifyVehicleScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-4 pt-4" contentContainerClassName="pb-10">
+      <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
         <View className="rounded-[22px] border border-[#E2E7F0] bg-white p-4 shadow-sm shadow-black/5">
           <Text className="text-[14px] font-extrabold tracking-wide text-[#6B7590]">WHO OWNS THIS VEHICLE?</Text>
           <View className="mt-2 flex-row gap-2 rounded-2xl bg-[#F1F4FA] p-1">

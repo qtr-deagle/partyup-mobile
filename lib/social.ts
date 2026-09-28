@@ -1,3 +1,4 @@
+import { parseTimestamp } from '@/lib/datetime';
 import { supabase } from '@/lib/supabase';
 
 const REQUEST_TIMEOUT_MS = 10000;
@@ -62,8 +63,16 @@ export type Conversation = {
   interests: string[];
   last_message: string | null;
   last_message_at: string | null;
+  last_message_sender_id: string | null;
+  other_last_read_at: string | null;
+  other_last_delivered_at: string | null;
   unread_count: number;
 };
+
+// Where one of my messages is on its way to the other person.
+export type MessageStatus = 'sending' | 'failed' | 'sent' | 'delivered' | 'seen';
+
+export type ThreadReceipts = { readAt: string | null; deliveredAt: string | null };
 
 export type ChatMessage = {
   id: string;
@@ -263,14 +272,41 @@ export async function getChatMessages(threadId: string) {
 }
 
 export async function sendChatMessage(threadId: string, senderId: string, body: string) {
-  return supabase.from('chat_messages').insert({
-    thread_id: threadId,
-    sender_id: senderId,
-    body,
-    message_type: 'text',
-  });
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert({ thread_id: threadId, sender_id: senderId, body, message_type: 'text' })
+    .select('id, thread_id, sender_id, body, message_type, created_at')
+    .single();
+  return { data: data as ChatMessage | null, error };
 }
 
 export async function markThreadRead(threadId: string) {
   return supabase.rpc('mark_thread_read', { p_thread_id: threadId });
+}
+
+export async function markThreadsDelivered() {
+  return supabase.rpc('mark_threads_delivered');
+}
+
+export async function countUnreadMessages() {
+  const { data, error } = await supabase.rpc('count_unread_messages');
+  return { count: Number(data ?? 0), error };
+}
+
+// The other person's read/delivered marks for a direct thread.
+export async function getThreadReceipts(threadId: string, otherUserId: string) {
+  const { data, error } = await supabase
+    .from('chat_participants')
+    .select('last_read_at, last_delivered_at')
+    .eq('thread_id', threadId)
+    .eq('user_id', otherUserId)
+    .maybeSingle();
+  return { data: { readAt: data?.last_read_at ?? null, deliveredAt: data?.last_delivered_at ?? null } as ThreadReceipts, error };
+}
+
+export function messageStatus(createdAt: string, receipts: ThreadReceipts): MessageStatus {
+  const sentAt = parseTimestamp(createdAt).getTime();
+  if (receipts.readAt && parseTimestamp(receipts.readAt).getTime() >= sentAt) return 'seen';
+  if (receipts.deliveredAt && parseTimestamp(receipts.deliveredAt).getTime() >= sentAt) return 'delivered';
+  return 'sent';
 }

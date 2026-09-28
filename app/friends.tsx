@@ -1,4 +1,5 @@
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { createOrGetDirectThread, listFriendConnections, removeFriend, respondToFriendRequest, type FriendConnection } from '@/lib/social';
 import { getTheme, typography } from '@/lib/theme';
 import {
@@ -82,13 +83,16 @@ export default function FriendsScreen() {
     setIncomingTrustedLoading(false);
   }, []);
 
+  const loadAll = useCallback(() => {
+    setErrorMessage(null);
+    return Promise.all([loadConnections(), loadTrustedContacts(), loadIncomingTrustedRequests()]);
+  }, [loadConnections, loadTrustedContacts, loadIncomingTrustedRequests]);
+  const { refreshing, refreshControl } = usePullToRefresh(loadAll);
+
   useFocusEffect(
     useCallback(() => {
-      setErrorMessage(null);
-      void loadConnections();
-      void loadTrustedContacts();
-      void loadIncomingTrustedRequests();
-    }, [loadConnections, loadTrustedContacts, loadIncomingTrustedRequests])
+      void loadAll();
+    }, [loadAll])
   );
 
   function openProfile(connection: FriendConnection) {
@@ -366,7 +370,7 @@ export default function FriendsScreen() {
     { key: 'trusted', label: 'Trusted Circle', count: trustedContacts.length + incomingTrustedRequests.length },
   ];
 
-  const loading = tab === 'friends' ? connectionsLoading : trustedLoading || incomingTrustedLoading;
+  const loading = !refreshing && (tab === 'friends' ? connectionsLoading : trustedLoading || incomingTrustedLoading);
 
   return (
     <View className={`flex-1 ${background}`}>
@@ -397,7 +401,8 @@ export default function FriendsScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-10 pt-4">
+      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pt-4"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} refreshControl={refreshControl}>
         {errorMessage ? <Text className="rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
         {loading ? <ActivityIndicator className="mt-8" color="#284BD6" /> : null}
 

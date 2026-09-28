@@ -40,7 +40,7 @@ export default function JoinTripScreen() {
         setErrorMessage(error?.message ?? 'Unable to join this trip.');
         return;
       }
-      router.replace(`/trip/${data.trip_id}`);
+      router.replace({ pathname: '/trip/[id]', params: { id: data.trip_id, celebrate: data.member_status === 'accepted' ? 'joined' : 'requested' } });
     })();
   }, [code, loading, ref, router, session]);
 

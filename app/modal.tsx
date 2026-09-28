@@ -1,5 +1,5 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, MapPin, Shield, ShieldAlert, ShieldCheck, SunMedium } from 'lucide-react-native';
+import { AlertTriangle, ArrowLeft, MapPin, Shield, ShieldAlert, ShieldCheck, SunMedium, Volume2 } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme, useThemePreference } from '@/hooks/use-color-scheme';
 import { setLocationVisibility } from '@/lib/location';
 import { setSafetyPreferences } from '@/lib/safety';
+import { setSoundEnabled, useSoundEnabled } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 
@@ -62,6 +63,7 @@ export default function ModalScreen() {
 
   const isDark = colorScheme === 'dark';
   const { titleColor } = getTheme(isDark);
+  const soundEnabled = useSoundEnabled();
 
   useFocusEffect(
     useCallback(() => {
@@ -108,7 +110,7 @@ export default function ModalScreen() {
   }
 
   return (
-    <ScrollView className={`flex-1 ${isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]'}`} contentContainerClassName="pb-28">
+    <ScrollView className={`flex-1 ${isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]'}`} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
       <View
         className={`border-b px-4 pb-4 ${isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white'}`}
         style={{ paddingTop: insets.top + 16 }}>
@@ -135,6 +137,16 @@ export default function ModalScreen() {
               description="Toggle between light and dark theme"
               value={isDark}
               onValueChange={(nextValue) => setPreference(nextValue ? 'dark' : 'light')}
+              isDark={isDark}
+            />
+          </View>
+          <View className="mt-3">
+            <SettingRow
+              icon={<Volume2 size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
+              title="Sounds"
+              description="Play sounds for messages, notifications and bookings"
+              value={soundEnabled}
+              onValueChange={setSoundEnabled}
               isDark={isDark}
             />
           </View>
@@ -190,7 +202,7 @@ export default function ModalScreen() {
           </View>
 
           <View className="mt-4 gap-3">
-            {['Email Verified', 'Phone Verified'].map((item) => (
+            {['Email Verified'].map((item) => (
               <View key={item} className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
                 <Text className={`text-[15px] ${isDark ? 'text-white' : 'text-[#182847]'}`}>{item}</Text>
                 <Text className="text-[16px] text-[#00A56A]">✓</Text>

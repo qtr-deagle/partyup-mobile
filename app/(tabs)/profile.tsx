@@ -1,15 +1,20 @@
+import { enterFromBelow } from '@/components/ui/motion';
 import { useAuth } from '@/hooks/auth-provider';
+import { formatResidence } from '@/lib/bulacan';
 import { uploadAvatar } from '@/lib/avatar';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
+import { feedback } from '@/lib/sounds';
 import { getTheme, typography } from '@/lib/theme';
 import { getProfileStats, listUserReviews, type ProfileStats, type UserReview } from '@/lib/ratings';
 import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
 import { getMyVerification, type IdVerification } from '@/lib/verification';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LogOut, Shield, ShieldAlert, ShieldCheck, Star, Users } from 'lucide-react-native';
+import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LogOut, Pencil, Shield, ShieldAlert, ShieldCheck, Star, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 
 function formatRelativeDate(iso: string) {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -40,9 +45,15 @@ function StarRow({ rating, size }: { rating: number; size: number }) {
   );
 }
 
-function SectionCard({ children }: { children: React.ReactNode }) {
+function SectionCard({ children, index = 0 }: { children: React.ReactNode; index?: number }) {
   const isDark = useColorScheme() === 'dark';
-  return <View className={`rounded-[22px] border p-4 shadow-sm ${isDark ? 'border-[#22324B] bg-[#111B2E] shadow-black/20' : 'border-[#E9EDF5] bg-white shadow-black/5'}`}>{children}</View>;
+  return (
+    <Animated.View
+      entering={enterFromBelow(index)}
+      className={`rounded-[22px] border p-4 shadow-sm ${isDark ? 'border-[#22324B] bg-[#111B2E] shadow-black/20' : 'border-[#E9EDF5] bg-white shadow-black/5'}`}>
+      {children}
+    </Animated.View>
+  );
 }
 
 export default function ProfileScreen() {
@@ -62,8 +73,7 @@ export default function ProfileScreen() {
   const profileAge = profile?.date_of_birth ? Math.max(0, new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() - (new Date() < new Date(new Date().getFullYear(), new Date(profile.date_of_birth).getMonth(), new Date(profile.date_of_birth).getDate()) ? 1 : 0)) : null;
   const confirmedTrustedContacts = trustedContacts.filter((contact) => contact.status === 'accepted');
   const userId = session?.user.id;
-  const location = [profile?.city, profile?.country].filter(Boolean).join(', ');
-  const emailVerified = Boolean(session?.user.email_confirmed_at);
+  const location = formatResidence(profile?.city);
 
   const [avatarUploading, setAvatarUploading] = useState(false);
 
@@ -85,43 +95,56 @@ export default function ProfileScreen() {
     setAvatarUploading(true);
     const { error } = await uploadAvatar(result.assets[0].uri);
     if (error) {
+      feedback.error();
       Alert.alert('Upload failed', error.message);
     } else {
       await refreshProfile();
+      feedback.success();
     }
     setAvatarUploading(false);
   }
 
+  const loadProfile = useCallback(
+    () =>
+      Promise.all([
+        refreshProfile(),
+        listTrustedContacts().then((result) => {
+          if (!result.error) {
+            setTrustedContacts(result.data);
+          }
+        }),
+        getMyVerification().then((result) => {
+          if (!result.error) {
+            setVerification(result.data);
+          }
+        }),
+        userId
+          ? getProfileStats(userId).then((result) => {
+              if (!result.error) {
+                setStats(result.data);
+              }
+            })
+          : null,
+        userId
+          ? listUserReviews(userId, 5).then((result) => {
+              if (!result.error) {
+                setReviews(result.data);
+              }
+            })
+          : null,
+      ]),
+    [refreshProfile, userId]
+  );
+  const { refreshControl } = usePullToRefresh(loadProfile);
+
   useFocusEffect(
     useCallback(() => {
-      void refreshProfile();
-      void listTrustedContacts().then((result) => {
-        if (!result.error) {
-          setTrustedContacts(result.data);
-        }
-      });
-      void getMyVerification().then((result) => {
-        if (!result.error) {
-          setVerification(result.data);
-        }
-      });
-      if (userId) {
-        void getProfileStats(userId).then((result) => {
-          if (!result.error) {
-            setStats(result.data);
-          }
-        });
-        void listUserReviews(userId, 5).then((result) => {
-          if (!result.error) {
-            setReviews(result.data);
-          }
-        });
-      }
-    }, [refreshProfile, userId])
+      void loadProfile();
+    }, [loadProfile])
   );
 
   return (
-    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28">
+    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl}>
       <View className={`border-b px-4 py-4 ${headerBackground}`}>
         <View className="flex-row items-center justify-between">
           <TouchableOpacity onPress={() => router.push('/modal')} className="h-10 w-10 items-center justify-center rounded-full">
@@ -133,7 +156,7 @@ export default function ProfileScreen() {
       </View>
 
       <View className="px-4 pt-4 gap-5">
-        <SectionCard>
+        <SectionCard index={0}>
           <View className="items-center">
             <TouchableOpacity onPress={handleChangeAvatar} disabled={avatarUploading} activeOpacity={0.8}>
               {profile?.avatar_url ? (
@@ -184,6 +207,13 @@ export default function ProfileScreen() {
               <Text className={`mt-4 text-[14px] italic ${textSecondary}`}>No bio yet.</Text>
             )}
 
+            <TouchableOpacity
+              onPress={() => router.push('/edit-profile')}
+              className={`mt-4 flex-row items-center justify-center gap-2 self-stretch rounded-2xl border py-3 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#2647B8] bg-white'}`}>
+              <Pencil size={16} color={isDark ? '#E2E8F0' : '#2647B8'} />
+              <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Edit Profile</Text>
+            </TouchableOpacity>
+
             <View className={`mt-5 w-full border-t ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'} pt-5`}>
               <Text className={`text-[16px] font-bold ${textPrimary}`}>Travel Experience</Text>
 
@@ -228,7 +258,7 @@ export default function ProfileScreen() {
           }[status];
 
           return (
-            <View className={`rounded-[22px] border p-4 ${styles.border}`}>
+            <Animated.View entering={enterFromBelow(1)} className={`rounded-[22px] border p-4 ${styles.border}`}>
               <View className="flex-row items-start gap-3">
                 {styles.icon}
                 <View className="flex-1">
@@ -258,29 +288,11 @@ export default function ProfileScreen() {
                   )}
                 </View>
               </View>
-            </View>
+            </Animated.View>
           );
         })()}
 
-        <SectionCard>
-          <View className="flex-row items-center gap-2">
-            <Shield size={18} color="#00A56A" />
-            <Text className={`text-[16px] font-bold ${textPrimary}`}>Email Verification</Text>
-          </View>
-
-          <View className="mt-4 gap-3">
-            <View className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
-              <Text className={`text-[15px] ${textPrimary}`}>Email</Text>
-              {emailVerified ? (
-                <Text className="text-[14px] font-semibold text-[#00A56A]">✓ Verified</Text>
-              ) : (
-                <Text className={`text-[15px] ${textSecondary}`}>Not verified</Text>
-              )}
-            </View>
-          </View>
-        </SectionCard>
-
-        <SectionCard>
+        <SectionCard index={3}>
           <View className="flex-row items-center gap-2">
             <Users size={18} color="#2647B8" />
             <Text className={`text-[16px] font-bold ${textPrimary}`}>Trusted Circle</Text>
@@ -309,7 +321,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </SectionCard>
 
-        <SectionCard>
+        <SectionCard index={4}>
             <Text className={`text-[16px] font-bold ${textPrimary}`}>Recent Reviews</Text>
 
           <View className="mt-3 gap-3">
@@ -332,7 +344,7 @@ export default function ProfileScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard>
+        <SectionCard index={5}>
           <View className="flex-row items-center gap-2">
             <AlertCircle size={18} color="#E32727" />
             <Text className={`text-[16px] font-bold ${textPrimary}`}>Emergency Settings</Text>

@@ -1,5 +1,6 @@
 import { withRequestTimeout } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { LOCATION_TASK_NAME } from '@/lib/location-task';
@@ -108,16 +109,72 @@ export async function getLocationPermissionStatus(): Promise<LocationPermissionR
   };
 }
 
-let trackingPrecise: boolean | null = null;
+type TrackingMode = 'balanced' | 'precise' | 'sos';
+
+const TRACKING_OPTIONS: Record<TrackingMode, Location.LocationTaskOptions> = {
+  balanced: { accuracy: Location.Accuracy.Balanced, timeInterval: 30000, distanceInterval: 50 },
+  precise: { accuracy: Location.Accuracy.High, timeInterval: 10000, distanceInterval: 5 },
+  // Staff follow the traveler live during an SOS, so report every ~5 s even when standing still.
+  sos: { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 0 },
+};
+
+// The mode the running task was started with (null = unknown or not started).
+let trackingMode: TrackingMode | null = null;
+// What the map last asked for; SOS overrides it and restores it afterwards.
+let preferredPrecise: boolean | null = null;
+let sosActive = false;
+let wasTrackingBeforeSos = false;
+
+// Expo Go can't run background location (not at all on Android), so skip it there;
+// the foreground heartbeat still keeps our position fresh while the app is open.
+const backgroundLocationSupported = Constants.executionEnvironment !== ExecutionEnvironment.StoreClient;
 
 // Precise mode (High accuracy, ~5 m steps) is used while a pair session is
 // active so the server can detect the 10 m meet-up; otherwise stay battery-friendly.
 export async function startBackgroundLocationTracking(options: { precise?: boolean } = {}) {
   // Callers that don't care (Home, Warning Mode) keep whatever mode the map chose.
-  const precise = options.precise ?? trackingPrecise ?? false;
-  const alreadyRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
-  const alreadyStarted = alreadyRegistered && (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME));
-  if (alreadyStarted && (trackingPrecise === precise || (trackingPrecise === null && !precise))) {
+  preferredPrecise = options.precise ?? preferredPrecise ?? false;
+  if (!backgroundLocationSupported) {
+    return;
+  }
+  try {
+    await startTracking(sosActive ? 'sos' : preferredPrecise ? 'precise' : 'balanced');
+  } catch (error) {
+    // Never let a tracking failure break the screen that asked for it (map, Home, Warning Mode).
+    console.warn('[location] background tracking unavailable', error);
+  }
+}
+
+// Switches background tracking into (or out of) the 5 s SOS mode. On the way
+// out it restores whatever the map had chosen, or stops if nothing was running.
+export async function setSosTracking(active: boolean) {
+  if (active === sosActive || !backgroundLocationSupported) {
+    sosActive = active;
+    return;
+  }
+  sosActive = active;
+  try {
+    if (active) {
+      wasTrackingBeforeSos = await isTrackingStarted();
+      await startTracking('sos');
+    } else if (wasTrackingBeforeSos) {
+      await startTracking(preferredPrecise ? 'precise' : 'balanced');
+    } else {
+      await stopLocationTracking();
+    }
+  } catch (error) {
+    console.warn('[location] SOS tracking unavailable', error);
+  }
+}
+
+async function isTrackingStarted() {
+  const registered = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
+  return registered && (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME));
+}
+
+async function startTracking(mode: TrackingMode) {
+  const alreadyStarted = await isTrackingStarted();
+  if (alreadyStarted && (trackingMode === mode || (trackingMode === null && mode === 'balanced'))) {
     return;
   }
   if (alreadyStarted) {
@@ -125,19 +182,23 @@ export async function startBackgroundLocationTracking(options: { precise?: boole
   }
 
   await Location.startLocationUpdatesAsync(LOCATION_TASK_NAME, {
-    accuracy: precise ? Location.Accuracy.High : Location.Accuracy.Balanced,
-    timeInterval: precise ? 10000 : 30000,
-    distanceInterval: precise ? 5 : 50,
+    ...TRACKING_OPTIONS[mode],
     showsBackgroundLocationIndicator: true,
     foregroundService: {
-      notificationTitle: 'PartyUp',
-      notificationBody: 'Sharing your location with your trusted circle & connections',
+      notificationTitle: mode === 'sos' ? 'PartyUp SOS active' : 'PartyUp',
+      notificationBody:
+        mode === 'sos'
+          ? 'Sharing your live location with PartyUp staff and your trusted circle'
+          : 'Sharing your location with your trusted circle & connections',
     },
   });
-  trackingPrecise = precise;
+  trackingMode = mode;
 }
 
 export async function stopLocationTracking() {
+  if (!backgroundLocationSupported || sosActive) {
+    return;
+  }
   const alreadyRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TASK_NAME);
   if (!alreadyRegistered) {
     return;
@@ -146,5 +207,5 @@ export async function stopLocationTracking() {
   if (isStarted) {
     await Location.stopLocationUpdatesAsync(LOCATION_TASK_NAME);
   }
-  trackingPrecise = null;
+  trackingMode = null;
 }

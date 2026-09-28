@@ -1,15 +1,47 @@
 import { supabase } from '@/lib/supabase';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Link, useRouter } from 'expo-router';
-import { ArrowRight, Calendar, Check, Eye, EyeOff, Lock, Mail, User } from 'lucide-react-native';
+import { ArrowRight, Calendar, Check, ChevronDown, Eye, EyeOff, Lock, Mail, MapPin, User } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useAuth } from '@/hooks/auth-provider';
 import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
+import MunicipalityPicker from '@/components/MunicipalityPicker';
 import TermsModal from '@/components/TermsModal';
+import { useShake } from '@/components/ui/motion';
+import { feedback } from '@/lib/sounds';
+import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
+import type { BulacanMunicipality } from '@/lib/bulacan';
+import { INTEREST_OPTIONS } from '@/lib/interests';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// PartyUp is 18+ only. The database enforces the same rule
+// (enforce_adult_date_of_birth); this just fails fast with a clear message.
+const MINIMUM_AGE = 18;
+
+function latestAllowedBirthDate() {
+  const today = new Date();
+  return new Date(today.getFullYear() - MINIMUM_AGE, today.getMonth(), today.getDate());
+}
+
+function parseDateOfBirth(value: string) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+  if (!match) return null;
+  const [month, day, year] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(year, month - 1, day);
+  // Reject rollovers like 02/31 silently becoming March 3.
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
+function isAdult(value: string) {
+  const date = parseDateOfBirth(value);
+  return date !== null && date <= latestAllowedBirthDate();
+}
 
 export default function SignUpScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { session, loading } = useAuth();
   const [fullName, setFullName] = useState('');
@@ -18,6 +50,8 @@ export default function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [municipality, setMunicipality] = useState<BulacanMunicipality | null>(null);
+  const [showMunicipalityPicker, setShowMunicipalityPicker] = useState(false);
   const [interests, setInterests] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -30,6 +64,15 @@ export default function SignUpScreen() {
   const [otpCode, setOtpCode] = useState('');
   const [resendingCode, setResendingCode] = useState(false);
   const resendCooldown = useResendCooldown();
+  const { style: shakeStyle, shake } = useShake();
+
+  // Every error path sets errorMessage, so react to it in one place.
+  useEffect(() => {
+    if (errorMessage) {
+      shake();
+      feedback.error();
+    }
+  }, [errorMessage, shake]);
 
   useEffect(() => {
     if (!loading && session) {
@@ -40,8 +83,13 @@ export default function SignUpScreen() {
   async function handleSignUp() {
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!fullName.trim() || !normalizedEmail || !password || !confirmPassword || !dateOfBirth.trim() || interests.length === 0) {
+    if (!fullName.trim() || !normalizedEmail || !password || !confirmPassword || !dateOfBirth.trim() || !municipality || interests.length === 0) {
       setErrorMessage('Please complete all profile details and select at least one interest.');
+      return;
+    }
+
+    if (!isAdult(dateOfBirth)) {
+      setErrorMessage(`You must be at least ${MINIMUM_AGE} years old to use PartyUp.`);
       return;
     }
 
@@ -76,6 +124,7 @@ export default function SignUpScreen() {
         data: {
           display_name: fullName.trim(),
           date_of_birth: dateOfBirth.trim(),
+          municipality,
           interests,
         },
       },
@@ -155,6 +204,8 @@ export default function SignUpScreen() {
         display_name: fullName.trim(),
         date_of_birth: dateOfBirth.trim(),
         interests,
+        city: municipality,
+        country: 'Philippines',
         terms_accepted_at: new Date().toISOString(),
       })
       .eq('id', userId);
@@ -166,6 +217,7 @@ export default function SignUpScreen() {
       return;
     }
 
+    feedback.success();
     router.replace('/(tabs)');
   }
 
@@ -193,8 +245,16 @@ export default function SignUpScreen() {
     }
 
     if (step === 2) {
-      if (!fullName.trim() || !/^\d{2}\/\d{2}\/\d{4}$/.test(dateOfBirth.trim())) {
+      if (!fullName.trim() || !parseDateOfBirth(dateOfBirth)) {
         setErrorMessage('Enter your full name and date of birth as MM/DD/YYYY.');
+        return;
+      }
+      if (!isAdult(dateOfBirth)) {
+        setErrorMessage(`You must be at least ${MINIMUM_AGE} years old to use PartyUp.`);
+        return;
+      }
+      if (!municipality) {
+        setErrorMessage('Select your city or municipality in Bulacan.');
         return;
       }
     }
@@ -203,6 +263,7 @@ export default function SignUpScreen() {
   }
 
   function toggleInterest(interest: string) {
+    feedback.select();
     setInterests((currentInterests) => currentInterests.includes(interest) ? currentInterests.filter((item) => item !== interest) : [...currentInterests, interest]);
   }
 
@@ -233,35 +294,28 @@ export default function SignUpScreen() {
     }
   }
 
-  const interestOptions = [
-    ['Backpacking', '🎒'],
-    ['Luxury Travel', '✨'],
-    ['Adventure', '🏕'],
-    ['Cultural', '🏛'],
-    ['Beach', '🏖'],
-    ['Hiking', '🌄'],
-    ['City', '🏙'],
-    ['Food', '🍜'],
-    ['Nightlife', '🎉'],
-    ['Photography', '📷'],
-    ['Wellness', '🧘'],
-    ['Budget', '💰'],
-  ] as const;
-
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 bg-[#F7F8FA]">
-      <ScrollView contentContainerClassName="flex-grow justify-center px-2 py-7" keyboardShouldPersistTaps="handled">
-        <View className="w-full rounded-[14px] bg-white px-5 py-5 shadow-lg shadow-black/10">
+      <ScrollView contentContainerClassName="flex-grow justify-center px-2 pt-7"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} keyboardShouldPersistTaps="handled">
+        <Animated.View entering={FadeInDown.duration(500).springify().damping(18)} style={shakeStyle} className="w-full rounded-[14px] bg-white px-5 py-5 shadow-lg shadow-black/10">
           <View className="items-center">
             <Text className="text-headline-24 font-bold text-[#2445B8]">Join PartyUp</Text>
             <Text className="mt-1 text-[10px] text-[#697386]">{step === 1 ? 'Create your account' : step === 2 ? 'Complete your profile' : step === 3 ? 'Select your interests' : 'Verify your email'}</Text>
           </View>
 
           <View className="mt-7 flex-row gap-1.5">
-            {[1, 2, 3, 4].map((item) => <View key={item} className={`h-[3px] flex-1 rounded-full ${item <= step ? 'bg-[#2445B8]' : 'bg-[#BCC7E5]'}`} />)}
+            {[1, 2, 3, 4].map((item) => (
+              <Animated.View
+                key={item}
+                className="h-[3px] flex-1 rounded-full"
+                style={{ backgroundColor: item <= step ? '#2445B8' : '#BCC7E5', transitionProperty: 'backgroundColor', transitionDuration: 350 }}
+              />
+            ))}
           </View>
 
-          <View className="mt-4 gap-3">
+          {/* key={step} remounts the fields each step so they slide in fresh. */}
+          <Animated.View key={step} entering={FadeInRight.duration(280)} className="mt-4 gap-3">
             {step === 1 ? <>
               <View>
                 <Text className="mb-1.5 text-[10px] font-medium text-[#273142]">Email Address</Text>
@@ -286,12 +340,17 @@ export default function SignUpScreen() {
               <View>
                 <Text className="mb-1.5 text-[10px] font-medium text-[#273142]">Date of Birth</Text>
                 <TouchableOpacity onPress={() => setShowDatePicker(true)} className="h-[34px] flex-row items-center rounded-[8px] border border-[#E2E5E9] bg-[#F1F2F4] px-2.5"><Calendar size={14} color="#7C8798" /><Text className={`ml-2 flex-1 text-[11px] ${dateOfBirth ? 'text-[#273142]' : 'text-[#697386]'}`}>{dateOfBirth || 'mm/dd/yyyy'}</Text></TouchableOpacity>
-                {showDatePicker ? <DateTimePicker value={new Date(2000, 0, 1)} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} maximumDate={new Date()} onChange={handleDateChange} /> : null}
-                <Text className="mt-1 text-[9px] leading-3 text-[#697386]">Required for safety verification when traveling{`\n`}with others</Text>
+                {showDatePicker ? <DateTimePicker value={parseDateOfBirth(dateOfBirth) ?? new Date(2000, 0, 1)} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} maximumDate={latestAllowedBirthDate()} onChange={handleDateChange} /> : null}
+                <Text className="mt-1 text-[9px] leading-3 text-[#697386]">You must be 18 or older. Required for safety{`\n`}verification when traveling with others</Text>
+              </View>
+              <View>
+                <Text className="mb-1.5 text-[10px] font-medium text-[#273142]">City / Municipality in Bulacan</Text>
+                <TouchableOpacity onPress={() => setShowMunicipalityPicker(true)} className="h-[34px] flex-row items-center rounded-[8px] border border-[#E2E5E9] bg-[#F1F2F4] px-2.5"><MapPin size={14} color="#7C8798" /><Text className={`ml-2 flex-1 text-[11px] ${municipality ? 'text-[#273142]' : 'text-[#697386]'}`}>{municipality ?? 'Select where you live'}</Text><ChevronDown size={14} color="#7C8798" /></TouchableOpacity>
+                <Text className="mt-1 text-[9px] leading-3 text-[#697386]">PartyUp is currently for Bulacan residents.{`\n`}You can still travel anywhere.</Text>
               </View>
             </> : null}
 
-            {step === 3 ? <View className="flex-row flex-wrap justify-between gap-y-2">{interestOptions.map(([interest, icon]) => <TouchableOpacity key={interest} onPress={() => toggleInterest(interest)} className={`h-[48px] w-[48%] items-center justify-center rounded-[8px] border ${interests.includes(interest) ? 'border-[#2445B8] bg-[#E9EEFF]' : 'border-[#E2E5E9] bg-[#F4F5F6]'}`}><Text className="text-[14px]">{icon}</Text><Text className="mt-0.5 text-[9px] font-medium text-[#273142]">{interest}</Text>{interests.includes(interest) ? <Check size={11} color="#2445B8" /> : null}</TouchableOpacity>)}</View> : null}
+            {step === 3 ? <View className="flex-row flex-wrap justify-between gap-y-2">{INTEREST_OPTIONS.map(([interest, icon]) => <TouchableOpacity key={interest} onPress={() => toggleInterest(interest)} className={`h-[48px] w-[48%] items-center justify-center rounded-[8px] border ${interests.includes(interest) ? 'border-[#2445B8] bg-[#E9EEFF]' : 'border-[#E2E5E9] bg-[#F4F5F6]'}`}><Text className="text-[14px]">{icon}</Text><Text className="mt-0.5 text-[9px] font-medium text-[#273142]">{interest}</Text>{interests.includes(interest) ? <Check size={11} color="#2445B8" /> : null}</TouchableOpacity>)}</View> : null}
 
             {step === 4 ? (
               <View>
@@ -315,9 +374,15 @@ export default function SignUpScreen() {
                 </Text>
               </TouchableOpacity>
             ) : null}
-          </View>
+          </Animated.View>
 
-          {errorMessage ? <Text className="mt-4 text-[14px] text-[#FB7185]">{errorMessage}</Text> : null}
+          <MunicipalityPicker visible={showMunicipalityPicker} selected={municipality} onSelect={setMunicipality} onClose={() => setShowMunicipalityPicker(false)} />
+
+          {errorMessage ? (
+            <Animated.Text key={errorMessage} entering={FadeIn.duration(200)} className="mt-4 text-[14px] text-[#FB7185]">
+              {errorMessage}
+            </Animated.Text>
+          ) : null}
           {successMessage ? <Text className="mt-4 text-[12px] text-[#0F7B4B]">{successMessage}</Text> : null}
 
           <View className="mt-4 flex-row gap-2">
@@ -333,7 +398,7 @@ export default function SignUpScreen() {
           {step === 1 ? <>
             <Text className="mt-4 text-center text-[10px] text-[#697386]">Already have an account? <Link href="/(auth)/sign-in" className="font-semibold text-[#2445B8]">Sign in</Link></Text>
           </> : null}
-        </View>
+        </Animated.View>
         {step < 3 ? <Text className="mt-5 px-3 text-center text-[9px] leading-3 text-[#697386]">By signing up, you agree to our Terms of Service and{`\n`}Privacy Policy</Text> : null}
       </ScrollView>
       <TermsModal visible={showTermsModal} onClose={() => setShowTermsModal(false)} />

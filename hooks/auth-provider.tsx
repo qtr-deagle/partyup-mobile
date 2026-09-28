@@ -31,6 +31,9 @@ type AuthContextValue = {
   session: Session | null;
   profile: UserProfile | null;
   loading: boolean;
+  // True once the signed-in user's profile fetch has finished (successfully
+  // or not), so gates can tell "no profile yet" from "still loading".
+  profileReady: boolean;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -41,6 +44,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoadedFor, setProfileLoadedFor] = useState<string | null>(null);
 
   const refreshProfile = useMemo(
     () => async () => {
@@ -49,14 +53,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+      const userId = session.user.id;
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
 
-      if (error || !data) {
-        setProfile(null);
-        return;
-      }
-
-      setProfile(data as UserProfile);
+      setProfile(error || !data ? null : (data as UserProfile));
+      setProfileLoadedFor(userId);
     },
     [session]
   );
@@ -117,15 +118,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  const profileReady = !session || profileLoadedFor === session.user.id;
+
   const value = useMemo(
     () => ({
       session,
       profile,
       loading,
+      profileReady,
       refreshProfile,
       signOut,
     }),
-    [loading, profile, refreshProfile, session, signOut]
+    [loading, profile, profileReady, refreshProfile, session, signOut]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

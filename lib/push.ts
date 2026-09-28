@@ -18,12 +18,18 @@ export function getNotifications() {
     // eslint-disable-next-line @typescript-eslint/no-require-imports -- must stay lazy, see above
     notificationsModule = Platform.OS === 'web' || isAndroidExpoGo ? null : (require('expo-notifications') as typeof NotificationsModule);
     notificationsModule?.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
+      // Only runs while the app is in the foreground. SOS keeps the full
+      // system alert; everything else is shown by the in-app toast
+      // (InAppNotifier) instead, so the OS banner would just double it up.
+      handleNotification: async (notification) => {
+        const isSos = (notification.request.content.data as { type?: string } | undefined)?.type === 'sos';
+        return {
+          shouldShowBanner: isSos,
+          shouldShowList: true,
+          shouldPlaySound: isSos,
+          shouldSetBadge: true,
+        };
+      },
     });
   }
   return notificationsModule;
@@ -43,6 +49,18 @@ async function ensureAndroidChannels(Notifications: typeof NotificationsModule) 
     bypassDnd: true,
     sound: 'default',
   });
+  // Must match CHANNEL_BY_TYPE in supabase/functions/dispatch-push.
+  const channels = [
+    { id: 'messages', name: 'Messages', description: 'New chat messages', importance: Notifications.AndroidImportance.HIGH },
+    { id: 'trips', name: 'Trip activity', description: 'Joins, cancellations and payments on your trips', importance: Notifications.AndroidImportance.HIGH },
+    { id: 'social', name: 'Friends', description: 'Friend requests and new connections', importance: Notifications.AndroidImportance.DEFAULT },
+    { id: 'default', name: 'Account updates', description: 'Verification results and other account news', importance: Notifications.AndroidImportance.DEFAULT },
+  ];
+  await Promise.all(
+    channels.map(({ id, ...channel }) =>
+      Notifications.setNotificationChannelAsync(id, { ...channel, sound: 'default', vibrationPattern: [0, 250, 150, 250], lightColor: '#3B82F6' }),
+    ),
+  );
 }
 
 // Asks for notification permission and stores this device's Expo push token

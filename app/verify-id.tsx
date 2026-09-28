@@ -2,12 +2,15 @@ import GuidedSelfieCapture from '@/components/GuidedSelfieCapture';
 import IdCameraCapture from '@/components/IdCameraCapture';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { formatResidence } from '@/lib/bulacan';
 import { getTheme, typography } from '@/lib/theme';
+import { SuccessOverlay } from '@/components/ui/motion';
+import { feedback } from '@/lib/sounds';
 import { submitIdVerification, type DocumentType } from '@/lib/verification';
 import { Redirect, useRouter } from 'expo-router';
-import { Camera, CheckCircle2, IdCard, Upload } from 'lucide-react-native';
+import { Camera, CheckCircle2, IdCard, MapPin, Upload } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const documentOptions: { label: string; value: DocumentType; needsBack: boolean }[] = [
@@ -36,15 +39,16 @@ function UploadTile({ label, uri, onPress, icon }: { label: string; uri: string 
 export default function VerifyIdScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { session, loading } = useAuth();
+  const { session, loading, profile, refreshProfile } = useAuth();
   const isDark = useColorScheme() === 'dark';
   const { titleColor, subtitleColor } = getTheme(isDark);
 
-  const [documentType, setDocumentType] = useState<DocumentType>('passport');
+  const [documentType, setDocumentType] = useState<DocumentType>('national_id');
   const [frontUri, setFrontUri] = useState<string | null>(null);
   const [backUri, setBackUri] = useState<string | null>(null);
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCapture, setActiveCapture] = useState<'front' | 'back' | 'selfie' | null>(null);
 
@@ -57,7 +61,16 @@ export default function VerifyIdScreen() {
   }
 
   const selectedOption = documentOptions.find((option) => option.value === documentType)!;
-  const canSubmit = Boolean(frontUri && selfieUri && (!selectedOption.needsBack || backUri) && !submitting);
+  const residence = formatResidence(profile?.city);
+  const canSubmit = Boolean(residence && frontUri && selfieUri && (!selectedOption.needsBack || backUri) && !submitting);
+
+  const close = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/verification-required');
+    }
+  };
 
   const handleSubmit = async () => {
     if (!frontUri || !selfieUri) {
@@ -77,15 +90,13 @@ export default function VerifyIdScreen() {
     setSubmitting(false);
 
     if (submitError) {
+      feedback.error();
       setError(submitError.message);
       return;
     }
 
-    Alert.alert(
-      'Verification submitted',
-      "We'll run an automatic pre-check and our staff will review your documents and notify you once it's done.",
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    await refreshProfile();
+    setSubmitted(true);
   };
 
   return (
@@ -97,16 +108,24 @@ export default function VerifyIdScreen() {
         <View className="flex-row items-start justify-between gap-4">
           <View className="flex-1">
             <Text className={`${typography.pageTitle} ${titleColor}`}>Verify Your Identity</Text>
-            <Text className={`mt-2 text-[16px] leading-6 ${subtitleColor}`}>Upload a government ID and a selfie to unlock trip creation.</Text>
+            <Text className={`mt-2 text-[16px] leading-6 ${subtitleColor}`}>Upload a government ID and a selfie to start using PartyUp.</Text>
           </View>
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10">
+          <TouchableOpacity onPress={close} className="h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10">
             <Text className="text-[22px] text-[#6B7590]">×</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-4 pt-4" contentContainerClassName="pb-10">
+      <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
         <View className="rounded-[22px] border border-[#E2E7F0] bg-white p-4 shadow-sm shadow-black/5">
+          <View className="mb-5 flex-row items-start gap-2 rounded-2xl bg-[#FFF6E5] px-4 py-3">
+            <MapPin size={18} color="#B26A00" />
+            <Text className="flex-1 text-[14px] leading-5 text-[#7A4B00]">
+              {residence
+                ? `Use an ID that shows your address in ${residence} (e.g. PhilSys, driver's license, voter's or postal ID). A passport has no address, so it can't confirm residency on its own.`
+                : 'Select your city or municipality in Bulacan before submitting your ID.'}
+            </Text>
+          </View>
           <Text className="text-[16px] font-extrabold tracking-wide text-[#6B7590]">DOCUMENT TYPE</Text>
           <View className="mt-3 flex-row flex-wrap gap-2">
             {documentOptions.map((option) => (
@@ -189,6 +208,13 @@ export default function VerifyIdScreen() {
           setSelfieUri(uri);
           setActiveCapture(null);
         }}
+      />
+      <SuccessOverlay
+        visible={submitted}
+        title="Verification submitted"
+        message="We'll run a quick automatic check, then our staff will review your documents. You'll get a notification when it's done."
+        durationMs={2600}
+        onDone={close}
       />
     </View>
   );

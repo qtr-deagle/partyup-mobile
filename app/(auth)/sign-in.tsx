@@ -5,9 +5,14 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
+import { FloatingIcon, useShake } from '@/components/ui/motion';
+import { feedback } from '@/lib/sounds';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/hooks/auth-provider';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SignInScreen() {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { redirect } = useLocalSearchParams<{ redirect?: string }>();
   const { session, loading } = useAuth();
@@ -20,6 +25,16 @@ export default function SignInScreen() {
   const [otpCode, setOtpCode] = useState('');
   const [resendingCode, setResendingCode] = useState(false);
   const resendCooldown = useResendCooldown();
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
+  const { style: shakeStyle, shake } = useShake();
+
+  // Every error path sets errorMessage, so react to it in one place.
+  useEffect(() => {
+    if (errorMessage) {
+      shake();
+      feedback.error();
+    }
+  }, [errorMessage, shake]);
 
   useEffect(() => {
     if (!loading && session) {
@@ -54,6 +69,7 @@ export default function SignInScreen() {
       return;
     }
 
+    feedback.success();
     router.replace(redirect ? (redirect as any) : '/(tabs)');
   }
 
@@ -77,14 +93,21 @@ export default function SignInScreen() {
       setErrorMessage(error.code === 'otp_expired' ? 'That code is wrong or has expired. Check your email or resend a new one.' : error.message);
       return;
     }
+    feedback.success();
     router.replace(redirect ? (redirect as any) : '/(tabs)');
   }
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 bg-[#F7F8FA]">
-      <ScrollView contentContainerClassName="flex-grow justify-center px-2 py-8" keyboardShouldPersistTaps="handled">
-        <View className="w-full rounded-[14px] bg-white px-6 py-7 shadow-lg shadow-black/10">
+      <ScrollView contentContainerClassName="flex-grow justify-center px-2 pt-8"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }} keyboardShouldPersistTaps="handled">
+        <Animated.View entering={FadeInDown.duration(500).springify().damping(18)} style={shakeStyle} className="w-full rounded-[14px] bg-white px-6 py-7 shadow-lg shadow-black/10">
           <View className="items-center">
+            <FloatingIcon>
+              <View className="mb-3 h-14 w-14 items-center justify-center rounded-2xl bg-[#2445B8] shadow-lg shadow-[#2445B8]/40">
+                <Text className="text-[26px] font-black text-white">P</Text>
+              </View>
+            </FloatingIcon>
             <Text className="text-headline-28 font-bold text-[#2445B8]">PartyUp</Text>
             <Text className="mt-1 text-[12px] text-[#697386]">Travel Buddy Matching Platform</Text>
           </View>
@@ -101,7 +124,7 @@ export default function SignInScreen() {
           <View className="mt-6 gap-3">
             <View>
               <Text className="mb-2 text-[12px] font-medium text-[#273142]">Email Address</Text>
-              <View className="h-[42px] flex-row items-center rounded-[9px] border border-[#E2E5E9] bg-[#F1F2F4] px-3">
+              <View className={`h-[42px] flex-row items-center rounded-[9px] border px-3 ${focusedField === 'email' ? 'border-[#2445B8] bg-white' : 'border-[#E2E5E9] bg-[#F1F2F4]'}`}>
                 <Mail size={17} color="#7C8798" />
                 <TextInput
                   className="ml-2 flex-1 text-[13px] text-[#273142]"
@@ -111,13 +134,15 @@ export default function SignInScreen() {
                   autoCapitalize="none"
                   value={email}
                   onChangeText={setEmail}
+                  onFocus={() => setFocusedField('email')}
+                  onBlur={() => setFocusedField(null)}
                 />
               </View>
             </View>
 
             <View>
               <Text className="mb-2 text-[12px] font-medium text-[#273142]">Password</Text>
-              <View className="h-[42px] flex-row items-center rounded-[9px] border border-[#E2E5E9] bg-[#F1F2F4] px-3">
+              <View className={`h-[42px] flex-row items-center rounded-[9px] border px-3 ${focusedField === 'password' ? 'border-[#2445B8] bg-white' : 'border-[#E2E5E9] bg-[#F1F2F4]'}`}>
                 <Lock size={17} color="#7C8798" />
                 <TextInput
                   className="ml-2 flex-1 text-[13px] text-[#273142]"
@@ -126,6 +151,10 @@ export default function SignInScreen() {
                   secureTextEntry={!showPassword}
                   value={password}
                   onChangeText={setPassword}
+                  onFocus={() => setFocusedField('password')}
+                  onBlur={() => setFocusedField(null)}
+                  onSubmitEditing={handleSignIn}
+                  returnKeyType="go"
                 />
                 <TouchableOpacity onPress={() => setShowPassword((visible) => !visible)} accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}>
                   {showPassword ? <EyeOff size={17} color="#7C8798" /> : <Eye size={17} color="#7C8798" />}
@@ -135,7 +164,11 @@ export default function SignInScreen() {
           </View>
           )}
 
-          {errorMessage ? <Text className="mt-4 text-[14px] text-[#FB7185]">{errorMessage}</Text> : null}
+          {errorMessage ? (
+            <Animated.Text key={errorMessage} entering={FadeIn.duration(200)} className="mt-4 text-[14px] text-[#FB7185]">
+              {errorMessage}
+            </Animated.Text>
+          ) : null}
 
           {needsEmailCode ? (
             <>
@@ -158,7 +191,7 @@ export default function SignInScreen() {
               Sign up
             </Link>
           </Text>
-        </View>
+        </Animated.View>
         <Text className="mt-5 px-3 text-center text-[10px] leading-[14px] text-[#697386]">
           By signing in, you agree to our Terms of Service and Privacy Policy
         </Text>

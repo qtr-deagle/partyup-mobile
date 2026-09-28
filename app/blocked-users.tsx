@@ -63,7 +63,8 @@ export default function BlockedUsersScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 py-5">
+      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pt-5"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}>
         {errorMessage ? (
           <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
             <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>

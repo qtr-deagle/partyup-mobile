@@ -3,6 +3,7 @@ import { MyTripModal } from '@/components/discover/MyTripModal';
 import { SwipeCard } from '@/components/discover/SwipeCard';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { computeCompatibility, EMPTY_MY_TRIP, loadMyTrip, saveMyTrip, type MyTrip } from '@/lib/compatibility';
 import { getMockTripData } from '@/lib/discover-mock';
 import { createOrGetDirectThread, removeFriend, respondToFriendRequest, searchProfiles, sendFriendRequest, type SearchProfile } from '@/lib/social';
@@ -61,6 +62,7 @@ export default function DiscoverScreen() {
       setLoading(false);
     }
   }, [query]);
+  const { refreshing: searchRefreshing, refreshControl: searchRefreshControl } = usePullToRefresh(runSearch);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void runSearch(), 250);
@@ -173,6 +175,7 @@ export default function DiscoverScreen() {
       setSwipeLoading(false);
     }
   }, []);
+  const { refreshing: swipeRefreshing, refreshControl: swipeRefreshControl } = usePullToRefresh(loadSwipeProfiles);
 
   useFocusEffect(
     useCallback(() => {
@@ -310,10 +313,10 @@ export default function DiscoverScreen() {
           {swipeError ? <Text className="mx-4 mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{swipeError}</Text> : null}
 
           <View className="flex-1">
-            {swipeLoading ? (
+            {swipeLoading && !swipeRefreshing ? (
               <ActivityIndicator className="mt-10" color="#284BD6" />
             ) : currentEntry ? (
-              <ScrollView className="flex-1" contentContainerClassName="px-4 pb-28" showsVerticalScrollIndicator={false}>
+              <ScrollView className="flex-1" contentContainerClassName="px-4 pb-28" showsVerticalScrollIndicator={false} refreshControl={swipeRefreshControl}>
                 <SwipeCard profile={currentEntry.profile} trip={currentEntry.trip} score={currentEntry.score} isDark={isDark} onConnect={(profile) => void connectWithProfile(profile)} onPass={passProfile} />
 
                 <View className="mt-4 flex-row items-center justify-center gap-6">
@@ -345,7 +348,7 @@ export default function DiscoverScreen() {
           </View>
         </View>
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="pb-28">
+        <ScrollView className="flex-1" contentContainerClassName="pb-28" refreshControl={searchRefreshControl}>
           <View className="px-4 pb-5">
             <Text className={`mt-1 text-base ${textSecondary}`}>Search active PartyUp travelers and connect.</Text>
             <Pressable onPress={() => searchInputRef.current?.focus()} className={`mt-5 flex-row items-center gap-3 rounded-2xl border px-4 py-3 ${inputBackground}`}>
@@ -355,7 +358,7 @@ export default function DiscoverScreen() {
           </View>
 
           {errorMessage ? <Text className="mx-4 mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
-          {loading ? <ActivityIndicator className="mt-6" color="#284BD6" /> : null}
+          {loading && !searchRefreshing ? <ActivityIndicator className="mt-6" color="#284BD6" /> : null}
           {!loading && !profiles.length ? <Text className={`px-4 pt-8 text-center text-base ${textSecondary}`}>{query ? 'No users found.' : 'No other active users yet.'}</Text> : null}
 
           <View className="gap-3 px-4">

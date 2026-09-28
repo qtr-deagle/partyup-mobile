@@ -401,6 +401,11 @@ verify_jwt = false
 [functions.payment-return]
 verify_jwt = false
 
+# Called by the database via pg_net, which has no user JWT -- authenticated
+# instead by the shared x-push-secret header (see supabase/functions/dispatch-push).
+[functions.dispatch-push]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

@@ -3,6 +3,7 @@ import { X } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ITEM_HEIGHT = 44;
 const VISIBLE_ITEM_COUNT = 5;
@@ -30,6 +31,7 @@ type Props = {
 };
 
 export function TimePickerModal({ visible, title, value, isDark, onClose, onSelect }: Props) {
+  const insets = useSafeAreaInsets();
   const [hourValue, setHourValue] = useState(1);
   const [minuteValue, setMinuteValue] = useState(0);
   const [periodValue, setPeriodValue] = useState<Period>('AM');
@@ -68,7 +70,7 @@ export function TimePickerModal({ visible, title, value, isDark, onClose, onSele
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
           <Pressable style={StyleSheet.absoluteFillObject} className="bg-black/55" onPress={onClose} />
-          <View style={{ backgroundColor: sheetBackground }} className="rounded-t-[32px] px-5 pb-9 pt-5 shadow-2xl">
+          <View style={{ backgroundColor: sheetBackground, paddingBottom: insets.bottom + 36 }} className="rounded-t-[32px] px-5 pt-5 shadow-2xl">
             <View className="mb-1 items-center">
               <View className="h-1.5 w-12 rounded-full" style={{ backgroundColor: isDark ? '#334155' : '#E2E7F0' }} />
             </View>

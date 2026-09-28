@@ -1,7 +1,10 @@
 import { RateUserModal } from '@/components/RateUserModal';
+import { SuccessOverlay } from '@/components/ui/motion';
 import { ReportUserModal } from '@/components/ReportUserModal';
+import TripMeetupCard from '@/components/TripMeetupCard';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import {
   buildInviteUrl,
   cancelTrip,
@@ -22,6 +25,7 @@ import {
 } from '@/lib/carpool';
 import { parseTimestamp } from '@/lib/datetime';
 import { listMyGivenRatings, type GivenRating } from '@/lib/ratings';
+import { feedback } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import { getTourDetail, joinPublicTrip, listTripItinerary, type ItineraryDay, type TourDetail } from '@/lib/tours';
@@ -54,7 +58,8 @@ function formatDateTime(value: string | null) {
 
 export default function TripDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `celebrate` is set by the create/join screens that redirect here.
+  const { id, celebrate } = useLocalSearchParams<{ id: string; celebrate?: 'created' | 'joined' | 'requested' }>();
   const { session } = useAuth();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
@@ -74,6 +79,20 @@ export default function TripDetailScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
+  const [celebration, setCelebration] = useState<{ title: string; message: string } | null>(() =>
+    celebrate === 'created'
+      ? { title: 'Trip created!', message: 'Share your invite link so riders can join.' }
+      : celebrate === 'joined'
+        ? { title: "You're in!", message: 'Your seat is confirmed. See you on the road.' }
+        : celebrate === 'requested'
+          ? { title: 'Request sent', message: "The driver will review it. We'll notify you when they respond." }
+          : null,
+  );
+  const endCelebration = useCallback(() => {
+    setCelebration(null);
+    // Drop the param so returning to this screen doesn't replay it.
+    router.setParams({ celebrate: undefined });
+  }, [router]);
   const [givenRatings, setGivenRatings] = useState<Map<string, GivenRating>>(new Map());
   const [reportTarget, setReportTarget] = useState<{ userId: string; displayName: string } | null>(null);
   const [rateTarget, setRateTarget] = useState<{ userId: string; displayName: string } | null>(null);
@@ -126,6 +145,7 @@ export default function TripDetailScreen() {
     setItinerary(itineraryResult.error ? [] : itineraryResult.data);
     setLoading(false);
   }, [id]);
+  const { refreshControl } = usePullToRefresh(load);
 
   async function handleJoinTour() {
     if (!id) {
@@ -135,10 +155,12 @@ export default function TripDetailScreen() {
     const { error } = await joinPublicTrip(id);
     setJoining(false);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to join tour', error.message);
       return;
     }
     await load();
+    setCelebration({ title: "You're in!", message: 'Welcome to the tour. Your spot is saved.' });
   }
 
   // Live refresh once a gateway payment's webhook lands, so a rider/driver
@@ -172,6 +194,7 @@ export default function TripDetailScreen() {
     const { data, error } = await getTripInviteLink(id);
     setBusyId(null);
     if (error || !data) {
+      feedback.error();
       Alert.alert('Unable to get invite link', error?.message ?? 'Please try again.');
       return;
     }
@@ -183,8 +206,12 @@ export default function TripDetailScreen() {
     setBusyId(memberId);
     const { error } = await respondToJoinRequest(memberId, status);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to update request', error.message);
     } else {
+      if (status === 'accepted') {
+        feedback.success();
+      }
       await load();
     }
     setBusyId(null);
@@ -197,6 +224,7 @@ export default function TripDetailScreen() {
     setBusyId(`gateway-${method}`);
     const { data, error } = await startGatewayPayment(id, method);
     if (error || !data) {
+      feedback.error();
       Alert.alert('Unable to start payment', error?.message ?? 'Please try again.');
       setBusyId(null);
       return;
@@ -226,6 +254,7 @@ export default function TripDetailScreen() {
     const { error } = await leaveTrip(id);
     setBusyId(null);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to leave trip', error.message);
     } else {
       router.back();
@@ -247,6 +276,7 @@ export default function TripDetailScreen() {
     const { error } = await cancelTrip(id);
     setBusyId(null);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to cancel trip', error.message);
     } else {
       router.back();
@@ -261,8 +291,10 @@ export default function TripDetailScreen() {
     const { error } = await startTrip(id);
     setBusyId(null);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to start trip', error.message);
     } else {
+      feedback.success();
       void load();
     }
   }
@@ -282,8 +314,10 @@ export default function TripDetailScreen() {
     const { error } = await completeTrip(id);
     setBusyId(null);
     if (error) {
+      feedback.error();
       Alert.alert('Unable to complete trip', error.message);
     } else {
+      setCelebration({ title: 'Trip complete!', message: 'Nice ride. You can now rate your travel buddies.' });
       void load();
     }
   }
@@ -311,7 +345,8 @@ export default function TripDetailScreen() {
           </View>
         </View>
 
-        <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-12 pt-4">
+        <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-4"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 48 }} refreshControl={refreshControl}>
           <View className={`rounded-[22px] border p-4 ${card}`}>
             <View className="flex-row items-center gap-3">
               <MapPin size={18} color="#2A55D4" />
@@ -416,7 +451,8 @@ export default function TripDetailScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pb-12 pt-4">
+      <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-4"
+          contentContainerStyle={{ paddingBottom: insets.bottom + 48 }} refreshControl={refreshControl}>
         <View
           className="self-start rounded-full px-4 py-1.5"
           style={{ backgroundColor: isDark ? `${STATUS_COLORS[detail.status]}22` : `${STATUS_COLORS[detail.status]}1A` }}
@@ -444,6 +480,8 @@ export default function TripDetailScreen() {
             <Text className={`text-base ${primary}`}>{formatDateTime(detail.start_at)}</Text>
           </View>
         </View>
+
+        <TripMeetupCard detail={detail} isDark={isDark} />
 
         <View className="rounded-[22px] bg-[#2A55D4] p-5">
           <View className="flex-row items-center gap-2">
@@ -718,6 +756,8 @@ export default function TripDetailScreen() {
           }}
         />
       ) : null}
+
+      <SuccessOverlay visible={!!celebration} title={celebration?.title ?? ''} message={celebration?.message} onDone={endCelebration} />
     </View>
   );
 }
