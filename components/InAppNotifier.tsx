@@ -4,7 +4,7 @@ import { getActiveChatThread } from '@/lib/active-chat';
 import { markNotificationRead } from '@/lib/notifications';
 import { getNotifications } from '@/lib/push';
 import { feedback } from '@/lib/sounds';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { Image } from 'expo-image';
 import type { NotificationResponse } from 'expo-notifications';
 import { useRouter, type Href } from 'expo-router';
@@ -95,7 +95,7 @@ export default function InAppNotifier() {
     }
 
     const channel = supabase
-      .channel(`in-app-notifier:${userId}`)
+      .channel(uniqueChannelName(`in-app-notifier:${userId}`))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, (payload) => {
         const row = payload.new as { id: string; type: string; title: string; message: string; data: Record<string, unknown> | null };
         if (row.type === 'safety') {

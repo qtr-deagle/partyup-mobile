@@ -3,15 +3,19 @@ import { TimePickerModal } from '@/components/carpool/TimePickerModal';
 import MeetupLocationPicker, { EMPTY_MEETUP, type MeetupDraft } from '@/components/MeetupLocationPicker';
 import { InterestTagPicker } from '@/components/carpool/InterestTagPicker';
 import { ItineraryDayBuilder, type ItineraryDayInput } from '@/components/carpool/ItineraryDayBuilder';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState, useShake } from '@/components/ui/motion';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createTrip, formatMeetupLabel } from '@/lib/carpool';
-import { getTheme, typography } from '@/lib/theme';
+import { normalizePlace } from '@/lib/names';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { ArrowLeft, Calendar, Clock, ShieldAlert } from 'lucide-react-native';
-import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Calendar, CalendarDays, Clock, MapPin, ShieldAlert, Sparkles, Wallet } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function formatDateLabel(date: Date | null) {
@@ -73,18 +77,25 @@ function participantSummary(text: string) {
   return `You + up to ${total} participant${total === 1 ? '' : 's'}`;
 }
 
+function SectionTitle({ icon, title, isDark }: { icon: ReactNode; title: string; isDark: boolean }) {
+  return (
+    <View className="flex-row items-center gap-2">
+      <View className={`h-8 w-8 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>{icon}</View>
+      <Text className={`text-[16px] font-bold ${isDark ? 'text-white' : 'text-[#1B2340]'}`}>{title}</Text>
+    </View>
+  );
+}
+
 export default function CreateTourScreen() {
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  const { titleColor } = getTheme(isDark);
   const { profile } = useAuth();
 
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
-  const primary = isDark ? 'text-white' : 'text-[#1B2340]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
-  const inputBg = isDark ? 'bg-[#111B2E]' : 'bg-white';
+  const inputBg = isDark ? 'bg-[#18253C]' : 'bg-[#F7F8FC]';
   const inputText = isDark ? 'text-white' : 'text-[#17233F]';
   const placeholderColor = isDark ? '#64748B' : '#9AA3B1';
   const isVerified = profile?.verification_status === 'approved';
@@ -106,6 +117,12 @@ export default function CreateTourScreen() {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { style: shakeStyle, shake } = useShake();
+
+  function fail(message: string) {
+    setErrorMessage(message);
+    shake();
+  }
 
   function toggleInterest(tag: string) {
     setInterests((current) => (current.includes(tag) ? current.filter((t) => t !== tag) : [...current, tag]));
@@ -113,12 +130,12 @@ export default function CreateTourScreen() {
 
   async function handleSubmit() {
     if (!title.trim() || !destination.trim()) {
-      setErrorMessage('Tour title and destination are required.');
+      fail('Tour title and destination are required.');
       return;
     }
 
     if (!meetup.municipality || !meetup.pin || !meetup.landmark.trim()) {
-      setErrorMessage('Set the meeting point city, pin the exact spot on the map, and name a landmark.');
+      fail('Set the meeting point city, pin the exact spot on the map, and name a landmark.');
       return;
     }
     const meetupLocation = {
@@ -131,26 +148,26 @@ export default function CreateTourScreen() {
     const durationText = durationDays.trim();
     const duration = durationText ? Number.parseInt(durationText, 10) : null;
     if (!TWO_DIGIT_PATTERN.test(durationText) || !duration || duration <= 0) {
-      setErrorMessage('Duration must be 1 to 99 days.');
+      fail('Duration must be 1 to 99 days.');
       return;
     }
 
     const maxText = maxParticipants.trim();
     const maxP = maxText ? Number.parseInt(maxText, 10) : null;
     if (maxText && (!TWO_DIGIT_PATTERN.test(maxText) || maxP === null || maxP <= 0)) {
-      setErrorMessage('Max participants must be 1 to 99.');
+      fail('Max participants must be 1 to 99.');
       return;
     }
 
     const priceText = pricePerPerson.trim();
     const price = priceText ? Number.parseFloat(priceText) : null;
     if (priceText && (!PRICE_PATTERN.test(priceText) || price === null || price <= 0)) {
-      setErrorMessage('Price per person must be more than ₱0 and up to ₱999,999.99.');
+      fail('Price per person must be more than ₱0 and up to ₱999,999.99.');
       return;
     }
 
     if (startDate && startDate.getTime() < Date.now()) {
-      setErrorMessage('Start date & time must be in the future.');
+      fail('Start date & time must be in the future.');
       return;
     }
 
@@ -172,7 +189,7 @@ export default function CreateTourScreen() {
     const { data, error } = await createTrip({
       title: title.trim(),
       origin: formatMeetupLabel(meetupLocation),
-      destination: destination.trim(),
+      destination: normalizePlace(destination),
       startAt: startDate ? startDate.toISOString() : null,
       visibility: 'public',
       seatsTotal: maxP,
@@ -190,183 +207,193 @@ export default function CreateTourScreen() {
     setSubmitting(false);
 
     if (error || !data) {
-      setErrorMessage(error?.message ?? 'Unable to create tour.');
+      fail(error?.message ?? 'Unable to create tour.');
       return;
     }
 
     router.replace({ pathname: '/trip/[id]', params: { id: (data as { id: string }).id, celebrate: 'created' } });
   }
 
+  const label = `mb-2 text-[13px] font-bold ${secondary}`;
+  const input = `rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`;
+
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className={`flex-1 ${background}`}>
-      <View className={`border-b px-4 pb-4 ${border}`} style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center" accessibilityLabel="Go back">
-            <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
-          </TouchableOpacity>
-          <Text className={`ml-3 ${typography.pageTitle} ${titleColor}`}>Create Tour</Text>
-        </View>
-      </View>
+    <KeyboardAvoidingView behavior="padding" className={`flex-1 ${background}`}>
+      <ScreenHeader title="Create Tour" subtitle="Plan a group trip others can join" />
 
       {!isVerified ? (
-        <View className="flex-1 items-center justify-center gap-4 px-8">
-          <ShieldAlert size={40} color="#D88700" />
-          <Text className={`text-center text-lg font-bold ${primary}`}>Verify your identity to create a tour</Text>
-          <Text className={`text-center text-sm leading-5 ${secondary}`}>
-            {profile?.verification_status === 'pending'
+        <EmptyState
+          key="unverified"
+          icon={<ShieldAlert size={34} color="#D88700" />}
+          title="Verify your identity to create a tour"
+          message={
+            profile?.verification_status === 'pending'
               ? 'Your ID verification is still under review. This usually takes 1-2 hours.'
               : profile?.verification_status === 'rejected'
                 ? 'Your last ID verification was rejected. Resubmit clearer documents to continue.'
-                : 'Upload a government ID and a selfie to unlock tour creation.'}
-          </Text>
-          {profile?.verification_status !== 'pending' && (
-            <TouchableOpacity onPress={() => router.push('/verify-id')} className="mt-2 rounded-2xl bg-[#2A55D4] px-6 py-3.5">
-              <Text className="text-base font-bold text-white">
-                {profile?.verification_status === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+                : 'Upload a government ID and a selfie to unlock tour creation.'
+          }
+          action={
+            profile?.verification_status !== 'pending' ? (
+              <AnimatedPressable onPress={() => router.push('/verify-id')} className="rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+                <Text className="text-base font-bold text-white">
+                  {profile?.verification_status === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}
+                </Text>
+              </AnimatedPressable>
+            ) : undefined
+          }
+        />
       ) : (
       <>
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
-        {errorMessage ? (
-          <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
-            <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>
+        <Card index={0} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<MapPin size={16} color="#2A55D4" />} title="Where to" />
+          <View>
+            <Text className={label}>TOUR TITLE</Text>
+            <TextInput
+              className={input}
+              placeholder="e.g., Boracay Beach Paradise"
+              placeholderTextColor={placeholderColor}
+              maxLength={60}
+              value={title}
+              onChangeText={setTitle}
+            />
           </View>
+
+          <View>
+            <Text className={label}>DESTINATION</Text>
+            <TextInput
+              className={input}
+              placeholder="Boracay, Aklan"
+              placeholderTextColor={placeholderColor}
+              maxLength={80}
+              value={destination}
+              onChangeText={setDestination}
+            />
+          </View>
+
+          <MeetupLocationPicker
+            label="MEETING POINT"
+            value={meetup}
+            onChange={setMeetup}
+            isDark={isDark}
+            landmarkPlaceholder="Specific spot, e.g. Malolos Cathedral, main entrance"
+          />
+        </Card>
+
+        <Card index={1} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<Calendar size={16} color="#2A55D4" />} title="When" />
+          <View>
+            <Text className={label}>START DATE &amp; MEETUP TIME (OPTIONAL)</Text>
+            <View className="flex-row gap-3">
+              <AnimatedPressable
+                onPress={() => setShowStartDatePicker(true)}
+                scaleTo={0.97}
+                className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+              >
+                <Calendar size={18} color={startDate ? '#2A55D4' : placeholderColor} />
+                <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
+                  {formatDateLabel(startDate)}
+                </Text>
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => setShowStartTimePicker(true)}
+                scaleTo={0.97}
+                className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+              >
+                <Clock size={18} color={startDate ? '#2A55D4' : placeholderColor} />
+                <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
+                  {formatTimeLabel(startDate)}
+                </Text>
+              </AnimatedPressable>
+            </View>
+            {startDate ? (
+              <AnimatedPressable onPress={() => setStartDate(null)} className="mt-2 self-start">
+                <Text className="text-sm font-bold text-[#B91C1C]">Clear start date &amp; time</Text>
+              </AnimatedPressable>
+            ) : null}
+          </View>
+
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <Text className={label}>DURATION (DAYS)</Text>
+              <TextInput
+                className={input}
+                placeholder="e.g., 3"
+                placeholderTextColor={placeholderColor}
+                keyboardType="number-pad"
+                maxLength={2}
+                value={durationDays}
+                onChangeText={(text) => setDurationDays(sanitizeTwoDigits(text))}
+              />
+              <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>{durationSummary(startDate, durationDays)}</Text>
+            </View>
+            <View className="flex-1">
+              <Text className={label}>MAX PARTICIPANTS (OPTIONAL)</Text>
+              <TextInput
+                className={input}
+                placeholder="e.g., 20"
+                placeholderTextColor={placeholderColor}
+                keyboardType="number-pad"
+                maxLength={2}
+                value={maxParticipants}
+                onChangeText={(text) => setMaxParticipants(sanitizeTwoDigits(text))}
+              />
+              <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>{participantSummary(maxParticipants)}</Text>
+            </View>
+          </View>
+        </Card>
+
+        <Card index={2} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<Wallet size={16} color="#2A55D4" />} title="Price & details" />
+          <View>
+            <Text className={label}>PRICE PER PERSON (₱, OPTIONAL)</Text>
+            <TextInput
+              className={input}
+              placeholder="e.g., 3500"
+              placeholderTextColor={placeholderColor}
+              keyboardType="decimal-pad"
+              maxLength={9}
+              value={pricePerPerson}
+              onChangeText={(text) => setPricePerPerson(sanitizePrice(text))}
+            />
+            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>What each participant pays, up to ₱999,999.99. Leave blank if free.</Text>
+          </View>
+
+          <View>
+            <Text className={label}>DESCRIPTION</Text>
+            <TextInput
+              className={`min-h-[88px] ${input}`}
+              placeholder="What's included, what to bring, activities, etc."
+              placeholderTextColor={placeholderColor}
+              maxLength={500}
+              multiline
+              value={description}
+              onChangeText={setDescription}
+            />
+          </View>
+        </Card>
+
+        <Card index={3} className="gap-3">
+          <SectionTitle isDark={isDark} icon={<Sparkles size={16} color="#2A55D4" />} title="Tour themes" />
+          <InterestTagPicker selected={interests} onToggle={toggleInterest} isDark={isDark} />
+        </Card>
+
+        <Card index={4} className="gap-3">
+          <SectionTitle isDark={isDark} icon={<CalendarDays size={16} color="#2A55D4" />} title="Daily itinerary" />
+          <ItineraryDayBuilder days={itinerary} onChange={setItinerary} isDark={isDark} />
+        </Card>
+
+        {errorMessage ? (
+          <Animated.View entering={FadeIn.duration(200)} style={shakeStyle} className="rounded-xl bg-[#FEE2E2] px-4 py-3">
+            <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>
+          </Animated.View>
         ) : null}
 
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOUR TITLE</Text>
-          <TextInput
-            className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="e.g., Boracay Beach Paradise"
-            placeholderTextColor={placeholderColor}
-            maxLength={60}
-            value={title}
-            onChangeText={setTitle}
-          />
-        </View>
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DESTINATION</Text>
-          <TextInput
-            className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="Boracay, Aklan"
-            placeholderTextColor={placeholderColor}
-            maxLength={80}
-            value={destination}
-            onChangeText={setDestination}
-          />
-        </View>
-
-        <MeetupLocationPicker
-          label="MEETING POINT"
-          value={meetup}
-          onChange={setMeetup}
-          isDark={isDark}
-          landmarkPlaceholder="Specific spot, e.g. Malolos Cathedral, main entrance"
-        />
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>START DATE &amp; MEETUP TIME (OPTIONAL)</Text>
-          <View className="flex-row gap-3">
-            <TouchableOpacity
-              onPress={() => setShowStartDatePicker(true)}
-              className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
-            >
-              <Calendar size={18} color={startDate ? '#2A55D4' : placeholderColor} />
-              <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
-                {formatDateLabel(startDate)}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setShowStartTimePicker(true)}
-              className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
-            >
-              <Clock size={18} color={startDate ? '#2A55D4' : placeholderColor} />
-              <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
-                {formatTimeLabel(startDate)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {startDate ? (
-            <TouchableOpacity onPress={() => setStartDate(null)} className="mt-2 self-start">
-              <Text className="text-sm font-bold text-[#B91C1C]">Clear start date &amp; time</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DURATION (DAYS)</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="e.g., 3"
-              placeholderTextColor={placeholderColor}
-              keyboardType="number-pad"
-              maxLength={2}
-              value={durationDays}
-              onChangeText={(text) => setDurationDays(sanitizeTwoDigits(text))}
-            />
-            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>{durationSummary(startDate, durationDays)}</Text>
-          </View>
-          <View className="flex-1">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>MAX PARTICIPANTS (OPTIONAL)</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="e.g., 20"
-              placeholderTextColor={placeholderColor}
-              keyboardType="number-pad"
-              maxLength={2}
-              value={maxParticipants}
-              onChangeText={(text) => setMaxParticipants(sanitizeTwoDigits(text))}
-            />
-            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>{participantSummary(maxParticipants)}</Text>
-          </View>
-        </View>
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>PRICE PER PERSON (₱, OPTIONAL)</Text>
-          <TextInput
-            className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="e.g., 3500"
-            placeholderTextColor={placeholderColor}
-            keyboardType="decimal-pad"
-            maxLength={9}
-            value={pricePerPerson}
-            onChangeText={(text) => setPricePerPerson(sanitizePrice(text))}
-          />
-          <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>What each participant pays, up to ₱999,999.99. Leave blank if free.</Text>
-        </View>
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DESCRIPTION</Text>
-          <TextInput
-            className={`min-h-[88px] rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="What's included, what to bring, activities, etc."
-            placeholderTextColor={placeholderColor}
-            maxLength={500}
-            multiline
-            value={description}
-            onChangeText={setDescription}
-          />
-        </View>
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOUR THEMES / INTERESTS</Text>
-          <InterestTagPicker selected={interests} onToggle={toggleInterest} isDark={isDark} />
-        </View>
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DAILY ITINERARY</Text>
-          <ItineraryDayBuilder days={itinerary} onChange={setItinerary} isDark={isDark} />
-        </View>
-
-        <TouchableOpacity onPress={handleSubmit} disabled={submitting} className="mt-2 rounded-2xl bg-[#2A55D4] py-4">
+        <AnimatedPressable onPress={handleSubmit} disabled={submitting} className="rounded-2xl bg-[#2A55D4] py-4 shadow-sm shadow-[#2A55D4]/30">
           {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-base font-bold text-white">Create Tour</Text>}
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
 
       <DatePickerModal

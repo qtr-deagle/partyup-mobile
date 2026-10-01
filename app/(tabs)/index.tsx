@@ -1,6 +1,7 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { routeForNotification } from '@/components/InAppNotifier';
 import NotificationModal from '@/components/NotificationModal';
+import StaffDashboard from '@/components/StaffDashboard';
 import { PopIn } from '@/components/ui/motion';
 import WarningModeModal from '@/components/WarningModeModal';
 import { useAuth } from '@/hooks/auth-provider';
@@ -8,13 +9,20 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { startTrip } from '@/lib/carpool';
 import { formatCountdown, parseTimestamp } from '@/lib/datetime';
-import { getActiveTripSummary, getSafetyOverview, type ActiveTripSummary, type SafetyOverview } from '@/lib/homeDashboard';
+import {
+  getActiveTripSummary,
+  getSafetyOverview,
+  getStaffOverview,
+  type ActiveTripSummary,
+  type SafetyOverview,
+  type StaffOverview,
+} from '@/lib/homeDashboard';
 import { requestLocationPermissions, startBackgroundLocationTracking, upsertCurrentLocation } from '@/lib/location';
 import { listNotifications, markNotificationRead, type AppNotification } from '@/lib/notifications';
 import { triggerSosAlert } from '@/lib/safety';
 import { listIncomingFriendRequests, type IncomingFriendRequest } from '@/lib/social';
 import { feedback } from '@/lib/sounds';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -51,12 +59,21 @@ export default function HomeScreen() {
   const [dbNotifications, setDbNotifications] = useState<AppNotification[]>([]);
   const [activeTrip, setActiveTrip] = useState<ActiveTripSummary | null>(null);
   const [safety, setSafety] = useState<SafetyOverview | null>(null);
+  const [staffOverview, setStaffOverview] = useState<StaffOverview | null>(null);
   const [startingTrip, setStartingTrip] = useState(false);
   const [sharingLocation, setSharingLocation] = useState(false);
   const [sendingSos, setSendingSos] = useState(false);
   const isDark = useColorScheme() === 'dark';
+  const isStaff = profile?.role === 'staff' || profile?.role === 'admin';
 
   const loadDashboard = useCallback(async () => {
+    if (isStaff) {
+      const staffResult = await getStaffOverview();
+      if (!staffResult.error) {
+        setStaffOverview(staffResult.data);
+      }
+      return;
+    }
     const [tripResult, safetyResult] = await Promise.all([getActiveTripSummary(), getSafetyOverview()]);
     if (!tripResult.error) {
       setActiveTrip(tripResult.data);
@@ -64,7 +81,7 @@ export default function HomeScreen() {
     if (!safetyResult.error) {
       setSafety(safetyResult.data);
     }
-  }, []);
+  }, [isStaff]);
 
   const loadHome = useCallback(
     () =>
@@ -92,7 +109,7 @@ export default function HomeScreen() {
       // Keep the bell dot and list current while Home is open.
       const channel = userId
         ? supabase
-            .channel(`home-notifications:${userId}`)
+            .channel(uniqueChannelName(`home-notifications:${userId}`))
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, (payload) => {
               const row = payload.new as AppNotification;
               setDbNotifications((current) => (current.some((n) => n.id === row.id) ? current : [row, ...current]));
@@ -285,12 +302,14 @@ export default function HomeScreen() {
 
         <View className="mt-8">
           <Text className={`${typography.pageTitle} ${titleColor}`}>{greeting()}{firstName ? `, ${firstName}` : ''} 👋</Text>
-          <Text className={`mt-2 text-base ${subtitleColor}`}>Your trip and safety status</Text>
+          <Text className={`mt-2 text-base ${subtitleColor}`}>{isStaff ? 'Operations overview for PartyUp staff' : 'Your trip and safety status'}</Text>
         </View>
       </Animated.View>
 
       <View className="px-4 pt-6 flex flex-col gap-4">
-        {activeTrip ? (
+        {isStaff ? (
+          <StaffDashboard key="staff-dashboard" isDark={isDark} overview={staffOverview} />
+        ) : activeTrip ? (
           <Animated.View
             key="active-trip-card"
             entering={FadeInDown.delay(80).duration(400).springify().damping(16)}
@@ -361,62 +380,65 @@ export default function HomeScreen() {
           </Animated.View>
         )}
 
-        <Animated.View
-          entering={FadeInDown.delay(140).duration(400).springify().damping(16)}
-          className={`rounded-[24px] border-2 p-4 ${isDark ? 'border-[#10B981] bg-[#0D1E1A]' : 'border-[#059669] bg-[#E5F6EF]'}`}>
-          <View className="flex-row items-center gap-2">
-            <Shield size={20} color={accentColor} />
-            <Text className={`${typography.sectionTitle} ${primaryText}`}>Safety Overview</Text>
-          </View>
-
-          <View className="mt-4 flex flex-col gap-3">
-            <View className={`rounded-2xl p-4 ${mutedPanel}`}>
-              <Text className={`${typography.label} ${mutedText}`}>Geofence Status</Text>
-              <Text className={`mt-2 ${typography.value} ${primaryText}`}>{safety?.geofence_label ?? 'Geofence unavailable'}</Text>
-              {safety?.geofence_distance_km != null && (
-                <Text className={`mt-1 text-sm ${mutedText}`}>{safety.geofence_distance_km} km from {activeTrip?.destination}</Text>
-              )}
+        {!isStaff && (
+          <Animated.View
+            key="safety-overview-card"
+            entering={FadeInDown.delay(140).duration(400).springify().damping(16)}
+            className={`rounded-[24px] border-2 p-4 ${isDark ? 'border-[#10B981] bg-[#0D1E1A]' : 'border-[#059669] bg-[#E5F6EF]'}`}>
+            <View className="flex-row items-center gap-2">
+              <Shield size={20} color={accentColor} />
+              <Text className={`${typography.sectionTitle} ${primaryText}`}>Safety Overview</Text>
             </View>
 
-            <View className={`rounded-2xl p-4 ${mutedPanel}`}>
-              <Text className={`${typography.label} ${mutedText}`}>Distance from Travel Buddy</Text>
-              <Text className={`mt-2 ${typography.value} ${primaryText}`}>
-                {safety?.buddy_distance_km != null ? `${safety.buddy_distance_km} km` : 'Not sharing right now'}
-              </Text>
-            </View>
+            <View className="mt-4 flex flex-col gap-3">
+              <View className={`rounded-2xl p-4 ${mutedPanel}`}>
+                <Text className={`${typography.label} ${mutedText}`}>Geofence Status</Text>
+                <Text className={`mt-2 ${typography.value} ${primaryText}`}>{safety?.geofence_label ?? 'Geofence unavailable'}</Text>
+                {safety?.geofence_distance_km != null && (
+                  <Text className={`mt-1 text-sm ${mutedText}`}>{safety.geofence_distance_km} km from {activeTrip?.destination}</Text>
+                )}
+              </View>
 
-            <View className={`rounded-2xl p-4 ${mutedPanel}`}>
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className={`text-sm ${mutedText}`}>Trust Score</Text>
-                  <Text className={`mt-1 text-lg font-bold ${primaryText}`}>{isVerified ? 'Protected and verified' : 'Complete ID verification to boost your score'}</Text>
+              <View className={`rounded-2xl p-4 ${mutedPanel}`}>
+                <Text className={`${typography.label} ${mutedText}`}>Distance from Travel Buddy</Text>
+                <Text className={`mt-2 ${typography.value} ${primaryText}`}>
+                  {safety?.buddy_distance_km != null ? `${safety.buddy_distance_km} km` : 'Not sharing right now'}
+                </Text>
+              </View>
+
+              <View className={`rounded-2xl p-4 ${mutedPanel}`}>
+                <View className="flex-row items-center justify-between">
+                  <View>
+                    <Text className={`text-sm ${mutedText}`}>Trust Score</Text>
+                    <Text className={`mt-1 text-lg font-bold ${primaryText}`}>{isVerified ? 'Protected and verified' : 'Complete ID verification to boost your score'}</Text>
+                  </View>
+                  <View className="rounded-full px-3 py-1" style={{ backgroundColor: isVerified ? (isDark ? '#0F3D2E' : '#DDF4EA') : (isDark ? '#3A2A12' : '#FFEBCF') }}>
+                    <Text className="text-xs font-bold" style={{ color: isVerified ? accentColor : warningColor }}>{isVerified ? '✓ Verified' : 'Not Verified'}</Text>
+                  </View>
                 </View>
-                <View className="rounded-full px-3 py-1" style={{ backgroundColor: isVerified ? (isDark ? '#0F3D2E' : '#DDF4EA') : (isDark ? '#3A2A12' : '#FFEBCF') }}>
-                  <Text className="text-xs font-bold" style={{ color: isVerified ? accentColor : warningColor }}>{isVerified ? '✓ Verified' : 'Not Verified'}</Text>
+
+                <View className="mt-3 flex-row items-center gap-3">
+                  <View className="h-2 flex-1 overflow-hidden rounded-full bg-[#D9E4DE]">
+                    <Animated.View
+                      entering={FadeIn.delay(400).duration(500)}
+                      className="h-full rounded-full"
+                      style={{ width: `${safety?.trust_score ?? 0}%`, backgroundColor: accentColor }}
+                    />
+                  </View>
+                  <Text className="text-headline-24 font-bold" style={{ color: accentColor }}>{safety?.trust_score ?? 0}%</Text>
                 </View>
               </View>
 
-              <View className="mt-3 flex-row items-center gap-3">
-                <View className="h-2 flex-1 overflow-hidden rounded-full bg-[#D9E4DE]">
-                  <Animated.View
-                    entering={FadeIn.delay(400).duration(500)}
-                    className="h-full rounded-full"
-                    style={{ width: `${safety?.trust_score ?? 0}%`, backgroundColor: accentColor }}
-                  />
-                </View>
-                <Text className="text-headline-24 font-bold" style={{ color: accentColor }}>{safety?.trust_score ?? 0}%</Text>
-              </View>
+              <AnimatedPressable
+                onPress={() => setWarningModeVisible(true)}
+                className="flex-row items-center justify-center gap-2 rounded-2xl px-4 py-3.5"
+                style={{ backgroundColor: destructiveColor }}>
+                <Shield size={16} color="white" />
+                <Text className="text-base font-bold text-white">Activate Warning Mode</Text>
+              </AnimatedPressable>
             </View>
-
-            <AnimatedPressable
-              onPress={() => setWarningModeVisible(true)}
-              className="flex-row items-center justify-center gap-2 rounded-2xl px-4 py-3.5"
-              style={{ backgroundColor: destructiveColor }}>
-              <Shield size={16} color="white" />
-              <Text className="text-base font-bold text-white">Activate Warning Mode</Text>
-            </AnimatedPressable>
-          </View>
-        </Animated.View>
+          </Animated.View>
+        )}
 
         <Animated.View
           entering={FadeInDown.delay(200).duration(400).springify().damping(16)}
@@ -445,28 +467,30 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(320).duration(400).springify().damping(16)} className="flex-row gap-4 pb-6">
-          <AnimatedPressable
-            onPress={() => router.push('/(tabs)/map')}
-            className={`flex-1 rounded-[22px] border px-4 py-4 ${softBorder} ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
-            <View className={`h-11 w-11 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
-              <Users size={20} color={primaryColor} />
-            </View>
-            <Text className={`mt-3 text-base font-bold ${primaryText}`}>Find Buddies</Text>
-            <Text className={`mt-1 text-xs ${mutedText}`}>See who is traveling nearby</Text>
-          </AnimatedPressable>
+        {!isStaff && (
+          <Animated.View key="traveler-quick-actions" entering={FadeInDown.delay(320).duration(400).springify().damping(16)} className="flex-row gap-4 pb-6">
+            <AnimatedPressable
+              onPress={() => router.push('/(tabs)/map')}
+              className={`flex-1 rounded-[22px] border px-4 py-4 ${softBorder} ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
+              <View className={`h-11 w-11 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
+                <Users size={20} color={primaryColor} />
+              </View>
+              <Text className={`mt-3 text-base font-bold ${primaryText}`}>Find Buddies</Text>
+              <Text className={`mt-1 text-xs ${mutedText}`}>See who is traveling nearby</Text>
+            </AnimatedPressable>
 
-          <AnimatedPressable
-            onPress={handleSosPress}
-            disabled={sendingSos}
-            className={`flex-1 rounded-[22px] border-2 px-4 py-4 ${isDark ? 'border-[#7A2D2D] bg-[#251416]' : 'border-[#FFB1A9] bg-[#FFF3F1]'}`}>
-            <View className={`h-11 w-11 items-center justify-center rounded-full ${isDark ? 'bg-[#422022]' : 'bg-[#FFE1DC]'}`}>
-              {sendingSos ? <ActivityIndicator color={destructiveColor} /> : <Shield size={20} color={destructiveColor} />}
-            </View>
-            <Text className="mt-3 text-base font-black" style={{ color: destructiveColor }}>Emergency SOS</Text>
-            <Text className={`mt-1 text-xs ${isDark ? 'text-[#E2A39C]' : 'text-[#A75A51]'}`}>Alert trusted circle</Text>
-          </AnimatedPressable>
-        </Animated.View>
+            <AnimatedPressable
+              onPress={handleSosPress}
+              disabled={sendingSos}
+              className={`flex-1 rounded-[22px] border-2 px-4 py-4 ${isDark ? 'border-[#7A2D2D] bg-[#251416]' : 'border-[#FFB1A9] bg-[#FFF3F1]'}`}>
+              <View className={`h-11 w-11 items-center justify-center rounded-full ${isDark ? 'bg-[#422022]' : 'bg-[#FFE1DC]'}`}>
+                {sendingSos ? <ActivityIndicator color={destructiveColor} /> : <Shield size={20} color={destructiveColor} />}
+              </View>
+              <Text className="mt-3 text-base font-black" style={{ color: destructiveColor }}>Emergency SOS</Text>
+              <Text className={`mt-1 text-xs ${isDark ? 'text-[#E2A39C]' : 'text-[#A75A51]'}`}>Alert trusted circle</Text>
+            </AnimatedPressable>
+          </Animated.View>
+        )}
       </View>
       <NotificationModal
         visible={notificationVisible}

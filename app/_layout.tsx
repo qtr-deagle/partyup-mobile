@@ -16,6 +16,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, useFonts as usePoppinsFonts } from '@expo-google-fonts/poppins';
 import ActiveSosBanner from '@/components/ActiveSosBanner';
+import WarningModeBanner from '@/components/WarningModeBanner';
 import InAppNotifier from '@/components/InAppNotifier';
 import SosAlertOverlay from '@/components/SosAlertOverlay';
 import { AuthProvider, useAuth } from '@/hooks/auth-provider';
@@ -94,6 +95,7 @@ function RootLayoutContent() {
       </Stack>
       <VerificationGate />
       <InAppNotifier />
+      <WarningModeBanner />
       <ActiveSosBanner />
       <SosAlertOverlay />
       <StatusBar style={isDark ? 'light' : 'dark'} />

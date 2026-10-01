@@ -1,45 +1,47 @@
+import { BULACAN_MUNICIPALITIES, type BulacanMunicipality } from '@/lib/bulacan';
 import { type BudgetTier, type Purpose } from '@/lib/discover-mock';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { Check, MapPin, X } from 'lucide-react-native';
-import { useState } from 'react';
-import { Modal, Platform, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { Check, ChevronDown, MapPin, X } from 'lucide-react-native';
+import { useRef, useState } from 'react';
+import { Modal, Platform, Pressable, ScrollView, Text, TouchableOpacity, View, type GestureResponderEvent } from 'react-native';
 
 const BUDGET_OPTIONS: BudgetTier[] = ['Budget', 'Mid-range', 'Luxury'];
 const PURPOSE_OPTIONS: Purpose[] = ['Vacation', 'Business', 'Backpacking', 'Study'];
 
 export type FiltersValue = {
-  location: string;
+  // Bulacan municipalities matched against the traveler's residence; empty = anywhere in Bulacan.
+  locations: BulacanMunicipality[];
   dateStart: Date | null;
   dateEnd: Date | null;
   budget: BudgetTier | null;
-  purpose: Purpose | null;
+  // Empty = any purpose; otherwise the trip must match one of the selected purposes.
+  purposes: Purpose[];
   minCompatibility: number;
-  carpoolOnly: boolean;
+  // Only travelers with an approved vehicle (owned or borrowed) -- i.e. people who can drive.
+  hasVehicleOnly: boolean;
 };
 
 // Starts at 0 (show everyone) rather than a pre-filled floor: real compatibility scores can
 // legitimately land anywhere, so defaulting to a high bar would silently hide candidates before
 // the user ever touches the filter. The user raises this deliberately if they want tighter matches.
 export const DEFAULT_FILTERS: FiltersValue = {
-  location: '',
+  locations: [],
   dateStart: null,
   dateEnd: null,
   budget: null,
-  purpose: null,
+  purposes: [],
   minCompatibility: 0,
-  carpoolOnly: false,
+  hasVehicleOnly: false,
 };
 
 export function countActiveFilters(value: FiltersValue) {
   let count = 0;
-  if (value.location.trim()) count += 1;
+  if (value.locations.length > 0) count += 1;
   if (value.dateStart || value.dateEnd) count += 1;
   if (value.budget) count += 1;
-  if (value.purpose) count += 1;
+  if (value.purposes.length > 0) count += 1;
   if (value.minCompatibility !== DEFAULT_FILTERS.minCompatibility) count += 1;
-  if (value.carpoolOnly) count += 1;
+  if (value.hasVehicleOnly) count += 1;
   return count;
 }
 
@@ -50,45 +52,66 @@ function formatDateInput(date: Date | null) {
   return `${month}/${day}/${date.getFullYear()}`;
 }
 
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
 const THUMB_SIZE = 22;
+const SLIDER_HEIGHT = 40;
 
-function CompatibilitySlider({ value, onChange, isDark }: { value: number; onChange: (next: number) => void; isDark: boolean }) {
-  const [trackWidth, setTrackWidth] = useState(0);
-  const position = useSharedValue(0);
+// Built on the plain RN responder system instead of react-native-gesture-handler: RNGH gestures
+// never activated inside this Modal + ScrollView + Pressable stack (even with a modal-local
+// GestureHandlerRootView), while the responder system is what the working Pressables here use.
+function CompatibilitySlider({
+  value,
+  onChange,
+  onDraggingChange,
+  isDark,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  onDraggingChange: (dragging: boolean) => void;
+  isDark: boolean;
+}) {
+  const [width, setWidth] = useState(0);
+  // Screen x of the slider's left edge, captured at touch start so moves can use pageX
+  // (locationX is unreliable mid-drag on Android once the finger leaves the view).
+  const originX = useRef(0);
+  const travel = Math.max(0, width - THUMB_SIZE);
+  const thumbX = (value / 100) * travel;
 
-  function commit(next: number) {
-    if (trackWidth <= 0) return;
-    const rounded = Math.max(0, Math.min(100, Math.round((next / trackWidth) * 100 / 5) * 5));
-    onChange(rounded);
+  function update(pageX: number) {
+    if (travel <= 0) return;
+    const x = Math.max(0, Math.min(travel, pageX - originX.current - THUMB_SIZE / 2));
+    const next = Math.round(((x / travel) * 100) / 5) * 5;
+    if (next !== value) onChange(next);
   }
 
-  const pan = Gesture.Pan()
-    .onUpdate((event) => {
-      if (trackWidth <= 0) return;
-      const start = (value / 100) * trackWidth;
-      position.value = Math.max(0, Math.min(trackWidth, start + event.translationX));
-    })
-    .onEnd(() => {
-      runOnJS(commit)(position.value);
-    });
-
-  const thumbStyle = useAnimatedStyle(() => ({ transform: [{ translateX: position.value }] }));
-  const fillStyle = useAnimatedStyle(() => ({ width: position.value + THUMB_SIZE / 2 }));
+  function end() {
+    onDraggingChange(false);
+  }
 
   return (
     <View
-      className="w-full"
-      onLayout={(event) => {
-        const width = event.nativeEvent.layout.width - THUMB_SIZE;
-        setTrackWidth(width);
-        position.value = (value / 100) * width;
+      style={{ height: SLIDER_HEIGHT, justifyContent: 'center' }}
+      onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderTerminationRequest={() => false}
+      onResponderGrant={(event: GestureResponderEvent) => {
+        originX.current = event.nativeEvent.pageX - event.nativeEvent.locationX;
+        onDraggingChange(true);
+        update(event.nativeEvent.pageX);
       }}
+      onResponderMove={(event: GestureResponderEvent) => update(event.nativeEvent.pageX)}
+      onResponderRelease={end}
+      onResponderTerminate={end}
     >
-      <View className={`h-1.5 w-full justify-center rounded-full ${isDark ? 'bg-[#22324B]' : 'bg-[#E7EAF2]'}`}>
-        <Animated.View style={[fillStyle, { height: 6, borderRadius: 999, backgroundColor: '#284BD6' }]} />
-        <GestureDetector gesture={pan}>
-          <Animated.View style={[thumbStyle, { position: 'absolute', width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: THUMB_SIZE / 2, backgroundColor: '#284BD6', borderWidth: 3, borderColor: 'white' }]} />
-        </GestureDetector>
+      <View pointerEvents="none" className={`h-1.5 w-full justify-center rounded-full ${isDark ? 'bg-[#22324B]' : 'bg-[#E7EAF2]'}`}>
+        <View style={{ width: thumbX + THUMB_SIZE / 2, height: 6, borderRadius: 999, backgroundColor: '#284BD6' }} />
+        <View style={{ position: 'absolute', left: thumbX, width: THUMB_SIZE, height: THUMB_SIZE, borderRadius: THUMB_SIZE / 2, backgroundColor: '#284BD6', borderWidth: 3, borderColor: 'white' }} />
       </View>
     </View>
   );
@@ -106,6 +129,8 @@ export function FiltersModal({ visible, value, isDark, onApply, onClose }: Filte
   const [draft, setDraft] = useState<FiltersValue>(value);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [showLocations, setShowLocations] = useState(false);
+  const [sliderDragging, setSliderDragging] = useState(false);
 
   const background = isDark ? 'bg-[#111B2E]' : 'bg-white';
   const textPrimary = isDark ? 'text-white' : 'text-[#182847]';
@@ -113,18 +138,39 @@ export function FiltersModal({ visible, value, isDark, onApply, onClose }: Filte
   const inputBorder = isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D8E0EE] bg-white';
   const chipInactive = isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#E4EAF2] bg-white';
 
+  const today = startOfToday();
+
   function handleOpen() {
     setDraft(value);
+    setShowLocations(false);
   }
 
   function handleStartDateChange(_event: DateTimePickerEvent, selected?: Date) {
     setShowStartPicker(false);
-    if (selected) setDraft((current) => ({ ...current, dateStart: selected }));
+    if (!selected || selected < today) return;
+    // Picking a start after the current end clears the end rather than leaving an inverted range.
+    setDraft((current) => ({ ...current, dateStart: selected, dateEnd: current.dateEnd && current.dateEnd < selected ? null : current.dateEnd }));
   }
 
   function handleEndDateChange(_event: DateTimePickerEvent, selected?: Date) {
     setShowEndPicker(false);
-    if (selected) setDraft((current) => ({ ...current, dateEnd: selected }));
+    if (!selected || selected < today) return;
+    setDraft((current) => (current.dateStart && selected < current.dateStart ? current : { ...current, dateEnd: selected }));
+  }
+
+  // "Anywhere" clears the list; tapping a municipality adds or removes it.
+  function toggleLocation(option: BulacanMunicipality | null) {
+    setDraft((current) => ({
+      ...current,
+      locations: option === null ? [] : current.locations.includes(option) ? current.locations.filter((city) => city !== option) : [...current.locations, option],
+    }));
+  }
+
+  function togglePurpose(option: Purpose) {
+    setDraft((current) => ({
+      ...current,
+      purposes: current.purposes.includes(option) ? current.purposes.filter((purpose) => purpose !== option) : [...current.purposes, option],
+    }));
   }
 
   return (
@@ -140,13 +186,31 @@ export function FiltersModal({ visible, value, isDark, onApply, onClose }: Filte
             <View className="self-start rounded-full bg-[#E9F0FF] px-3 py-1"><Text className="text-xs font-bold text-[#2A55D4]">{countActiveFilters(draft)} active</Text></View>
           </View>
 
-          <ScrollView className="px-5" contentContainerStyle={{ paddingBottom: 12, gap: 18 }}>
+          <ScrollView className="px-5" scrollEnabled={!sliderDragging} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 12, gap: 18 }}>
             <View>
               <Text className={`mb-2 text-xs font-bold uppercase tracking-wide ${textSecondary}`}>Location</Text>
-              <View className={`flex-row items-center gap-2 rounded-2xl border px-4 py-3 ${inputBorder}`}>
+              <TouchableOpacity onPress={() => setShowLocations((open) => !open)} className={`flex-row items-center gap-2 rounded-2xl border px-4 py-3 ${inputBorder}`}>
                 <MapPin size={18} color="#7A859D" />
-                <TextInput value={draft.location} onChangeText={(text) => setDraft((current) => ({ ...current, location: text }))} placeholder="Paris, Tokyo, NYC..." placeholderTextColor="#8A93A8" className={`flex-1 text-[15px] ${textPrimary}`} />
-              </View>
+                <Text numberOfLines={1} className={`flex-1 text-[15px] ${draft.locations.length ? textPrimary : 'text-[#8A93A8]'}`}>{draft.locations.length ? draft.locations.join(', ') : 'Anywhere in Bulacan'}</Text>
+                <ChevronDown size={18} color="#7A859D" style={{ transform: [{ rotate: showLocations ? '180deg' : '0deg' }] }} />
+              </TouchableOpacity>
+              {showLocations ? (
+                <View className="mt-2 flex-row flex-wrap gap-2">
+                  {[null, ...BULACAN_MUNICIPALITIES].map((option) => {
+                    const active = option === null ? draft.locations.length === 0 : draft.locations.includes(option);
+                    return (
+                      <TouchableOpacity
+                        key={option ?? 'any'}
+                        onPress={() => toggleLocation(option)}
+                        className={`flex-row items-center gap-1 rounded-full border px-3 py-1.5 ${active ? 'border-[#284BD6] bg-[#284BD6]' : chipInactive}`}
+                      >
+                        {active && option !== null ? <Check size={12} color="#FFFFFF" /> : null}
+                        <Text className={`text-[13px] font-semibold ${active ? 'text-white' : textPrimary}`}>{option ?? 'Anywhere'}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              ) : null}
             </View>
 
             <View>
@@ -159,8 +223,8 @@ export function FiltersModal({ visible, value, isDark, onApply, onClose }: Filte
                   <Text className={draft.dateEnd ? textPrimary : 'text-[#8A93A8]'}>{formatDateInput(draft.dateEnd)}</Text>
                 </TouchableOpacity>
               </View>
-              {showStartPicker ? <DateTimePicker value={draft.dateStart ?? new Date()} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={handleStartDateChange} /> : null}
-              {showEndPicker ? <DateTimePicker value={draft.dateEnd ?? new Date()} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={handleEndDateChange} /> : null}
+              {showStartPicker ? <DateTimePicker value={draft.dateStart ?? today} minimumDate={today} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={handleStartDateChange} /> : null}
+              {showEndPicker ? <DateTimePicker value={draft.dateEnd ?? draft.dateStart ?? today} minimumDate={draft.dateStart ?? today} mode="date" display={Platform.OS === 'ios' ? 'inline' : 'calendar'} onChange={handleEndDateChange} /> : null}
             </View>
 
             <View>
@@ -181,9 +245,10 @@ export function FiltersModal({ visible, value, isDark, onApply, onClose }: Filte
               <Text className={`mb-2 text-xs font-bold uppercase tracking-wide ${textSecondary}`}>Purpose</Text>
               <View className="flex-row flex-wrap gap-2">
                 {PURPOSE_OPTIONS.map((option) => {
-                  const active = draft.purpose === option;
+                  const active = draft.purposes.includes(option);
                   return (
-                    <TouchableOpacity key={option} onPress={() => setDraft((current) => ({ ...current, purpose: current.purpose === option ? null : option }))} className={`rounded-full border px-4 py-2 ${active ? 'border-[#284BD6] bg-[#284BD6]' : chipInactive}`}>
+                    <TouchableOpacity key={option} onPress={() => togglePurpose(option)} className={`flex-row items-center gap-1.5 rounded-full border px-4 py-2 ${active ? 'border-[#284BD6] bg-[#284BD6]' : chipInactive}`}>
+                      {active ? <Check size={14} color="#FFFFFF" /> : null}
                       <Text className={`text-sm font-semibold ${active ? 'text-white' : textPrimary}`}>{option}</Text>
                     </TouchableOpacity>
                   );
@@ -192,18 +257,26 @@ export function FiltersModal({ visible, value, isDark, onApply, onClose }: Filte
             </View>
 
             <View>
-              <View className="mb-2 flex-row items-center justify-between">
+              <View className="mb-1 flex-row items-center justify-between">
                 <Text className={`text-xs font-bold uppercase tracking-wide ${textSecondary}`}>Compatibility</Text>
                 <Text className="text-sm font-bold text-[#284BD6]">{draft.minCompatibility}%+</Text>
               </View>
-              <CompatibilitySlider value={draft.minCompatibility} onChange={(next) => setDraft((current) => ({ ...current, minCompatibility: next }))} isDark={isDark} />
+              <CompatibilitySlider
+                value={draft.minCompatibility}
+                onChange={(next) => setDraft((current) => ({ ...current, minCompatibility: next }))}
+                onDraggingChange={setSliderDragging}
+                isDark={isDark}
+              />
             </View>
 
-            <TouchableOpacity onPress={() => setDraft((current) => ({ ...current, carpoolOnly: !current.carpoolOnly }))} className={`flex-row items-center gap-3 rounded-2xl px-4 py-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#F6F7FB]'}`}>
-              <View className={`h-5 w-5 items-center justify-center rounded-md border-2 ${draft.carpoolOnly ? 'border-[#284BD6] bg-[#284BD6]' : isDark ? 'border-[#3A4A66]' : 'border-[#C6CEDD]'}`}>
-                {draft.carpoolOnly ? <Check size={13} color="#FFFFFF" /> : null}
+            <TouchableOpacity onPress={() => setDraft((current) => ({ ...current, hasVehicleOnly: !current.hasVehicleOnly }))} className={`flex-row items-center gap-3 rounded-2xl px-4 py-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#F6F7FB]'}`}>
+              <View className={`h-5 w-5 items-center justify-center rounded-md border-2 ${draft.hasVehicleOnly ? 'border-[#284BD6] bg-[#284BD6]' : isDark ? 'border-[#3A4A66]' : 'border-[#C6CEDD]'}`}>
+                {draft.hasVehicleOnly ? <Check size={13} color="#FFFFFF" /> : null}
               </View>
-              <Text className={`text-[15px] font-semibold ${textPrimary}`}>Carpool available</Text>
+              <View className="flex-1">
+                <Text className={`text-[15px] font-semibold ${textPrimary}`}>Has a vehicle</Text>
+                <Text className={`mt-0.5 text-xs ${textSecondary}`}>Only travelers with a verified vehicle who can drive</Text>
+              </View>
             </TouchableOpacity>
           </ScrollView>
 

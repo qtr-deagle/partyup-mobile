@@ -3,7 +3,8 @@
 // Sends a high-priority Expo push notification for an SOS alert to every
 // trusted-circle member who received the in-app `safety` notification.
 //
-//   1. Confirms the caller owns the sos_alerts row (via their JWT).
+//   1. Confirms the caller owns the sos_alerts row (via their JWT), or is the
+//      database's Warning Mode escalation job (via the x-push-secret header).
 //   2. Finds the notifications fanned out by trigger_sos_alert() for it.
 //   3. Pushes to each recipient's registered Expo tokens on the `sos`
 //      Android channel, and prunes tokens Expo reports as unregistered.
@@ -41,8 +42,10 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
 
+  const pushSecret = Deno.env.get('PUSH_WEBHOOK_SECRET');
+  const fromDatabase = !!pushSecret && req.headers.get('x-push-secret') === pushSecret;
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
+  if (!fromDatabase && !authHeader) {
     return jsonResponse({ error: 'Missing authorization' }, 401);
   }
 
@@ -60,12 +63,16 @@ Deno.serve(async (req) => {
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-  const callerClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: userData, error: userError } = await callerClient.auth.getUser();
-  if (userError || !userData?.user) {
-    return jsonResponse({ error: 'Not authenticated' }, 401);
+  let callerId: string | null = null;
+  if (!fromDatabase) {
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader! } },
+    });
+    const { data: userData, error: userError } = await callerClient.auth.getUser();
+    if (userError || !userData?.user) {
+      return jsonResponse({ error: 'Not authenticated' }, 401);
+    }
+    callerId = userData.user.id;
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
@@ -75,7 +82,7 @@ Deno.serve(async (req) => {
     .select('id, user_id')
     .eq('id', sosAlertId)
     .maybeSingle();
-  if (!alert || alert.user_id !== userData.user.id) {
+  if (!alert || (!fromDatabase && alert.user_id !== callerId)) {
     return jsonResponse({ error: 'SOS alert not found' }, 404);
   }
 

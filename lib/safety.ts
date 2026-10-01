@@ -38,6 +38,20 @@ export async function startSafetySession(tripId?: string | null, durationSeconds
   ) as Promise<{ data: SafetySession | null; error: Error | null }>;
 }
 
+// A Warning Mode timer still running from before an app restart, so the user
+// can pick it back up (and cancel it) instead of it escalating unseen.
+export async function getMyMonitoringSession(userId: string) {
+  const { data } = await supabase
+    .from('safety_sessions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('status', 'monitoring')
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as SafetySession | null) ?? null;
+}
+
 export async function cancelSafetySession(sessionId: string) {
   return withRequestTimeout(supabase.rpc('cancel_safety_session', { p_session_id: sessionId }), 'Cancelling Warning Mode');
 }

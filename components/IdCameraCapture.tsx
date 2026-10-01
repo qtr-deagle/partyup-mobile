@@ -4,8 +4,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { assessImageQuality, qualityIssueMessage } from '@/lib/imageQuality';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 const RETRY_MESSAGE_MS = 1200;
+// Full-res camera shots are ~12 MP (~48 MB decoded each). Screens like vehicle
+// verification show up to 7 at once, which runs Android out of memory and
+// crashes the app, so shrink each capture to a size that's still readable.
+const MAX_CAPTURE_WIDTH = 1600;
 
 type Phase = 'aiming' | 'capturing' | 'preview';
 
@@ -56,7 +61,12 @@ export default function IdCameraCapture({
         return;
       }
 
-      setPreviewUri(photo.uri);
+      const resized =
+        photo.width > MAX_CAPTURE_WIDTH
+          ? await manipulateAsync(photo.uri, [{ resize: { width: MAX_CAPTURE_WIDTH } }], { compress: 0.85, format: SaveFormat.JPEG })
+          : photo;
+
+      setPreviewUri(resized.uri);
       setPhase('preview');
     } catch {
       setPhase('aiming');

@@ -1,8 +1,10 @@
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState, SkeletonCard, SuccessOverlay, useShake } from '@/components/ui/motion';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { listFriendConnections, type FriendConnection } from '@/lib/social';
-import { getTheme, typography } from '@/lib/theme';
 import {
   addTrustedContact,
   formatAddedDate,
@@ -15,9 +17,10 @@ import {
   type TrustedContact,
 } from '@/lib/trustedCircle';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, Bell, BellOff, CheckCircle2, Clock, Info, MapPin, Plus, Shield, ShieldAlert, UserPlus, Users, X, XCircle } from 'lucide-react-native';
+import { AlertTriangle, Bell, BellOff, CheckCircle2, Clock, Info, MapPin, Plus, Shield, ShieldAlert, UserPlus, Users, X, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, FadeInRight, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EMERGENCY_INFO_MAX = 200;
@@ -27,7 +30,6 @@ export default function TrustedCircleScreen() {
   const { session, loading: authLoading } = useAuth();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  const { titleColor } = getTheme(isDark);
 
   const [contacts, setContacts] = useState<TrustedContact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,9 +47,11 @@ export default function TrustedCircleScreen() {
   const [emergencyInfo, setEmergencyInfo] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [requestSent, setRequestSent] = useState(false);
+  const { style: shakeStyle, shake } = useShake();
+  const clearRequestSent = useCallback(() => setRequestSent(false), []);
 
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
-  const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white';
   const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E9EDF5] bg-white';
   const primary = isDark ? 'text-white' : 'text-[#182847]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
@@ -119,10 +123,12 @@ export default function TrustedCircleScreen() {
   function goToStepTwo() {
     if (!selectedFriendId) {
       setFormError('Select a friend to add.');
+      shake();
       return;
     }
     if (!relationship) {
       setFormError('Select a relationship.');
+      shake();
       return;
     }
     setFormError(null);
@@ -141,9 +147,11 @@ export default function TrustedCircleScreen() {
     setSubmitting(false);
     if (result.error) {
       setFormError(result.error.message);
+      shake();
       return;
     }
     setAddVisible(false);
+    setRequestSent(true);
     await loadContacts();
   }
 
@@ -194,11 +202,11 @@ export default function TrustedCircleScreen() {
     setBusyContactId(null);
   }
 
-  function renderContact(contact: TrustedContact) {
+  function renderContact(contact: TrustedContact, index: number) {
     const busy = busyContactId === contact.id;
     const colors = relationshipColors(contact.relationship, isDark);
     return (
-      <View key={contact.id} className={`rounded-[22px] border p-4 ${card}`}>
+      <Card key={contact.id} index={index + 1}>
         <View className="flex-row items-start justify-between gap-3">
           <View className="flex-1 flex-row items-center gap-3">
             <View className="h-12 w-12 items-center justify-center rounded-full bg-[#B7C4EC]">
@@ -257,76 +265,71 @@ export default function TrustedCircleScreen() {
 
         <View className="mt-3 flex-row gap-2">
           {contact.status === 'pending' ? (
-            <TouchableOpacity
+            <AnimatedPressable
               onPress={() => confirmRemove(contact)}
               disabled={busy}
               className="flex-1 items-center rounded-2xl border border-[#E32727] py-3"
             >
               <Text className="font-bold text-[#E32727]">Cancel Request</Text>
-            </TouchableOpacity>
+            </AnimatedPressable>
           ) : contact.status === 'declined' ? (
             <>
-              <TouchableOpacity
+              <AnimatedPressable
                 onPress={() => void resendRequest(contact)}
                 disabled={busy}
                 className={`flex-1 items-center rounded-2xl border py-3 ${border}`}
               >
                 <Text className={`font-bold ${primary}`}>Resend</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AnimatedPressable>
+              <AnimatedPressable
                 onPress={() => confirmRemove(contact)}
                 disabled={busy}
                 className="flex-1 items-center rounded-2xl border border-[#E32727] py-3"
               >
                 <Text className="font-bold text-[#E32727]">Remove</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </>
           ) : (
             <>
-              <TouchableOpacity
+              <AnimatedPressable
                 onPress={() => void toggleAlerts(contact)}
                 disabled={busy}
                 className={`flex-1 items-center rounded-2xl border py-3 ${border}`}
               >
                 <Text className={`font-bold ${primary}`}>{contact.alerts_enabled ? 'Disable' : 'Enable'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </AnimatedPressable>
+              <AnimatedPressable
                 onPress={() => confirmRemove(contact)}
                 disabled={busy}
                 className="flex-1 items-center rounded-2xl border border-[#E32727] py-3"
               >
                 <Text className="font-bold text-[#E32727]">Remove</Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </>
           )}
         </View>
 
         {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
-      </View>
+      </Card>
     );
   }
 
   return (
     <View className={`flex-1 ${screenBackground}`}>
-      <View className={`border-b px-4 pb-4 ${headerBackground}`} style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center justify-between">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center rounded-full" accessibilityLabel="Go back">
-            <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
-          </TouchableOpacity>
-          <View className="flex-1 items-center">
-            <Text className={`${typography.pageTitle} ${titleColor}`}>Trusted Circle</Text>
-          </View>
-          <TouchableOpacity onPress={openAddModal} className="h-10 w-10 items-center justify-center rounded-full bg-[#284BD6]" accessibilityLabel="Add emergency contact">
+      <ScreenHeader
+        title="Trusted Circle"
+        subtitle={`${totalCount} contact${totalCount === 1 ? '' : 's'} • Manage emergency alerts`}
+        right={
+          <AnimatedPressable onPress={openAddModal} className="h-10 w-10 items-center justify-center rounded-full bg-[#284BD6] shadow-sm shadow-[#284BD6]/30" accessibilityLabel="Add emergency contact">
             <Plus size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-        <Text className={`mt-1 text-center text-[15px] ${secondary}`}>{totalCount} contact{totalCount === 1 ? '' : 's'} • Manage emergency alerts</Text>
-      </View>
+          </AnimatedPressable>
+        }
+      />
 
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-4"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} refreshControl={refreshControl}>
-        <View className="flex-row gap-3">
-          <View className={`flex-1 items-center rounded-2xl border px-3 py-4 ${card}`}>
+        <Animated.View entering={FadeIn.duration(350)} className="flex-row gap-3">
+          <View className={`flex-1 items-center rounded-2xl border px-3 py-4 shadow-sm ${card} ${isDark ? 'shadow-black/20' : 'shadow-black/5'}`}>
             <Text className={`text-[26px] font-black ${primary}`}>{totalCount}</Text>
             <Text className={`mt-1 text-[13px] ${secondary}`}>Total</Text>
           </View>
@@ -338,62 +341,78 @@ export default function TrustedCircleScreen() {
             <Text className="text-[26px] font-black text-[#00A56A]">{confirmedCount}</Text>
             <Text className="mt-1 text-[13px] text-[#00A56A]">Confirmed</Text>
           </View>
-        </View>
+        </Animated.View>
 
         {errorMessage ? <Text className="rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
-        {loading && !refreshing ? <ActivityIndicator className="mt-4" color="#284BD6" /> : null}
-
-        {!loading && !contacts.length ? (
-          <View className="items-center px-8 py-10">
-            <Users size={40} color="#94A3B8" />
-            <Text className={`mt-4 text-center text-base ${secondary}`}>No emergency contacts yet. Add a friend who should be alerted if you need help.</Text>
-            <TouchableOpacity onPress={openAddModal} className="mt-5 flex-row items-center gap-2 rounded-2xl bg-[#284BD6] px-5 py-3">
-              <Plus size={17} color="#FFFFFF" />
-              <Text className="font-bold text-white">Add Emergency Contact</Text>
-            </TouchableOpacity>
+        {loading && !refreshing ? (
+          <View className="gap-4">
+            <SkeletonCard height={150} />
+            <SkeletonCard height={150} />
           </View>
         ) : null}
 
-        {!loading || refreshing ? contacts.map(renderContact) : null}
+        {!loading && !contacts.length ? (
+          <EmptyState
+            icon={<Users size={34} color="#284BD6" />}
+            title="No emergency contacts yet"
+            message="Add a friend who should be alerted if you need help."
+            action={
+              <AnimatedPressable onPress={openAddModal} className="flex-row items-center gap-2 rounded-2xl bg-[#284BD6] px-5 py-3">
+                <Plus size={17} color="#FFFFFF" />
+                <Text className="font-bold text-white">Add Emergency Contact</Text>
+              </AnimatedPressable>
+            }
+          />
+        ) : null}
 
-        <View className={`rounded-[22px] border p-4 ${card}`}>
+        {!loading || refreshing ? contacts.map((contact, index) => renderContact(contact, index)) : null}
+
+        <Card index={contacts.length + 1}>
           <Text className={`text-headline-18 font-bold ${primary}`}>How It Works</Text>
           <View className="mt-3 gap-3">
             <View className="flex-row items-start gap-3">
-              <ShieldAlert size={20} color="#E32727" />
+              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}`}>
+                <ShieldAlert size={18} color="#E32727" />
+              </View>
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Emergency Alert</Text>
                 <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Tap Emergency SOS on Home to instantly alert all enabled contacts</Text>
               </View>
             </View>
             <View className="flex-row items-start gap-3">
-              <Clock size={20} color="#D88700" />
+              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#3A2A11]' : 'bg-[#FFF3DC]'}`}>
+                <Clock size={18} color="#D88700" />
+              </View>
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Warning Mode</Text>
                 <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Activate a 60-second countdown that auto-alerts your contacts if you don&apos;t cancel it</Text>
               </View>
             </View>
             <View className="flex-row items-start gap-3">
-              <MapPin size={20} color="#2647B8" />
+              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
+                <MapPin size={18} color="#2647B8" />
+              </View>
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Real-Time Location</Text>
                 <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Your location is included with alerts sent to trusted contacts</Text>
               </View>
             </View>
             <View className="flex-row items-start gap-3">
-              <Shield size={20} color="#00A56A" />
+              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#0F2B1E]' : 'bg-[#EAF8F0]'}`}>
+                <Shield size={18} color="#00A56A" />
+              </View>
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Secure & Private</Text>
                 <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Info only shared in emergencies with contacts who confirmed and enabled alerts</Text>
               </View>
             </View>
           </View>
-        </View>
+        </Card>
       </ScrollView>
 
       <Modal visible={addVisible} transparent animationType="fade" onRequestClose={closeAddModal}>
         <View className="flex-1 items-center justify-center bg-black/45 px-4">
-          <View className={`w-full max-w-[440px] rounded-[28px] px-4 py-5 shadow-lg shadow-black/25 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
+          <Animated.View entering={ZoomIn.springify().damping(16)} className={`w-full max-w-[440px] rounded-[28px] px-4 py-5 shadow-lg shadow-black/25 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
             <View className={`flex-row items-start justify-between gap-4 border-b pb-4 ${border}`}>
               <View className="flex-1">
                 <Text className={`text-headline-24 font-bold ${primary}`}>Add Emergency Contact</Text>
@@ -405,13 +424,20 @@ export default function TrustedCircleScreen() {
             </View>
 
             <View className={`mt-4 h-1.5 overflow-hidden rounded-full ${mutedFill}`}>
-              <View className="h-full rounded-full bg-[#284BD6]" style={{ width: step === 1 ? '50%' : '100%' }} />
+              <Animated.View
+                className="h-full rounded-full bg-[#284BD6]"
+                style={{ width: step === 1 ? '50%' : '100%', transitionProperty: 'width', transitionDuration: 300 }}
+              />
             </View>
 
-            {formError ? <Text className="mt-4 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{formError}</Text> : null}
+            {formError ? (
+              <Animated.View style={shakeStyle} className="mt-4 rounded-xl bg-[#FEE2E2] px-4 py-3">
+                <Text className="text-sm text-[#B91C1C]">{formError}</Text>
+              </Animated.View>
+            ) : null}
 
             {step === 1 ? (
-              <View className="mt-4 gap-4">
+              <Animated.View key="step-1" entering={FadeIn.duration(200)} className="mt-4 gap-4">
                 <View className={`flex-row items-start gap-2 rounded-xl border px-3 py-3 ${isDark ? 'border-[#1E3A5C] bg-[#0F2438]' : 'border-[#BFD6F5] bg-[#EAF2FE]'}`}>
                   <Info size={16} color={isDark ? '#8FC3F5' : '#2647B8'} />
                   <Text className={`flex-1 text-[13px] leading-5 ${isDark ? 'text-[#8FC3F5]' : 'text-[#2647B8]'}`}>
@@ -498,13 +524,13 @@ export default function TrustedCircleScreen() {
                   <TouchableOpacity onPress={closeAddModal} className={`flex-1 items-center rounded-2xl py-4 ${mutedFill}`}>
                     <Text className={`font-bold ${primary}`}>Cancel</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={goToStepTwo} className="flex-1 items-center rounded-2xl bg-[#284BD6] py-4">
+                  <AnimatedPressable onPress={goToStepTwo} className="flex-1 items-center rounded-2xl bg-[#284BD6] py-4">
                     <Text className="font-bold text-white">Next</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
-              </View>
+              </Animated.View>
             ) : (
-              <View className="mt-4 gap-4">
+              <Animated.View key="step-2" entering={FadeInRight.duration(250)} className="mt-4 gap-4">
                 <View>
                   <Text className={`text-[13px] font-extrabold tracking-wide ${secondary}`}>EMERGENCY INFORMATION (Optional)</Text>
                   <TextInput
@@ -538,15 +564,22 @@ export default function TrustedCircleScreen() {
                   <TouchableOpacity onPress={() => setStep(1)} className={`flex-1 items-center rounded-2xl py-4 ${mutedFill}`}>
                     <Text className={`font-bold ${primary}`}>Back</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => void submitContact()} disabled={submitting} className="flex-1 items-center rounded-2xl bg-[#284BD6] py-4">
+                  <AnimatedPressable onPress={() => void submitContact()} disabled={submitting} className="flex-1 items-center rounded-2xl bg-[#284BD6] py-4">
                     {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-bold text-white">Send Request</Text>}
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
-              </View>
+              </Animated.View>
             )}
-          </View>
+          </Animated.View>
         </View>
       </Modal>
+
+      <SuccessOverlay
+        visible={requestSent}
+        title="Request sent"
+        message="They'll start receiving your alerts once they confirm."
+        onDone={clearRequestSent}
+      />
     </View>
   );
 }

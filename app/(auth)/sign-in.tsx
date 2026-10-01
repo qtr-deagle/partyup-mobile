@@ -1,11 +1,12 @@
 import { supabase } from '@/lib/supabase';
-import { Link, useLocalSearchParams, useRouter } from 'expo-router';
+import { Link, useIsFocused, useLocalSearchParams, useRouter } from 'expo-router';
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
 import { FloatingIcon, useShake } from '@/components/ui/motion';
+import { rateLimitWaitSeconds } from '@/lib/rateLimit';
 import { feedback } from '@/lib/sounds';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '@/hooks/auth-provider';
@@ -36,11 +37,14 @@ export default function SignInScreen() {
     }
   }, [errorMessage, shake]);
 
+  // Only while focused: a password-reset code signs the user in while
+  // forgot-password is on top, and that screen still needs the new password.
+  const isFocused = useIsFocused();
   useEffect(() => {
-    if (!loading && session) {
+    if (isFocused && !loading && session) {
       router.replace(redirect ? (redirect as any) : '/(tabs)');
     }
-  }, [loading, redirect, router, session]);
+  }, [isFocused, loading, redirect, router, session]);
 
   async function handleSignIn() {
     if (!email.trim() || !password.trim()) {
@@ -78,7 +82,14 @@ export default function SignInScreen() {
     const { error } = await supabase.auth.resend({ type: 'signup', email: email.trim().toLowerCase() });
     setResendingCode(false);
     if (error) {
-      setErrorMessage(error.code === 'over_email_send_rate_limit' || error.code === 'over_request_rate_limit' ? 'Too many attempts. Please wait a minute and try again.' : error.message);
+      const waitSeconds = rateLimitWaitSeconds(error);
+      if (waitSeconds !== null) {
+        // The resend link counts down the wait itself.
+        resendCooldown.restart(waitSeconds);
+        setErrorMessage('Too many attempts. Wait for the timer below, then resend.');
+        return;
+      }
+      setErrorMessage(error.message);
       return;
     }
     resendCooldown.restart();
@@ -98,10 +109,12 @@ export default function SignInScreen() {
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 bg-[#F7F8FA]">
+    <KeyboardAvoidingView behavior="padding" className="flex-1 bg-[#F7F8FA]">
       <ScrollView contentContainerClassName="flex-grow justify-center px-2 pt-8"
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }} keyboardShouldPersistTaps="handled">
-        <Animated.View entering={FadeInDown.duration(500).springify().damping(18)} style={shakeStyle} className="w-full rounded-[14px] bg-white px-6 py-7 shadow-lg shadow-black/10">
+        {/* Separate layers: the entering animation and the shake both drive transform. */}
+        <Animated.View entering={FadeInDown.duration(500).springify().damping(18)} className="w-full">
+        <Animated.View style={shakeStyle} className="w-full rounded-[14px] bg-white px-6 py-7 shadow-lg shadow-black/10">
           <View className="items-center">
             <FloatingIcon>
               <View className="mb-3 h-14 w-14 items-center justify-center rounded-2xl bg-[#2445B8] shadow-lg shadow-[#2445B8]/40">
@@ -160,6 +173,11 @@ export default function SignInScreen() {
                   {showPassword ? <EyeOff size={17} color="#7C8798" /> : <Eye size={17} color="#7C8798" />}
                 </TouchableOpacity>
               </View>
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/(auth)/forgot-password', params: { email: email.trim() } })}
+                className="mt-2 self-end">
+                <Text className="text-[12px] font-semibold text-[#2445B8]">Forgot password?</Text>
+              </TouchableOpacity>
             </View>
           </View>
           )}
@@ -191,6 +209,7 @@ export default function SignInScreen() {
               Sign up
             </Link>
           </Text>
+        </Animated.View>
         </Animated.View>
         <Text className="mt-5 px-3 text-center text-[10px] leading-[14px] text-[#697386]">
           By signing in, you agree to our Terms of Service and Privacy Policy

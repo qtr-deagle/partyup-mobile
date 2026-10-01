@@ -1,4 +1,7 @@
 import { ReportUserModal } from '@/components/ReportUserModal';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { Skeleton } from '@/components/ui/motion';
+import { Card } from '@/components/ui/screen-header';
 import { formatResidence } from '@/lib/bulacan';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
@@ -7,7 +10,8 @@ import { createOrGetDirectThread, getFriendRequestStatuses, getProfileById, remo
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, BadgeCheck, Check, Flag, MapPin, Shield, ShieldOff, Star, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, Text, View } from 'react-native';
+import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function getAge(dateOfBirth: string | null) {
@@ -45,8 +49,8 @@ export default function PublicProfileScreen() {
   const age = getAge(fullProfile?.date_of_birth ?? null);
   const verified = fullProfile?.verification_status === 'approved';
   const location = formatResidence(fullProfile?.city);
+  const avatarUrl = fullProfile?.avatar_url || params.avatarUrl || null;
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
-  const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
   const primary = isDark ? 'text-white' : 'text-[#1B2340]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
 
@@ -175,23 +179,41 @@ export default function PublicProfileScreen() {
     setFullProfile((current) => (current ? { ...current, is_blocked_by_me: false } : current));
   }
 
+  const isFriendish = requestStatus === 'accepted' || requestStatus === 'outgoing_pending';
+  const divider = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
+
   return (
     <ScrollView
       className={`flex-1 ${background}`}
-      contentContainerClassName="px-4"
-      contentContainerStyle={{ paddingTop: insets.top + 20, paddingBottom: insets.bottom + 40 }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
       refreshControl={refreshControl}>
-      <TouchableOpacity onPress={() => router.back()} className="mb-5 h-10 w-10 items-center justify-center" accessibilityLabel="Go back">
-        <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
-      </TouchableOpacity>
+      <View className="overflow-hidden bg-[#2747C7]" style={{ height: insets.top + 130 }}>
+        <View className="absolute -right-10 -top-12 h-48 w-48 rounded-full bg-white/10" />
+        <View className="absolute -left-14 top-16 h-40 w-40 rounded-full bg-white/5" />
+        <AnimatedPressable
+          onPress={() => router.back()}
+          scaleTo={0.9}
+          className="ml-4 h-10 w-10 items-center justify-center rounded-full bg-white/20"
+          style={{ marginTop: insets.top + 10 }}
+          accessibilityLabel="Go back">
+          <ArrowLeft size={21} color="#FFFFFF" />
+        </AnimatedPressable>
+      </View>
 
-      <View className={`rounded-[24px] border p-5 ${card}`}>
-        <View className="items-center">
-          <View className="h-24 w-24 items-center justify-center rounded-full bg-[#B7C4EC]">
-            <Text className="text-[34px] font-bold text-[#24314A]">{displayName.charAt(0).toUpperCase()}</Text>
-          </View>
-          <View className="mt-4 flex-row items-center gap-1.5">
-            <Text className={`text-headline-28 font-bold ${primary}`}>{displayName}</Text>
+      <View className="-mt-16 gap-4 px-4">
+        <Card index={0} className="items-center px-5 pb-5 pt-0">
+          <Animated.View
+            entering={ZoomIn.delay(80).springify().damping(14)}
+            className={`-mt-12 h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 bg-[#B7C4EC] ${isDark ? 'border-[#111B2E]' : 'border-white'}`}>
+            {avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} className="h-full w-full" />
+            ) : (
+              <Text className="text-[34px] font-bold text-[#24314A]">{displayName.charAt(0).toUpperCase()}</Text>
+            )}
+          </Animated.View>
+
+          <View className="mt-3 max-w-full flex-row items-center gap-1.5 px-2">
+            <Text numberOfLines={2} className={`shrink text-center text-headline-24 font-bold ${primary}`}>{displayName}</Text>
             {verified ? <BadgeCheck size={20} color="#179B67" /> : null}
           </View>
 
@@ -213,9 +235,12 @@ export default function PublicProfileScreen() {
           ) : null}
 
           {profileLoading && !refreshing ? (
-            <ActivityIndicator className="mt-3" color="#284BD6" />
+            <Skeleton key="trust-loading" className="mt-3 h-8 w-44 rounded-full" />
           ) : (
-            <View className={`mt-3 flex-row items-center gap-1 rounded-full px-3 py-1.5 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>
+            <Animated.View
+              key="trust-loaded"
+              entering={FadeIn.duration(250)}
+              className={`mt-3 flex-row items-center gap-1 rounded-full px-3 py-1.5 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>
               {fullProfile && fullProfile.trust_count > 0 && fullProfile.trust_score !== null ? (
                 <>
                   <Star size={14} color="#F5A623" fill="#F5A623" />
@@ -224,38 +249,46 @@ export default function PublicProfileScreen() {
               ) : (
                 <Text className={`text-sm font-bold ${secondary}`}>New to PartyUp</Text>
               )}
-            </View>
+            </Animated.View>
           )}
 
-          {fullProfile?.bio ? <Text className={`mt-4 text-center text-sm leading-5 ${secondary}`}>{fullProfile.bio}</Text> : null}
-        </View>
+          {fullProfile?.bio ? <Text className={`mt-4 text-center text-[15px] leading-6 ${secondary}`}>{fullProfile.bio}</Text> : null}
 
-        <View className="mt-7 border-t border-[#E4EAF2] pt-5">
-          <Text className={`text-headline-18 font-bold ${primary}`}>Travel interests</Text>
+          {errorMessage ? <Text className="mt-5 self-stretch rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
+
+          {!fullProfile?.is_blocked_by_me ? (
+            <AnimatedPressable
+              onPress={requestStatus === 'accepted' ? confirmRemoveFriend : () => void handleRequest()}
+              disabled={requesting}
+              className={`mt-5 flex-row items-center justify-center gap-2 self-stretch rounded-2xl py-3.5 ${isFriendish ? 'bg-[#9EAFE9]' : 'bg-[#284BD6] shadow-sm shadow-[#284BD6]/30'}`}>
+              {requesting ? <ActivityIndicator color="#FFFFFF" /> : <>{requestStatus === 'accepted' || requestStatus === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : requestStatus === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{requestStatus === 'accepted' ? 'Friends' : requestStatus === 'outgoing_pending' ? 'Cancel request' : requestStatus === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
+            </AnimatedPressable>
+          ) : null}
+        </Card>
+
+        <Card index={1}>
+          <Text className={`text-[16px] font-bold ${primary}`}>Travel interests</Text>
           {interests.length ? (
             <View className="mt-3 flex-row flex-wrap gap-2">
-              {interests.map((interest) => <View key={interest} className="rounded-full bg-[#EEF2FF] px-3 py-2"><Text className="text-sm text-[#284BD6]">{interest}</Text></View>)}
+              {interests.map((interest) => (
+                <View key={interest} className={`rounded-full px-3.5 py-2 ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF2FF]'}`}>
+                  <Text className={`text-sm font-medium ${isDark ? 'text-[#A5B8F5]' : 'text-[#284BD6]'}`}>{interest}</Text>
+                </View>
+              ))}
             </View>
           ) : <Text className={`mt-3 text-sm ${secondary}`}>No interests selected yet.</Text>}
-        </View>
+        </Card>
 
-        {errorMessage ? <Text className="mt-5 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
-
-        {!fullProfile?.is_blocked_by_me ? (
-          <TouchableOpacity onPress={requestStatus === 'accepted' ? confirmRemoveFriend : () => void handleRequest()} disabled={requesting} className={`mt-7 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${requestStatus === 'accepted' || requestStatus === 'outgoing_pending' ? 'bg-[#9EAFE9]' : 'bg-[#284BD6]'}`}>
-            {requesting ? <ActivityIndicator color="#FFFFFF" /> : <>{requestStatus === 'accepted' || requestStatus === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : requestStatus === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{requestStatus === 'accepted' ? 'Friends' : requestStatus === 'outgoing_pending' ? 'Cancel request' : requestStatus === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
-          </TouchableOpacity>
-        ) : null}
-
-        <View className="mt-3 flex-row gap-3">
-          <TouchableOpacity onPress={() => setReportModalVisible(true)} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${card}`}>
+        <Card index={2} className="flex-row py-1">
+          <AnimatedPressable onPress={() => setReportModalVisible(true)} scaleTo={0.97} className={`flex-1 flex-row items-center justify-center gap-2 border-r py-3 ${divider}`}>
             <Flag size={16} color={isDark ? '#94A3B8' : '#6C7A95'} />
             <Text className={`font-bold ${secondary}`}>Report</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
+          </AnimatedPressable>
+          <AnimatedPressable
             onPress={fullProfile?.is_blocked_by_me ? () => void handleUnblock() : confirmBlock}
             disabled={blockBusy}
-            className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${card}`}
+            scaleTo={0.97}
+            className="flex-1 flex-row items-center justify-center gap-2 py-3"
           >
             {blockBusy ? (
               <ActivityIndicator color="#B91C1C" />
@@ -270,8 +303,8 @@ export default function PublicProfileScreen() {
                 <Text className="font-bold text-[#B91C1C]">Block</Text>
               </>
             )}
-          </TouchableOpacity>
-        </View>
+          </AnimatedPressable>
+        </Card>
       </View>
 
       <ReportUserModal

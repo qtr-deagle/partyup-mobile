@@ -1,12 +1,15 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Car, Plus } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState, SkeletonCard, SuccessOverlay, useShake } from '@/components/ui/motion';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getTheme, typography } from '@/lib/theme';
 import { createVehicle, listMyVehicles, updateVehicle, type Vehicle, type VehicleVerificationStatus } from '@/lib/vehicles';
 
 const STATUS_LABEL: Record<VehicleVerificationStatus, string> = {
@@ -44,23 +47,17 @@ export default function VehiclesScreen() {
   const { session, loading } = useAuth();
   const insets = useSafeAreaInsets();
   const isDark = useColorScheme() === 'dark';
-  const { titleColor } = getTheme(isDark);
   const statusColorMap = getStatusColor(isDark);
 
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F8FAFD]';
-  const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-black/5 bg-white';
-  const cardBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E2E7F0] bg-white';
   const softButtonBg = isDark ? 'bg-[#1E293B]' : 'bg-[#F3F5FA]';
   const primaryTextColor = isDark ? '#FFFFFF' : '#17233F';
   const mutedTextColor = isDark ? '#94A3B8' : '#6B7590';
   const placeholderColor = isDark ? '#64748B' : '#A1A8B8';
   const inputBg = isDark ? '#111B2E' : '#F7F8FC';
   const inputBorder = isDark ? '#22324B' : '#E0E5EF';
-  const iconCloseBg = isDark ? '#1E293B' : '#FFFFFF';
   const modalSheetBg = isDark ? '#0F172A' : '#FFFFFF';
   const modalBorder = isDark ? '#22324B' : '#E5EAF2';
-  const emptyIconBg = isDark ? '#18253C' : '#F7F8FC';
-  const emptyBorder = isDark ? '#22324B' : '#DCE3EF';
   const errorBg = isDark ? '#2B1414' : '#FEE2E2';
   const errorText = isDark ? '#F87171' : '#B91C1C';
 
@@ -73,6 +70,10 @@ export default function VehiclesScreen() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const { style: shakeStyle, shake } = useShake();
+
+  const clearSavedMessage = useCallback(() => setSavedMessage(null), []);
 
   const load = useCallback(async () => {
     setVehiclesLoading(true);
@@ -117,6 +118,7 @@ export default function VehiclesScreen() {
   async function handleSaveVehicle() {
     if (!form.make.trim() || !form.model.trim()) {
       setFormError('Make and model are required.');
+      shake();
       return;
     }
 
@@ -125,12 +127,14 @@ export default function VehiclesScreen() {
     const maxYear = new Date().getFullYear() + 1;
     if (yearText && (!/^\d{4}$/.test(yearText) || year === null || year < 1900 || year > maxYear)) {
       setFormError('Year must be a 4-digit year (e.g., 2023).');
+      shake();
       return;
     }
 
     const plateNumber = form.plateNumber.trim().toUpperCase();
     if (plateNumber && !/^[A-Z0-9][A-Z0-9 -]{1,7}$/.test(plateNumber)) {
       setFormError('Plate number must be up to 8 letters/numbers (e.g., ABC 1234).');
+      shake();
       return;
     }
 
@@ -151,42 +155,30 @@ export default function VehiclesScreen() {
 
     if (error) {
       setFormError(error.message);
+      shake();
       return;
     }
 
     setFormVisible(false);
+    setSavedMessage(editingId ? 'Vehicle updated' : 'Vehicle added');
     void load();
   }
 
   return (
     <View className={`flex-1 ${screenBackground}`}>
-      <View className={`border-b px-4 pb-5 ${headerBackground}`} style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center justify-between gap-3">
-          <TouchableOpacity
-            onPress={() => router.back()}
-            accessibilityLabel="Close"
-            className="h-10 w-10 items-center justify-center rounded-full shadow-sm shadow-black/10"
-            style={{ backgroundColor: iconCloseBg }}
-          >
-            <Text style={{ color: mutedTextColor }} className="text-[22px]">×</Text>
-          </TouchableOpacity>
-
-          <Text className={`flex-1 text-center ${typography.pageTitle} ${titleColor}`} numberOfLines={1}>
-            My Vehicles
-          </Text>
-
-          <TouchableOpacity
+      <ScreenHeader
+        title="My Vehicles"
+        subtitle="Track and verify your vehicles for carpooling"
+        right={
+          <AnimatedPressable
             onPress={openAddForm}
             accessibilityLabel="Add vehicle"
-            className="h-10 w-10 items-center justify-center rounded-full bg-[#2747C7]"
+            className="h-10 w-10 items-center justify-center rounded-full bg-[#2747C7] shadow-sm shadow-[#2747C7]/30"
           >
             <Plus size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-        <Text style={{ color: mutedTextColor }} className="mt-3 text-center text-[15px] leading-6">
-          Track and verify your vehicles for carpooling
-        </Text>
-      </View>
+          </AnimatedPressable>
+        }
+      />
 
       <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
         {errorMessage ? (
@@ -196,27 +188,34 @@ export default function VehiclesScreen() {
         ) : null}
 
         {vehiclesLoading ? (
-          <ActivityIndicator className="mt-8" color="#2747C7" />
-        ) : vehicles.length === 0 ? (
-          <View className="items-center justify-center rounded-[24px] border border-dashed px-6 py-16" style={{ borderColor: emptyBorder, backgroundColor: modalSheetBg }}>
-            <View className="h-20 w-20 items-center justify-center rounded-full" style={{ backgroundColor: emptyIconBg }}>
-              <Car size={36} color="#E34B4B" />
-            </View>
-            <Text className="mt-6 text-center text-headline-20 font-bold" style={{ color: primaryTextColor }}>No vehicles yet</Text>
-            <Text className="mt-2 text-center text-base leading-6" style={{ color: mutedTextColor }}>Add a vehicle to start creating carpool trips.</Text>
-            <TouchableOpacity onPress={openAddForm} className="mt-6 flex-row items-center gap-2 rounded-full bg-[#2747C7] px-5 py-3">
-              <Plus size={18} color="#fff" />
-              <Text className="text-[15px] font-bold text-white">Add Vehicle</Text>
-            </TouchableOpacity>
+          <View key="loading" className="gap-4">
+            <SkeletonCard height={170} />
+            <SkeletonCard height={170} />
           </View>
+        ) : vehicles.length === 0 ? (
+          <EmptyState
+            key="empty"
+            icon={<Car size={34} color="#2747C7" />}
+            title="No vehicles yet"
+            message="Add a vehicle to start creating carpool trips."
+            action={
+              <AnimatedPressable onPress={openAddForm} className="flex-row items-center gap-2 rounded-full bg-[#2747C7] px-5 py-3">
+                <Plus size={18} color="#fff" />
+                <Text className="text-[15px] font-bold text-white">Add Vehicle</Text>
+              </AnimatedPressable>
+            }
+          />
         ) : (
-          vehicles.map((vehicle) => {
+          vehicles.map((vehicle, index) => {
             const statusColor = statusColorMap[vehicle.verification_status];
             return (
-              <View key={vehicle.id} className={`mb-4 rounded-[24px] border p-4 shadow-sm shadow-black/5 ${cardBackground}`}>
+              <Card key={vehicle.id} index={index} className="mb-4">
                 <View className="flex-row items-start justify-between gap-3">
+                  <View className={`h-12 w-12 items-center justify-center rounded-2xl ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
+                    <Car size={24} color="#2747C7" />
+                  </View>
                   <View className="flex-1">
-                    <Text className="text-headline-24 font-bold" style={{ color: primaryTextColor }}>
+                    <Text className="text-headline-20 font-bold" style={{ color: primaryTextColor }}>
                       {vehicle.make} {vehicle.model} {vehicle.year ? vehicle.year : ''}
                     </Text>
                     {vehicle.plate_number ? <Text className="mt-1 text-[15px]" style={{ color: mutedTextColor }}>Plate: {vehicle.plate_number}</Text> : null}
@@ -236,20 +235,20 @@ export default function VehiclesScreen() {
                 <View className="mt-4 flex-row gap-3">
                   {/* Under review / verified vehicles are locked (also enforced by a DB trigger) so staff approve exactly what they reviewed. */}
                   {vehicle.verification_status === 'unverified' || vehicle.verification_status === 'rejected' ? (
-                    <TouchableOpacity onPress={() => openEditForm(vehicle)} className={`flex-1 rounded-2xl py-3.5 ${softButtonBg}`}>
+                    <AnimatedPressable onPress={() => openEditForm(vehicle)} className={`flex-1 rounded-2xl py-3.5 ${softButtonBg}`}>
                       <Text className="text-center text-[16px] font-bold" style={{ color: primaryTextColor }}>Edit</Text>
-                    </TouchableOpacity>
+                    </AnimatedPressable>
                   ) : null}
 
                   {vehicle.verification_status === 'unverified' || vehicle.verification_status === 'rejected' ? (
-                    <TouchableOpacity
+                    <AnimatedPressable
                       onPress={() => router.push({ pathname: '/verify-vehicle', params: { vehicleId: vehicle.id } })}
                       className="flex-1 rounded-2xl bg-[#2747C7] py-3.5"
                     >
                       <Text className="text-center text-[16px] font-bold text-white">
                         {vehicle.verification_status === 'rejected' ? 'Resubmit Documents' : 'Verify Vehicle'}
                       </Text>
-                    </TouchableOpacity>
+                    </AnimatedPressable>
                   ) : vehicle.verification_status === 'pending' ? (
                     <View className={`flex-1 items-center justify-center rounded-2xl py-3.5 ${softButtonBg}`}>
                       <Text className="text-[15px] font-semibold" style={{ color: mutedTextColor }}>Under review</Text>
@@ -260,14 +259,14 @@ export default function VehiclesScreen() {
                     </View>
                   )}
                 </View>
-              </View>
+              </Card>
             );
           })
         )}
       </ScrollView>
 
       <Modal visible={formVisible} transparent animationType="fade" onRequestClose={() => setFormVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
+        <KeyboardAvoidingView behavior="padding" className="flex-1">
           <View className="flex-1 items-center justify-center bg-black/45 px-4">
             <View className="max-h-[88%] w-full max-w-[420px] rounded-[28px] px-4 py-5 shadow-lg shadow-black/25" style={{ backgroundColor: modalSheetBg }}>
               <View className="flex-row items-start justify-between gap-4 border-b pb-4" style={{ borderColor: modalBorder }}>
@@ -349,9 +348,9 @@ export default function VehiclesScreen() {
                 </View>
 
                 {formError ? (
-                  <View className="rounded-2xl px-4 py-3" style={{ backgroundColor: errorBg }}>
+                  <Animated.View className="rounded-2xl px-4 py-3" style={[{ backgroundColor: errorBg }, shakeStyle]}>
                     <Text className="text-[15px]" style={{ color: errorText }}>{formError}</Text>
-                  </View>
+                  </Animated.View>
                 ) : null}
               </ScrollView>
 
@@ -359,18 +358,20 @@ export default function VehiclesScreen() {
                 <TouchableOpacity onPress={() => setFormVisible(false)} className={`flex-1 rounded-2xl py-4 ${softButtonBg}`}>
                   <Text className="text-center text-[16px] font-bold" style={{ color: primaryTextColor }}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => void handleSaveVehicle()} disabled={saving} className="flex-1 rounded-2xl bg-[#2747C7] py-4">
+                <AnimatedPressable onPress={() => void handleSaveVehicle()} disabled={saving} className="flex-1 rounded-2xl bg-[#2747C7] py-4">
                   {saving ? (
                     <ActivityIndicator color="#fff" />
                   ) : (
                     <Text className="text-center text-[16px] font-bold text-white">{editingId ? 'Save Changes' : 'Add Vehicle'}</Text>
                   )}
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <SuccessOverlay visible={!!savedMessage} title={savedMessage ?? ''} durationMs={1200} onDone={clearSavedMessage} />
     </View>
   );
 }

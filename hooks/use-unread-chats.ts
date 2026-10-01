@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/auth-provider';
 import { countUnreadMessages, markThreadsDelivered } from '@/lib/social';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 
@@ -20,7 +20,7 @@ export function useUnreadChats() {
     void refresh();
 
     const channel = supabase
-      .channel(`unread-chats:${userId}`)
+      .channel(uniqueChannelName(`unread-chats:${userId}`))
       // RLS limits these to threads the user is in.
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
         if ((payload.new as { sender_id: string }).sender_id === userId) return;

@@ -1,10 +1,11 @@
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import MunicipalityPicker from '@/components/MunicipalityPicker';
 import { FloatingIcon } from '@/components/ui/motion';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getTheme, typography } from '@/lib/theme';
 import { formatResidence, setMyMunicipality, type BulacanMunicipality } from '@/lib/bulacan';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getMyVerification } from '@/lib/verification';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Clock, MapPin, ShieldAlert, ShieldX } from 'lucide-react-native';
@@ -26,6 +27,7 @@ export default function VerificationRequiredScreen() {
   const [reviewerNotes, setReviewerNotes] = useState<string | null>(null);
   const [showMunicipalityPicker, setShowMunicipalityPicker] = useState(false);
   const [savingMunicipality, setSavingMunicipality] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const status = profile?.verification_status ?? 'unverified';
   const city = profile?.city ?? null;
@@ -76,7 +78,7 @@ export default function VerificationRequiredScreen() {
       return;
     }
     const channel = supabase
-      .channel(`verification-decision:${userId}`)
+      .channel(uniqueChannelName(`verification-decision:${userId}`))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, () => {
         void refreshProfile();
       })
@@ -183,9 +185,11 @@ export default function VerificationRequiredScreen() {
         onClose={() => setShowMunicipalityPicker(false)}
       />
 
-      <TouchableOpacity onPress={() => void signOut()} className="items-center py-3">
-        <Text className={`text-base font-semibold ${subtitleColor}`}>Sign Out</Text>
+      <TouchableOpacity onPress={() => setShowLogoutConfirm(true)} className="items-center py-3">
+        <Text className={`text-base font-semibold ${subtitleColor}`}>Log Out</Text>
       </TouchableOpacity>
+
+      <LogoutConfirmModal visible={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={signOut} isDark={isDark} />
     </View>
   );
 }

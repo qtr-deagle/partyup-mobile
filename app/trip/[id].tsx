@@ -26,7 +26,7 @@ import {
 import { parseTimestamp } from '@/lib/datetime';
 import { listMyGivenRatings, type GivenRating } from '@/lib/ratings';
 import { feedback } from '@/lib/sounds';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import { getTourDetail, joinPublicTrip, listTripItinerary, type ItineraryDay, type TourDetail } from '@/lib/tours';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -170,7 +170,7 @@ export default function TripDetailScreen() {
       return;
     }
     const channel = supabase
-      .channel(`trip-members:${id}`)
+      .channel(uniqueChannelName(`trip-members:${id}`))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trip_members', filter: `trip_id=eq.${id}` }, () => {
         void load();
       })

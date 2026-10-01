@@ -8,6 +8,10 @@ export type VerificationStatus = 'unverified' | 'pending' | 'approved' | 'reject
 export type UserProfile = {
   id: string;
   display_name: string;
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
+  name_suffix: string | null;
   avatar_url: string | null;
   bio: string | null;
   date_of_birth: string | null;

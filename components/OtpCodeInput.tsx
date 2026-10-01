@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { formatWait } from '@/lib/rateLimit';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 // Matches the hosted Supabase project's email OTP length
 // (Auth -> Providers -> Email).
-export const EMAIL_OTP_LENGTH = 8;
+export const EMAIL_OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 60;
 
 export function isOtpComplete(code: string, length: number) {
@@ -11,9 +12,10 @@ export function isOtpComplete(code: string, length: number) {
 }
 
 // Starts counting down immediately, since every screen that shows the code
-// input has just sent a code.
-export function useResendCooldown() {
-  const [secondsLeft, setSecondsLeft] = useState(RESEND_COOLDOWN_SECONDS);
+// input has just sent a code. restart() takes a longer wait when Supabase
+// rate-limits a resend.
+export function useResendCooldown(initialSeconds = RESEND_COOLDOWN_SECONDS) {
+  const [secondsLeft, setSecondsLeft] = useState(initialSeconds);
 
   useEffect(() => {
     if (secondsLeft <= 0) {
@@ -23,7 +25,7 @@ export function useResendCooldown() {
     return () => clearTimeout(timer);
   }, [secondsLeft]);
 
-  return { secondsLeft, restart: () => setSecondsLeft(RESEND_COOLDOWN_SECONDS) };
+  return { secondsLeft, restart: (seconds = RESEND_COOLDOWN_SECONDS) => setSecondsLeft(seconds) };
 }
 
 type OtpCodeInputProps = {
@@ -56,7 +58,7 @@ export default function OtpCodeInput({ length, value, onChangeText, onResend, re
       />
       <TouchableOpacity onPress={onResend} disabled={!canResend} className="mt-3 self-center">
         <Text className={`${compact ? 'text-[11px]' : 'text-[14px]'} font-semibold ${canResend ? 'text-[#2445B8]' : isDark ? 'text-[#64748B]' : 'text-[#9AA3B1]'}`}>
-          {resending ? 'Sending…' : resendSecondsLeft > 0 ? `Resend code in ${resendSecondsLeft}s` : "Didn't get it? Resend code"}
+          {resending ? 'Sending…' : resendSecondsLeft > 0 ? `Resend code in ${formatWait(resendSecondsLeft)}` : "Didn't get it? Resend code"}
         </Text>
       </TouchableOpacity>
     </View>

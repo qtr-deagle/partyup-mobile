@@ -32,6 +32,8 @@ export type SearchProfile = {
   trust_score: number | null;
   trust_count: number;
   updated_at: string;
+  // Has at least one approved vehicle; only returned by search_profiles.
+  has_vehicle?: boolean;
   request_status: 'incoming_pending' | 'outgoing_pending' | 'accepted' | null;
   request_id: string | null;
   is_blocked_by_me?: boolean;

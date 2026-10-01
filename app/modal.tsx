@@ -1,22 +1,46 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, MapPin, Shield, ShieldAlert, ShieldCheck, SunMedium, Volume2 } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { AlertTriangle, ChevronRight, IdCard, MapPin, Shield, ShieldAlert, ShieldCheck, SunMedium, Trash2, UserX, Users, Volume2 } from 'lucide-react-native';
+import { useCallback, useState, type ReactNode } from 'react';
+import { ScrollView, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme, useThemePreference } from '@/hooks/use-color-scheme';
 import { setLocationVisibility } from '@/lib/location';
 import { setSafetyPreferences } from '@/lib/safety';
 import { setSoundEnabled, useSoundEnabled } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
-import { getTheme, typography } from '@/lib/theme';
 
-function SettingsCard({ children, isDark }: { children: React.ReactNode; isDark: boolean }) {
+function IconBadge({ children, tint }: { children: ReactNode; tint: string }) {
+  return <View className={`h-9 w-9 items-center justify-center rounded-full ${tint}`}>{children}</View>;
+}
+
+function NavRow({
+  icon,
+  label,
+  onPress,
+  destructive,
+  isDark,
+  last,
+}: {
+  icon: ReactNode;
+  label: string;
+  onPress?: () => void;
+  destructive?: boolean;
+  isDark: boolean;
+  last?: boolean;
+}) {
   return (
-    <View className={`rounded-[22px] border p-4 shadow-sm ${isDark ? 'border-[#24324A] bg-[#111B2E] shadow-black/20' : 'border-[#E9EDF5] bg-white shadow-black/5'}`}>
-      {children}
-    </View>
+    <AnimatedPressable
+      onPress={onPress}
+      scaleTo={0.98}
+      className={`flex-row items-center gap-3 py-3.5 ${last ? '' : `border-b ${isDark ? 'border-[#22324B]' : 'border-[#EEF1F6]'}`}`}>
+      {icon}
+      <Text className={`flex-1 text-[15px] font-medium ${destructive ? 'text-[#E32727]' : isDark ? 'text-white' : 'text-[#182847]'}`}>{label}</Text>
+      <ChevronRight size={18} color={destructive ? '#E32727' : isDark ? '#64748B' : '#A1A8B8'} />
+    </AnimatedPressable>
   );
 }
 
@@ -37,7 +61,7 @@ function SettingRow({
 }) {
   return (
     <View className={`flex-row items-center gap-3 rounded-[18px] px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F8]'}`}>
-      <View className="mt-0.5">{icon}</View>
+      {icon}
       <View className="flex-1 pr-2">
         <Text className={`text-[15px] font-semibold ${isDark ? 'text-white' : 'text-[#182847]'}`}>{title}</Text>
         <Text className={`mt-0.5 text-[13px] leading-[18px] ${isDark ? 'text-[#94A3B8]' : 'text-[#67748D]'}`}>{description}</Text>
@@ -62,7 +86,6 @@ export default function ModalScreen() {
   const [liveLocation, setLiveLocation] = useState(true);
 
   const isDark = colorScheme === 'dark';
-  const { titleColor } = getTheme(isDark);
   const soundEnabled = useSoundEnabled();
 
   useFocusEffect(
@@ -111,20 +134,10 @@ export default function ModalScreen() {
 
   return (
     <ScrollView className={`flex-1 ${isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]'}`} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
-      <View
-        className={`border-b px-4 pb-4 ${isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white'}`}
-        style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center justify-between">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center rounded-full">
-            <ArrowLeft size={24} color={isDark ? '#E2E8F0' : '#182A4D'} />
-          </TouchableOpacity>
-          <Text className={`${typography.pageTitle} ${titleColor}`}>Settings</Text>
-          <View className="h-10 w-10" />
-        </View>
-      </View>
+      <ScreenHeader title="Settings" />
 
       <View className="px-4 pt-4 gap-5">
-        <SettingsCard isDark={isDark}>
+        <Card index={0}>
           <View className="flex-row items-center gap-2">
             <SunMedium size={18} color={isDark ? '#E2E8F0' : '#182847'} />
             <Text className={`text-[17px] font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>Appearance</Text>
@@ -132,7 +145,7 @@ export default function ModalScreen() {
 
           <View className="mt-4">
             <SettingRow
-              icon={<SunMedium size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
+              icon={<IconBadge tint={isDark ? 'bg-[#22324B]' : 'bg-white'}><SunMedium size={17} color="#2647B8" /></IconBadge>}
               title="Dark Mode"
               description="Toggle between light and dark theme"
               value={isDark}
@@ -142,7 +155,7 @@ export default function ModalScreen() {
           </View>
           <View className="mt-3">
             <SettingRow
-              icon={<Volume2 size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
+              icon={<IconBadge tint={isDark ? 'bg-[#22324B]' : 'bg-white'}><Volume2 size={17} color="#2647B8" /></IconBadge>}
               title="Sounds"
               description="Play sounds for messages, notifications and bookings"
               value={soundEnabled}
@@ -150,9 +163,9 @@ export default function ModalScreen() {
               isDark={isDark}
             />
           </View>
-        </SettingsCard>
+        </Card>
 
-        <SettingsCard isDark={isDark}>
+        <Card index={1}>
           <View className="flex-row items-center gap-2">
             <Shield size={18} color="#00A56A" />
             <Text className={`text-[17px] font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>Safety Features</Text>
@@ -160,7 +173,7 @@ export default function ModalScreen() {
 
           <View className="mt-4 gap-4">
             <SettingRow
-              icon={<MapPin size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
+              icon={<IconBadge tint={isDark ? 'bg-[#22324B]' : 'bg-white'}><MapPin size={17} color="#2647B8" /></IconBadge>}
               title="Live Location Sharing"
               description="Allow real-time location sharing during trips"
               value={liveLocation}
@@ -169,7 +182,7 @@ export default function ModalScreen() {
             />
 
             <SettingRow
-              icon={<AlertTriangle size={18} color={isDark ? '#E2E8F0' : '#182847'} />}
+              icon={<IconBadge tint={isDark ? 'bg-[#22324B]' : 'bg-white'}><AlertTriangle size={17} color="#2647B8" /></IconBadge>}
               title="Warning Alerts"
               description="Receive safety warnings and alerts"
               value={profile?.warning_alerts_enabled ?? true}
@@ -178,7 +191,7 @@ export default function ModalScreen() {
             />
 
             <SettingRow
-              icon={<ShieldAlert size={18} color="#E32727" />}
+              icon={<IconBadge tint={isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}><ShieldAlert size={17} color="#E32727" /></IconBadge>}
               title="Emergency SOS"
               description="Enable emergency SOS button"
               value={profile?.emergency_sos_enabled ?? true}
@@ -193,9 +206,9 @@ export default function ModalScreen() {
               These settings help protect you during your travels. We recommend keeping all safety features enabled for maximum protection.
             </Text>
           </View>
-        </SettingsCard>
+        </Card>
 
-        <SettingsCard isDark={isDark}>
+        <Card index={2}>
           <View className="flex-row items-center gap-2">
             <ShieldCheck size={18} color="#00A56A" />
             <Text className={`text-[17px] font-bold ${isDark ? 'text-white' : 'text-[#182847]'}`}>Verification</Text>
@@ -205,29 +218,41 @@ export default function ModalScreen() {
             {['Email Verified'].map((item) => (
               <View key={item} className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
                 <Text className={`text-[15px] ${isDark ? 'text-white' : 'text-[#182847]'}`}>{item}</Text>
-                <Text className="text-[16px] text-[#00A56A]">✓</Text>
+                <ShieldCheck size={18} color="#00A56A" />
               </View>
             ))}
           </View>
-        </SettingsCard>
+        </Card>
 
-        <TouchableOpacity onPress={() => router.push('/trusted-circle')} className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
-          <Text className={`text-center text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Manage Safety Contacts</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.push('/blocked-users')} className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
-          <Text className={`text-center text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Manage Blocked Users</Text>
-        </TouchableOpacity>
-
-        {profile?.role === 'staff' || profile?.role === 'admin' ? (
-          <TouchableOpacity onPress={() => router.push('/id-review')} className={`rounded-2xl border py-4 ${isDark ? 'border-[#334155] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
-            <Text className={`text-center text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Review ID Verifications</Text>
-          </TouchableOpacity>
-        ) : null}
-
-        <TouchableOpacity className={`rounded-2xl border py-4 ${isDark ? 'border-[#7F1D1D] bg-[#111827]' : 'border-[#E32727] bg-white'}`}>
-          <Text className="text-center text-[15px] font-medium text-[#E32727]">Delete Account</Text>
-        </TouchableOpacity>
+        <Card index={3} className="py-1">
+          <NavRow
+            isDark={isDark}
+            icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><Users size={17} color="#2647B8" /></IconBadge>}
+            label="Manage Safety Contacts"
+            onPress={() => router.push('/trusted-circle')}
+          />
+          <NavRow
+            isDark={isDark}
+            icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><UserX size={17} color="#2647B8" /></IconBadge>}
+            label="Manage Blocked Users"
+            onPress={() => router.push('/blocked-users')}
+          />
+          {profile?.role === 'staff' || profile?.role === 'admin' ? (
+            <NavRow
+              isDark={isDark}
+              icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><IdCard size={17} color="#2647B8" /></IconBadge>}
+              label="Review ID Verifications"
+              onPress={() => router.push('/id-review')}
+            />
+          ) : null}
+          <NavRow
+            isDark={isDark}
+            destructive
+            last
+            icon={<IconBadge tint={isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}><Trash2 size={17} color="#E32727" /></IconBadge>}
+            label="Delete Account"
+          />
+        </Card>
       </View>
     </ScrollView>
   );

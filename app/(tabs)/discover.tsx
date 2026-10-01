@@ -193,17 +193,13 @@ export default function DiscoverScreen() {
 
   const deck = useMemo(() => {
     const filtered = scoredDeck.filter(({ profile, trip, score }) => {
-      if (filters.location.trim()) {
-        const needle = filters.location.trim().toLowerCase();
-        const haystack = `${profile.city ?? ''} ${profile.country ?? ''}`.toLowerCase();
-        if (!haystack.includes(needle)) return false;
-      }
+      if (filters.locations.length > 0 && !filters.locations.some((city) => city === profile.city)) return false;
       if (filters.dateStart && trip.dates.start < filters.dateStart) return false;
       if (filters.dateEnd && trip.dates.start > filters.dateEnd) return false;
       if (filters.budget && trip.budgetTier !== filters.budget) return false;
-      if (filters.purpose && trip.purpose !== filters.purpose) return false;
+      if (filters.purposes.length > 0 && !filters.purposes.includes(trip.purpose)) return false;
       if (score.overall < filters.minCompatibility) return false;
-      if (filters.carpoolOnly && !trip.carpoolAvailable) return false;
+      if (filters.hasVehicleOnly && !profile.has_vehicle) return false;
       return true;
     });
 

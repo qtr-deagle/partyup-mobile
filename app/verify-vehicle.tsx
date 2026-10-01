@@ -1,27 +1,46 @@
 import IdCameraCapture from '@/components/IdCameraCapture';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { SuccessOverlay, useShake } from '@/components/ui/motion';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getTheme, typography } from '@/lib/theme';
 import { submitVehicleForVerification, type VehicleOwnershipType } from '@/lib/vehicles';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Camera, CheckCircle2, Car, FileText, IdCard, PenLine } from 'lucide-react-native';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function UploadTile({ label, uri, onPress, icon }: { label: string; uri: string | null; onPress: () => void; icon: React.ReactNode }) {
+  const isDark = useColorScheme() === 'dark';
+  const captured = Boolean(uri);
   return (
-    <TouchableOpacity onPress={onPress} className="items-center gap-2 rounded-[20px] border border-dashed border-[#B9C4DA] bg-[#F7F8FC] p-4">
+    <AnimatedPressable
+      onPress={onPress}
+      scaleTo={0.98}
+      className={`items-center gap-2 rounded-[20px] border p-3 ${
+        captured
+          ? isDark ? 'border-[#1F5C45] bg-[#0F1F24]' : 'border-[#A7E3C4] bg-[#F1FBF5]'
+          : `border-dashed ${isDark ? 'border-[#33476A] bg-[#18253C]' : 'border-[#B9C4DA] bg-[#F7F8FC]'}`
+      }`}
+    >
       {uri ? (
-        <Image source={{ uri }} className="h-32 w-full rounded-2xl" resizeMode="cover" />
+        <View className="w-full">
+          <Image source={{ uri }} className="h-32 w-full rounded-2xl" resizeMode="cover" />
+          <Animated.View entering={ZoomIn.springify().damping(12)} className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full bg-[#10B981]">
+            <CheckCircle2 size={18} color="#FFFFFF" />
+          </Animated.View>
+        </View>
       ) : (
         <View className="h-32 w-full items-center justify-center gap-2">
-          {icon}
-          <Text className="text-[15px] font-semibold text-[#6B7590]">{label}</Text>
+          <View className={`h-14 w-14 items-center justify-center rounded-full ${isDark ? 'bg-[#22324B]' : 'bg-white'}`}>{icon}</View>
+          <Text className={`text-center text-[14px] font-semibold ${isDark ? 'text-[#CBD5E1]' : 'text-[#6B7590]'}`}>{label}</Text>
+          <Text className={`text-[12px] ${isDark ? 'text-[#64748B]' : 'text-[#A1A8B8]'}`}>Tap to capture</Text>
         </View>
       )}
-      {uri && <Text className="text-[14px] font-semibold text-[#2747C7]">Change {label.toLowerCase()}</Text>}
-    </TouchableOpacity>
+      {uri ? <Text className="text-[13px] font-semibold text-[#2747C7]">Retake {label.toLowerCase()}</Text> : null}
+    </AnimatedPressable>
   );
 }
 
@@ -42,14 +61,19 @@ export default function VerifyVehicleScreen() {
   const insets = useSafeAreaInsets();
   const { session, loading } = useAuth();
   const isDark = useColorScheme() === 'dark';
-  const { titleColor, subtitleColor } = getTheme(isDark);
   const { vehicleId } = useLocalSearchParams<{ vehicleId: string }>();
 
   const [ownershipType, setOwnershipType] = useState<VehicleOwnershipType>('owned');
   const [photos, setPhotos] = useState<Partial<Record<CaptureTarget, string>>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCapture, setActiveCapture] = useState<CaptureTarget | null>(null);
+  const { style: shakeStyle, shake } = useShake();
+  const finishSubmitted = useCallback(() => {
+    setSubmitted(false);
+    router.back();
+  }, [router]);
 
   if (loading) {
     return null;
@@ -63,11 +87,21 @@ export default function VerifyVehicleScreen() {
     return <Redirect href="/vehicles" />;
   }
 
+  const primary = isDark ? 'text-white' : 'text-[#1B2340]';
+  const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6B7590]';
+  const iconColor = isDark ? '#94A3B8' : '#6B7590';
+
   const { exterior, orcr, plate, authorizationLetter, ownerIdFront, ownerIdBack, ownerSignatures } = photos;
   const isBorrowed = ownershipType === 'borrowed';
   const hasVehiclePhotos = Boolean(exterior && orcr && plate);
   const hasOwnerDocuments = Boolean(authorizationLetter && ownerIdFront && ownerIdBack && ownerSignatures);
   const canSubmit = hasVehiclePhotos && (!isBorrowed || hasOwnerDocuments) && !submitting;
+
+  const requiredTargets: CaptureTarget[] = isBorrowed
+    ? ['exterior', 'orcr', 'plate', 'authorizationLetter', 'ownerIdFront', 'ownerIdBack', 'ownerSignatures']
+    : ['exterior', 'orcr', 'plate'];
+  const capturedCount = requiredTargets.filter((target) => photos[target]).length;
+  const progress = capturedCount / requiredTargets.length;
 
   const handleSubmit = async () => {
     if (!exterior || !orcr || !plate) {
@@ -100,37 +134,36 @@ export default function VerifyVehicleScreen() {
 
     if (submitError) {
       setError(submitError.message);
+      shake();
       return;
     }
 
-    Alert.alert(
-      'Verification submitted',
-      "Our staff will review your vehicle documents and notify you once it's done.",
-      [{ text: 'OK', onPress: () => router.back() }]
-    );
+    setSubmitted(true);
   };
 
   return (
     <View className={`flex-1 ${isDark ? 'bg-[#0B1220]' : 'bg-[#F8FAFD]'}`}>
-      <View
-        className={`border-b px-4 pb-5 ${isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-black/5 bg-white'}`}
-        style={{ paddingTop: insets.top + 16 }}
-      >
-        <View className="flex-row items-start justify-between gap-4">
-          <View className="flex-1">
-            <Text className={`${typography.pageTitle} ${titleColor}`}>Verify Your Vehicle</Text>
-            <Text className={`mt-2 text-[16px] leading-6 ${subtitleColor}`}>Upload photos of your vehicle, OR/CR, and plate to unlock carpool trips. Borrowing? We'll also need the owner's authorization.</Text>
+      <ScreenHeader title="Verify Your Vehicle" subtitle="Unlock carpool trips in a few photos">
+        <View className="mt-4">
+          <View className="flex-row items-center justify-between">
+            <Text className={`text-[13px] font-semibold ${secondary}`}>Documents captured</Text>
+            <Text className={`text-[13px] font-bold ${primary}`}>
+              {capturedCount}/{requiredTargets.length}
+            </Text>
           </View>
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm shadow-black/10">
-            <Text className="text-[22px] text-[#6B7590]">×</Text>
-          </TouchableOpacity>
+          <View className={`mt-2 h-2 overflow-hidden rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#E6EBF3]'}`}>
+            <Animated.View
+              className={`h-full rounded-full ${progress === 1 ? 'bg-[#10B981]' : 'bg-[#2747C7]'}`}
+              style={{ width: `${progress * 100}%`, transitionProperty: 'width', transitionDuration: 350 }}
+            />
+          </View>
         </View>
-      </View>
+      </ScreenHeader>
 
-      <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
-        <View className="rounded-[22px] border border-[#E2E7F0] bg-white p-4 shadow-sm shadow-black/5">
-          <Text className="text-[14px] font-extrabold tracking-wide text-[#6B7590]">WHO OWNS THIS VEHICLE?</Text>
-          <View className="mt-2 flex-row gap-2 rounded-2xl bg-[#F1F4FA] p-1">
+      <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+        <Card index={0}>
+          <Text className={`text-[13px] font-extrabold tracking-wide ${secondary}`}>WHO OWNS THIS VEHICLE?</Text>
+          <View className={`mt-2 flex-row gap-2 rounded-2xl p-1 ${isDark ? 'bg-[#18253C]' : 'bg-[#F1F4FA]'}`}>
             {(
               [
                 { value: 'owned', label: 'I own it' },
@@ -139,100 +172,92 @@ export default function VerifyVehicleScreen() {
             ).map((option) => {
               const selected = ownershipType === option.value;
               return (
-                <TouchableOpacity
+                <Pressable
                   key={option.value}
                   onPress={() => setOwnershipType(option.value)}
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
-                  className={`flex-1 items-center rounded-xl py-3 ${selected ? 'bg-[#2747C7]' : ''}`}
+                  hitSlop={4}
+                  className="flex-1 items-center rounded-xl py-3"
+                  style={{ backgroundColor: selected ? '#2747C7' : 'transparent' }}
                 >
-                  <Text className={`text-[16px] font-bold ${selected ? 'text-white' : 'text-[#6B7590]'}`}>{option.label}</Text>
-                </TouchableOpacity>
+                  <Text className="text-[15px] font-bold" style={{ color: selected ? '#FFFFFF' : iconColor }}>
+                    {option.label}
+                  </Text>
+                </Pressable>
               );
             })}
           </View>
+          <Text className={`mt-3 text-[14px] leading-5 ${secondary}`}>
+            Upload photos of your vehicle, OR/CR, and plate. Borrowing? We&apos;ll also need the owner&apos;s authorization.
+          </Text>
+        </Card>
 
-          <View className="mt-4 gap-4">
-            <UploadTile
-              label="Vehicle photo"
-              uri={exterior ?? null}
-              onPress={() => setActiveCapture('exterior')}
-              icon={<Car size={28} color="#6B7590" />}
-            />
-            <UploadTile
-              label="OR/CR"
-              uri={orcr ?? null}
-              onPress={() => setActiveCapture('orcr')}
-              icon={<FileText size={28} color="#6B7590" />}
-            />
-            <UploadTile
-              label="Plate photo"
-              uri={plate ?? null}
-              onPress={() => setActiveCapture('plate')}
-              icon={<Camera size={28} color="#6B7590" />}
-            />
+        <Card index={1} className="gap-4">
+          <Text className={`text-[16px] font-bold ${primary}`}>Vehicle documents</Text>
+          <UploadTile label="Vehicle photo" uri={exterior ?? null} onPress={() => setActiveCapture('exterior')} icon={<Car size={26} color={iconColor} />} />
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <UploadTile label="OR/CR" uri={orcr ?? null} onPress={() => setActiveCapture('orcr')} icon={<FileText size={26} color={iconColor} />} />
+            </View>
+            <View className="flex-1">
+              <UploadTile label="Plate photo" uri={plate ?? null} onPress={() => setActiveCapture('plate')} icon={<Camera size={26} color={iconColor} />} />
+            </View>
           </View>
+        </Card>
 
-          {isBorrowed && (
-            <View className="mt-6 gap-4">
+        {isBorrowed ? (
+          <Animated.View key="owner-docs" entering={FadeInDown.duration(300)}>
+            <Card className="gap-4">
               <View>
-                <Text className="text-[17px] font-bold text-[#1B2340]">Owner's authorization</Text>
-                <Text className="mt-1 text-[14px] leading-5 text-[#6B7590]">
-                  Since you're borrowing this vehicle, upload a letter of authorization from the registered owner, both sides of their valid ID, and a photo of their signature signed 3 times.
+                <Text className={`text-[16px] font-bold ${primary}`}>Owner&apos;s authorization</Text>
+                <Text className={`mt-1 text-[14px] leading-5 ${secondary}`}>
+                  Since you&apos;re borrowing this vehicle, upload a letter of authorization from the registered owner, both sides of their valid ID, and a photo of their signature signed 3 times.
                 </Text>
               </View>
               <UploadTile
                 label="Letter of authorization"
                 uri={authorizationLetter ?? null}
                 onPress={() => setActiveCapture('authorizationLetter')}
-                icon={<FileText size={28} color="#6B7590" />}
+                icon={<FileText size={26} color={iconColor} />}
               />
               <View className="flex-row gap-3">
                 <View className="flex-1">
-                  <UploadTile
-                    label="Owner ID (front)"
-                    uri={ownerIdFront ?? null}
-                    onPress={() => setActiveCapture('ownerIdFront')}
-                    icon={<IdCard size={28} color="#6B7590" />}
-                  />
+                  <UploadTile label="Owner ID (front)" uri={ownerIdFront ?? null} onPress={() => setActiveCapture('ownerIdFront')} icon={<IdCard size={26} color={iconColor} />} />
                 </View>
                 <View className="flex-1">
-                  <UploadTile
-                    label="Owner ID (back)"
-                    uri={ownerIdBack ?? null}
-                    onPress={() => setActiveCapture('ownerIdBack')}
-                    icon={<IdCard size={28} color="#6B7590" />}
-                  />
+                  <UploadTile label="Owner ID (back)" uri={ownerIdBack ?? null} onPress={() => setActiveCapture('ownerIdBack')} icon={<IdCard size={26} color={iconColor} />} />
                 </View>
               </View>
               <UploadTile
                 label="Owner's 3 signatures"
                 uri={ownerSignatures ?? null}
                 onPress={() => setActiveCapture('ownerSignatures')}
-                icon={<PenLine size={28} color="#6B7590" />}
+                icon={<PenLine size={26} color={iconColor} />}
               />
-            </View>
-          )}
+            </Card>
+          </Animated.View>
+        ) : null}
 
-          {error && (
-            <View className="mt-4 rounded-2xl bg-[#FDECEC] px-4 py-3">
-              <Text className="text-[15px] text-[#B3261E]">{error}</Text>
-            </View>
-          )}
+        {error ? (
+          <Animated.View entering={FadeIn.duration(200)} style={shakeStyle} className={`rounded-2xl px-4 py-3 ${isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}`}>
+            <Text className={`text-[15px] ${isDark ? 'text-[#F87171]' : 'text-[#B3261E]'}`}>{error}</Text>
+          </Animated.View>
+        ) : null}
 
-          <View className="mt-4 flex-row items-start gap-2 rounded-2xl bg-[#EEF2FF] px-4 py-3">
-            <CheckCircle2 size={18} color="#2747C7" />
-            <Text className="flex-1 text-[14px] leading-5 text-[#3646A0]">Your vehicle documents are only visible to PartyUp staff for review.</Text>
-          </View>
-
-          <TouchableOpacity
-            disabled={!canSubmit}
-            onPress={handleSubmit}
-            className={`mt-6 items-center rounded-2xl py-4 ${canSubmit ? 'bg-[#2747C7]' : 'bg-[#C6CEDC]'}`}
-          >
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text className="text-[17px] font-bold text-white">Submit for Verification</Text>}
-          </TouchableOpacity>
+        <View className={`flex-row items-start gap-2 rounded-2xl px-4 py-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF2FF]'}`}>
+          <CheckCircle2 size={18} color={isDark ? '#8FB0FF' : '#2747C7'} />
+          <Text className={`flex-1 text-[14px] leading-5 ${isDark ? 'text-[#C7D4F5]' : 'text-[#3646A0]'}`}>Your vehicle documents are only visible to PartyUp staff for review.</Text>
         </View>
+
+        <AnimatedPressable
+          disabled={!canSubmit}
+          onPress={handleSubmit}
+          className="items-center rounded-2xl py-4"
+          style={{ backgroundColor: canSubmit ? '#2747C7' : isDark ? '#22324B' : '#C6CEDC' }}
+        >
+          {submitting ? <ActivityIndicator color="#fff" /> : <Text className="text-[16px] font-bold text-white">Submit for Verification</Text>}
+        </AnimatedPressable>
       </ScrollView>
 
       <IdCameraCapture
@@ -246,6 +271,14 @@ export default function VerifyVehicleScreen() {
           }
           setActiveCapture(null);
         }}
+      />
+
+      <SuccessOverlay
+        visible={submitted}
+        title="Verification submitted"
+        message="Our staff will review your vehicle documents and notify you once it's done."
+        durationMs={2200}
+        onDone={finishSubmitted}
       />
     </View>
   );

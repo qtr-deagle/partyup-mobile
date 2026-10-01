@@ -1,14 +1,17 @@
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { useShake } from '@/components/ui/motion';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { formatResidence } from '@/lib/bulacan';
 import { INTEREST_OPTIONS } from '@/lib/interests';
 import { feedback } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
-import { getTheme, typography } from '@/lib/theme';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Check, Lock } from 'lucide-react-native';
+import { Check, Lock } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const NAME_MAX = 60;
@@ -34,10 +37,7 @@ export default function EditProfileScreen() {
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const { profile, refreshProfile } = useAuth();
-  const { titleColor } = getTheme(isDark);
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
-  const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
-  const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
   const primary = isDark ? 'text-white' : 'text-[#1B2340]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
   const input = isDark ? 'border-[#22324B] bg-[#18253C] text-white' : 'border-[#DCE3EF] bg-[#F4F6FA] text-[#1B2340]';
@@ -49,6 +49,7 @@ export default function EditProfileScreen() {
   const [interests, setInterests] = useState<string[]>(profile?.interests ?? []);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { style: shakeStyle, shake } = useShake();
 
   function toggleInterest(interest: string) {
     setInterests((current) => (current.includes(interest) ? current.filter((item) => item !== interest) : [...current, interest]));
@@ -63,17 +64,20 @@ export default function EditProfileScreen() {
     if (!trimmedName) {
       setErrorMessage('Enter your full name.');
       feedback.error();
+      shake();
       return;
     }
     const normalizedPhone = trimmedPhone ? normalizePhone(trimmedPhone) : null;
     if (trimmedPhone && !normalizedPhone) {
       setErrorMessage('Enter a valid PH mobile number, e.g. 0917 123 4567.');
       feedback.error();
+      shake();
       return;
     }
     if (interests.length === 0) {
       setErrorMessage('Pick at least one interest so we can match you with travel buddies.');
       feedback.error();
+      shake();
       return;
     }
 
@@ -88,6 +92,7 @@ export default function EditProfileScreen() {
       setSaving(false);
       setErrorMessage(error.message);
       feedback.error();
+      shake();
       return;
     }
 
@@ -98,18 +103,11 @@ export default function EditProfileScreen() {
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className={`flex-1 ${background}`}>
-      <View className={`border-b px-4 pb-4 ${border}`} style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center" accessibilityLabel="Go back">
-            <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
-          </TouchableOpacity>
-          <Text className={`ml-3 ${typography.pageTitle} ${titleColor}`}>Edit Profile</Text>
-        </View>
-      </View>
+    <KeyboardAvoidingView behavior="padding" className={`flex-1 ${background}`}>
+      <ScreenHeader title="Edit Profile" />
 
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5" contentContainerStyle={{ paddingBottom: insets.bottom + 24 }} keyboardShouldPersistTaps="handled">
-        <View className={`gap-4 rounded-[22px] border p-4 ${card}`}>
+        <Card index={0} className="gap-4">
           <View>
             <Text className={`mb-2 text-[13px] font-bold uppercase tracking-wide ${secondary}`}>Full Name</Text>
             <TextInput
@@ -151,9 +149,9 @@ export default function EditProfileScreen() {
             />
             <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>Lets the PartyUp safety team call you if you send an SOS.</Text>
           </View>
-        </View>
+        </Card>
 
-        <View className={`rounded-[22px] border p-4 ${card}`}>
+        <Card index={1}>
           <Text className={`text-[16px] font-bold ${primary}`}>Interests</Text>
           <Text className={`mt-1 text-[13px] ${secondary}`}>Used to match you with compatible travel buddies.</Text>
           <View className="mt-3 flex-row flex-wrap justify-between gap-y-2">
@@ -173,9 +171,9 @@ export default function EditProfileScreen() {
               );
             })}
           </View>
-        </View>
+        </Card>
 
-        <View className={`rounded-[22px] border p-4 ${card}`}>
+        <Card index={2}>
           <View className="flex-row items-center gap-2">
             <Lock size={16} color={isDark ? '#94A3B8' : '#6C7A95'} />
             <Text className={`text-[16px] font-bold ${primary}`}>Verified Details</Text>
@@ -193,17 +191,17 @@ export default function EditProfileScreen() {
           <Text className={`mt-3 text-[12px] leading-4 ${secondary}`}>
             These were checked against your ID, so they can't be changed here. Contact PartyUp support if they need updating.
           </Text>
-        </View>
+        </Card>
 
         {errorMessage ? (
-          <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
+          <Animated.View entering={FadeIn.duration(200)} style={shakeStyle} className="rounded-xl bg-[#FEE2E2] px-4 py-3">
             <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>
-          </View>
+          </Animated.View>
         ) : null}
 
-        <TouchableOpacity onPress={handleSave} disabled={saving} className={`items-center rounded-2xl py-4 ${saving ? 'bg-[#A9B6E0]' : 'bg-[#2747C7]'}`}>
+        <AnimatedPressable onPress={handleSave} disabled={saving} className={`items-center rounded-2xl py-4 shadow-sm shadow-[#2747C7]/25 ${saving ? 'bg-[#A9B6E0]' : 'bg-[#2747C7]'}`}>
           {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-[15px] font-bold text-white">Save Changes</Text>}
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
     </KeyboardAvoidingView>
   );

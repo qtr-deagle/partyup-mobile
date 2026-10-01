@@ -8,6 +8,10 @@ set verification_status = 'unverified'
 where id = '<Enter User ID>';
 
 ----------------------------------------------------------
+-- encrypted password
+select email, encrypted_password from auth.users;
+
+----------------------------------------------------------
 
 DEMO FLOW FOR PANELIST
 

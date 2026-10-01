@@ -7,14 +7,14 @@ import { setActiveChatThread } from '@/lib/active-chat';
 import { parseTimestamp } from '@/lib/datetime';
 import { ensureAcceptedDirectThreads, getChatMessages, getThreadReceipts, listDirectConversations, markThreadRead, messageStatus, sendChatMessage, type ChatMessage, type Conversation, type MessageStatus, type ThreadReceipts } from '@/lib/social';
 import { feedback } from '@/lib/sounds';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { AlertCircle, ArrowLeft, Check, CheckCheck, Clock3, MessageCircle, MoreVertical, Search, Send, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeInUp, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 
 // A message on screen: `pending` marks one still in flight from this device,
@@ -143,7 +143,7 @@ export default function ChatScreen() {
       });
     };
     const channel = supabase
-      .channel(`chat-list:${myUserId}`)
+      .channel(uniqueChannelName(`chat-list:${myUserId}`))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, refresh)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_participants' }, refresh)
       .subscribe();
@@ -305,7 +305,7 @@ export default function ChatScreen() {
 
   if (selected) {
     return (
-      <KeyboardAvoidingView className={`flex-1 ${screenBackground}`} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView className={`flex-1 ${screenBackground}`} behavior="padding">
         <View className={`flex-row items-center gap-3 border-b px-4 py-3 ${borderColor}`}>
           <TouchableOpacity onPress={closeConversation} hitSlop={10}>
             <ArrowLeft size={24} color="#284BD6" />

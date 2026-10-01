@@ -1,7 +1,9 @@
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState, SkeletonCard } from '@/components/ui/motion';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { createOrGetDirectThread, listFriendConnections, removeFriend, respondToFriendRequest, type FriendConnection } from '@/lib/social';
-import { getTheme, typography } from '@/lib/theme';
 import {
   addTrustedContact,
   formatAddedDate,
@@ -15,7 +17,7 @@ import {
   type TrustedContact,
 } from '@/lib/trustedCircle';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, Bell, BellOff, Check, Clock, MessageCircle, Plus, Shield, UserMinus, UserPlus, X, XCircle } from 'lucide-react-native';
+import { AlertTriangle, Bell, BellOff, Check, Clock, MessageCircle, Plus, Shield, UserMinus, UserPlus, X, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,9 +28,7 @@ export default function FriendsScreen() {
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  const { titleColor } = getTheme(isDark);
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
-  const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
   const primary = isDark ? 'text-white' : 'text-[#1B2340]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
   const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
@@ -221,50 +221,50 @@ export default function FriendsScreen() {
     setBusyRequestId(null);
   }
 
-  function renderConnection(connection: FriendConnection) {
+  function renderConnection(connection: FriendConnection, index = 0) {
     const busy = busyUserId === connection.user_id;
     const incoming = connection.relationship_status === 'incoming_pending';
     return (
-      <View key={connection.user_id} className={`rounded-[22px] border p-4 ${card}`}>
+      <Card key={connection.user_id} index={index}>
         <TouchableOpacity onPress={() => openProfile(connection)} className="flex-row items-center gap-3" accessibilityLabel={`View ${connection.display_name}'s profile`}>
           <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text></View>
           <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text numberOfLines={1} className={`mt-1 text-sm ${secondary}`}>{connection.interests.length ? connection.interests.join('  •  ') : 'No interests selected'}</Text></View>
         </TouchableOpacity>
         <View className="mt-4 flex-row gap-2">
           {incoming ? <>
-            <TouchableOpacity onPress={() => void updateRequest(connection, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3"><Check size={16} color="#FFFFFF" /><Text className="font-bold text-white">Accept</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => void updateRequest(connection, 'rejected')} disabled={busy} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}><X size={16} color="#B91C1C" /><Text className="font-bold text-[#B91C1C]">Decline</Text></TouchableOpacity>
+            <AnimatedPressable onPress={() => void updateRequest(connection, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3"><Check size={16} color="#FFFFFF" /><Text className="font-bold text-white">Accept</Text></AnimatedPressable>
+            <AnimatedPressable onPress={() => void updateRequest(connection, 'rejected')} disabled={busy} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}><X size={16} color="#B91C1C" /><Text className="font-bold text-[#B91C1C]">Decline</Text></AnimatedPressable>
           </> : <>
-            <TouchableOpacity onPress={() => void messageFriend(connection)} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3"><MessageCircle size={16} color="#FFFFFF" /><Text className="font-bold text-white">Message</Text></TouchableOpacity>
+            <AnimatedPressable onPress={() => void messageFriend(connection)} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3"><MessageCircle size={16} color="#FFFFFF" /><Text className="font-bold text-white">Message</Text></AnimatedPressable>
             <TouchableOpacity onPress={() => confirmUnfriend(connection)} disabled={busy} className={`h-12 w-12 items-center justify-center rounded-2xl border ${border}`} accessibilityLabel={`Unfriend ${connection.display_name}`}><UserMinus size={17} color="#B91C1C" /></TouchableOpacity>
           </>}
         </View>
         {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
-      </View>
+      </Card>
     );
   }
 
-  function renderSentRequest(connection: FriendConnection) {
+  function renderSentRequest(connection: FriendConnection, index = 0) {
     const busy = busyUserId === connection.user_id;
     return (
-      <View key={connection.user_id} className={`rounded-[22px] border p-4 ${card}`}>
+      <Card key={connection.user_id} index={index}>
         <View className="flex-row items-center gap-3">
           <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text></View>
           <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text className={`mt-1 text-sm ${secondary}`}>Awaiting response</Text></View>
         </View>
-        <TouchableOpacity onPress={() => void updateRequest(connection, 'cancelled')} disabled={busy} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>
+        <AnimatedPressable onPress={() => void updateRequest(connection, 'cancelled')} disabled={busy} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>
           <X size={16} color="#64748B" /><Text className={`font-bold ${secondary}`}>Cancel request</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
         {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
-      </View>
+      </Card>
     );
   }
 
-  function renderTrustedContact(contact: TrustedContact) {
+  function renderTrustedContact(contact: TrustedContact, index = 0) {
     const busy = busyContactId === contact.id;
     const colors = relationshipColors(contact.relationship, isDark);
     return (
-      <View key={contact.id} className={`rounded-[22px] border p-4 ${card}`}>
+      <Card key={contact.id} index={index}>
         <View className="flex-row items-start justify-between gap-3">
           <View className="flex-1 flex-row items-center gap-3">
             <View className="h-12 w-12 items-center justify-center rounded-full bg-[#B7C4EC]">
@@ -320,15 +320,15 @@ export default function FriendsScreen() {
         </View>
 
         {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
-      </View>
+      </Card>
     );
   }
 
-  function renderIncomingTrustedRequest(request: IncomingTrustedCircleRequest) {
+  function renderIncomingTrustedRequest(request: IncomingTrustedCircleRequest, index = 0) {
     const busy = busyRequestId === request.id;
     const colors = relationshipColors(request.relationship, isDark);
     return (
-      <View key={request.id} className={`rounded-[22px] border p-4 ${card}`}>
+      <Card key={request.id} index={index}>
         <View className="flex-row items-center gap-3">
           <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{request.display_name.charAt(0).toUpperCase()}</Text></View>
           <View className="flex-1">
@@ -349,15 +349,15 @@ export default function FriendsScreen() {
           </View>
         ) : null}
         <View className="mt-4 flex-row gap-2">
-          <TouchableOpacity onPress={() => void respondTrustedRequest(request, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3">
+          <AnimatedPressable onPress={() => void respondTrustedRequest(request, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3">
             <Check size={16} color="#FFFFFF" /><Text className="font-bold text-white">Confirm</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => void respondTrustedRequest(request, 'declined')} disabled={busy} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>
+          </AnimatedPressable>
+          <AnimatedPressable onPress={() => void respondTrustedRequest(request, 'declined')} disabled={busy} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>
             <X size={16} color="#B91C1C" /><Text className="font-bold text-[#B91C1C]">Decline</Text>
-          </TouchableOpacity>
+          </AnimatedPressable>
         </View>
         {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
-      </View>
+      </Card>
     );
   }
 
@@ -374,18 +374,14 @@ export default function FriendsScreen() {
 
   return (
     <View className={`flex-1 ${background}`}>
-      <View className={`border-b px-4 pb-4 ${border}`} style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center" accessibilityLabel="Go back"><ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} /></TouchableOpacity>
-          <Text className={`ml-3 ${typography.pageTitle} ${titleColor}`}>Friends</Text>
-        </View>
-
+      <ScreenHeader title="Friends">
         <View className="mt-4 flex-row gap-2">
           {tabs.map((item) => {
             const active = tab === item.key;
             return (
-              <TouchableOpacity
+              <AnimatedPressable
                 key={item.key}
+                scaleTo={0.97}
                 onPress={() => setTab(item.key)}
                 className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl px-2 py-3 ${active ? 'bg-[#284BD6]' : mutedFill}`}
               >
@@ -395,37 +391,51 @@ export default function FriendsScreen() {
                     <Text className={`text-[12px] font-bold ${active ? 'text-white' : secondary}`}>{item.count}</Text>
                   </View>
                 ) : null}
-              </TouchableOpacity>
+              </AnimatedPressable>
             );
           })}
         </View>
-      </View>
+      </ScreenHeader>
 
       <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pt-4"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} refreshControl={refreshControl}>
         {errorMessage ? <Text className="rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
-        {loading ? <ActivityIndicator className="mt-8" color="#284BD6" /> : null}
+        {loading ? (
+          <View className="gap-3">
+            {[0, 1, 2].map((index) => <SkeletonCard key={index} height={128} />)}
+          </View>
+        ) : null}
 
         {!loading && tab === 'friends' ? (
           <>
             {incomingFriendRequests.length ? (
               <View className="gap-3">
                 <Text className={`text-headline-20 font-bold ${primary}`}>Friend requests <Text className={`text-base font-normal ${secondary}`}>({incomingFriendRequests.length})</Text></Text>
-                {incomingFriendRequests.map(renderConnection)}
+                {incomingFriendRequests.map((connection, index) => renderConnection(connection, index))}
               </View>
             ) : null}
 
             <View className="gap-3">
               <Text className={`text-headline-20 font-bold ${primary}`}>Friends <Text className={`text-base font-normal ${secondary}`}>({acceptedFriends.length})</Text></Text>
-              {acceptedFriends.length ? acceptedFriends.map(renderConnection) : (
-                <View className="items-center px-8 py-10"><UserPlus size={40} color="#94A3B8" /><Text className={`mt-4 text-center text-base ${secondary}`}>No friends yet. Find people in Discover to get started.</Text></View>
+              {acceptedFriends.length ? acceptedFriends.map((connection, index) => renderConnection(connection, incomingFriendRequests.length + index)) : (
+                <EmptyState
+                  key="friends-empty"
+                  icon={<UserPlus size={34} color="#284BD6" />}
+                  title="No friends yet"
+                  message="Find people in Discover to get started."
+                  action={
+                    <AnimatedPressable onPress={() => router.push('/(tabs)/discover')} className="rounded-2xl bg-[#284BD6] px-5 py-3">
+                      <Text className="font-bold text-white">Go to Discover</Text>
+                    </AnimatedPressable>
+                  }
+                />
               )}
             </View>
 
             {sentRequests.length ? (
               <View className="gap-3">
                 <Text className={`text-headline-20 font-bold ${primary}`}>Sent requests <Text className={`text-base font-normal ${secondary}`}>({sentRequests.length})</Text></Text>
-                {sentRequests.map(renderSentRequest)}
+                {sentRequests.map((connection, index) => renderSentRequest(connection, index))}
               </View>
             ) : null}
           </>
@@ -436,19 +446,24 @@ export default function FriendsScreen() {
             {incomingTrustedRequests.length ? (
               <View className="gap-3">
                 <Text className={`text-headline-20 font-bold ${primary}`}>Pending confirmation <Text className={`text-base font-normal ${secondary}`}>({incomingTrustedRequests.length})</Text></Text>
-                {incomingTrustedRequests.map(renderIncomingTrustedRequest)}
+                {incomingTrustedRequests.map((request, index) => renderIncomingTrustedRequest(request, index))}
               </View>
             ) : null}
 
             <View className="gap-3">
               <View className="flex-row items-center justify-between">
                 <Text className={`text-headline-20 font-bold ${primary}`}>My trusted circle <Text className={`text-base font-normal ${secondary}`}>({trustedContacts.length})</Text></Text>
-                <TouchableOpacity onPress={() => router.push('/trusted-circle')} className="flex-row items-center gap-1.5 rounded-full bg-[#284BD6] px-3.5 py-2">
+                <AnimatedPressable onPress={() => router.push('/trusted-circle')} className="flex-row items-center gap-1.5 rounded-full bg-[#284BD6] px-3.5 py-2">
                   <Plus size={15} color="#FFFFFF" /><Text className="text-[13px] font-bold text-white">Add</Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               </View>
-              {trustedContacts.length ? trustedContacts.map(renderTrustedContact) : (
-                <View className="items-center px-8 py-10"><Shield size={40} color="#94A3B8" /><Text className={`mt-4 text-center text-base ${secondary}`}>No trusted contacts yet. Add a friend who should be alerted if you need help.</Text></View>
+              {trustedContacts.length ? trustedContacts.map((contact, index) => renderTrustedContact(contact, incomingTrustedRequests.length + index)) : (
+                <EmptyState
+                  key="trusted-empty"
+                  icon={<Shield size={34} color="#284BD6" />}
+                  title="No trusted contacts yet"
+                  message="Add a friend who should be alerted if you need help."
+                />
               )}
             </View>
           </>

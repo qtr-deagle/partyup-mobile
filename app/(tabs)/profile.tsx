@@ -1,3 +1,4 @@
+import LogoutConfirmModal from '@/components/LogoutConfirmModal';
 import { enterFromBelow } from '@/components/ui/motion';
 import { useAuth } from '@/hooks/auth-provider';
 import { formatResidence } from '@/lib/bulacan';
@@ -76,6 +77,7 @@ export default function ProfileScreen() {
   const location = formatResidence(profile?.city);
 
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   async function handleChangeAvatar() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -362,10 +364,14 @@ export default function ProfileScreen() {
           <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>My Vehicles</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={signOut} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#7A2D2D] bg-[#111827]' : 'border-[#FF4D4D] bg-white'}`}>
+        <TouchableOpacity
+          onPress={() => setShowLogoutConfirm(true)}
+          className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#7A2D2D] bg-[#111827]' : 'border-[#FF4D4D] bg-white'}`}>
           <LogOut size={20} color="#E32727" />
-          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#E32727]'}`}>Sign Out</Text>
+          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#E32727]'}`}>Log Out</Text>
         </TouchableOpacity>
+
+        <LogoutConfirmModal visible={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={signOut} isDark={isDark} />
       </View>
     </ScrollView>
   );

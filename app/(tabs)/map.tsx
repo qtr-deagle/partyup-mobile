@@ -16,7 +16,7 @@ import {
   type SharedLocation,
 } from '@/lib/location';
 import { createOrGetDirectThread, getFriendRequestStatuses, respondToFriendRequest, sendFriendRequest } from '@/lib/social';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -213,7 +213,7 @@ export default function MapScreen() {
         continue;
       }
       const channel = supabase
-        .channel(`location:${id}`)
+        .channel(uniqueChannelName(`location:${id}`))
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'current_locations', filter: `user_id=eq.${id}` }, (payload) => {
           const next = payload.new as { latitude: number; longitude: number };
           setLivePositions((current) => ({ ...current, [id]: { latitude: next.latitude, longitude: next.longitude } }));
@@ -244,7 +244,7 @@ export default function MapScreen() {
       void loadNearby();
     };
     const channel = supabase
-      .channel(`pair-sessions:${myUserId}`)
+      .channel(uniqueChannelName(`pair-sessions:${myUserId}`))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'location_pair_sessions', filter: `user_a=eq.${myUserId}` }, onChange)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'location_pair_sessions', filter: `user_b=eq.${myUserId}` }, onChange)
       .subscribe();

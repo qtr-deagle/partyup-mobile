@@ -1,16 +1,20 @@
 import { DatePickerModal } from '@/components/carpool/DatePickerModal';
 import MeetupLocationPicker, { EMPTY_MEETUP, type MeetupDraft } from '@/components/MeetupLocationPicker';
 import { TimePickerModal } from '@/components/carpool/TimePickerModal';
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState, SkeletonCard, useShake } from '@/components/ui/motion';
+import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createTrip, formatMeetupLabel, type TripVisibility } from '@/lib/carpool';
-import { getTheme, typography } from '@/lib/theme';
+import { normalizePlace } from '@/lib/names';
 import { listMyApprovedVehicles, type Vehicle } from '@/lib/vehicles';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { ArrowLeft, Calendar, Car, Clock, Flag, Globe, Lock, Plus, ShieldAlert, Users, X } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Calendar, Car, Clock, Flag, Globe, Lock, MapPin, NotebookPen, Plus, ShieldAlert, Users, Wallet, X } from 'lucide-react-native';
+import { useCallback, useState, type ReactNode } from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, View } from 'react-native';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const visibilityOptions: { key: TripVisibility; label: string; description: string; icon: typeof Globe }[] = [
@@ -65,18 +69,26 @@ function mergeDate(current: Date | null, datePart: Date) {
   return next;
 }
 
+function SectionTitle({ icon, title, isDark }: { icon: ReactNode; title: string; isDark: boolean }) {
+  return (
+    <View className="mb-3 flex-row items-center gap-2">
+      <View className={`h-8 w-8 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>{icon}</View>
+      <Text className={`text-[16px] font-bold ${isDark ? 'text-white' : 'text-[#1B2340]'}`}>{title}</Text>
+    </View>
+  );
+}
+
 export default function CreateTripScreen() {
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  const { titleColor } = getTheme(isDark);
   const { profile } = useAuth();
 
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
   const primary = isDark ? 'text-white' : 'text-[#1B2340]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
-  const inputBg = isDark ? 'bg-[#111B2E]' : 'bg-white';
+  const inputBg = isDark ? 'bg-[#18253C]' : 'bg-[#F7F8FC]';
   const inputText = isDark ? 'text-white' : 'text-[#17233F]';
   const placeholderColor = isDark ? '#64748B' : '#9AA3B1';
   const isVerified = profile?.verification_status === 'approved';
@@ -123,6 +135,12 @@ export default function CreateTripScreen() {
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { style: shakeStyle, shake } = useShake();
+
+  function fail(message: string) {
+    setErrorMessage(message);
+    shake();
+  }
 
   function toggleIncludeEnd() {
     setIncludeEnd((current) => {
@@ -135,12 +153,12 @@ export default function CreateTripScreen() {
 
   async function handleSubmit() {
     if (!title.trim() || !destination.trim()) {
-      setErrorMessage('Title and destination are required.');
+      fail('Title and destination are required.');
       return;
     }
 
     if (!meetup.municipality || !meetup.pin || !meetup.landmark.trim()) {
-      setErrorMessage('Set the meetup city, pin the exact spot on the map, and name a landmark.');
+      fail('Set the meetup city, pin the exact spot on the map, and name a landmark.');
       return;
     }
     const meetupLocation = {
@@ -151,7 +169,7 @@ export default function CreateTripScreen() {
     };
 
     if (!selectedVehicleId) {
-      setErrorMessage('Select a vehicle for this trip.');
+      fail('Select a vehicle for this trip.');
       return;
     }
 
@@ -161,7 +179,7 @@ export default function CreateTripScreen() {
     const totalSeatsText = seatsTotal.trim();
     const totalSeats = totalSeatsText ? Number.parseInt(totalSeatsText, 10) : null;
     if (totalSeatsText && (!/^\d{1,2}$/.test(totalSeatsText) || totalSeats === null || totalSeats < MIN_TOTAL_SEATS)) {
-      setErrorMessage(`Total seats must be ${MIN_TOTAL_SEATS} to 99, including you as the driver.`);
+      fail(`Total seats must be ${MIN_TOTAL_SEATS} to 99, including you as the driver.`);
       return;
     }
     const riderSeats = totalSeats !== null ? totalSeats - 1 : null;
@@ -169,12 +187,12 @@ export default function CreateTripScreen() {
     const costText = totalCost.trim();
     const cost = costText ? Number.parseFloat(costText) : null;
     if (costText && (!COST_PATTERN.test(costText) || cost === null || cost <= 0)) {
-      setErrorMessage('Total cost must be more than ₱0 and up to ₱999,999.99.');
+      fail('Total cost must be more than ₱0 and up to ₱999,999.99.');
       return;
     }
 
     if (includeEnd && startDate && endDate && endDate.getTime() < startDate.getTime()) {
-      setErrorMessage('End date & time must be after the meetup date & time.');
+      fail('End date & time must be after the meetup date & time.');
       return;
     }
 
@@ -196,7 +214,7 @@ export default function CreateTripScreen() {
     const { data, error } = await createTrip({
       title: title.trim(),
       origin: formatMeetupLabel(meetupLocation),
-      destination: destination.trim(),
+      destination: normalizePlace(destination),
       startAt: startDate ? startDate.toISOString() : null,
       endAt: includeEnd && endDate ? endDate.toISOString() : null,
       visibility,
@@ -212,7 +230,7 @@ export default function CreateTripScreen() {
     setSubmitting(false);
 
     if (error || !data) {
-      setErrorMessage(error?.message ?? 'Unable to create trip.');
+      fail(error?.message ?? 'Unable to create trip.');
       return;
     }
 
@@ -220,93 +238,89 @@ export default function CreateTripScreen() {
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className={`flex-1 ${background}`}>
-      <View className={`border-b px-4 pb-4 ${border}`} style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center" accessibilityLabel="Go back">
-            <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
-          </TouchableOpacity>
-          <Text className={`ml-3 ${typography.pageTitle} ${titleColor}`}>Create Carpool</Text>
-        </View>
-      </View>
+    <KeyboardAvoidingView behavior="padding" className={`flex-1 ${background}`}>
+      <ScreenHeader title="Create Carpool" subtitle="Share your ride and split the cost" />
 
       {!isVerified ? (
-        <View className="flex-1 items-center justify-center gap-4 px-8">
-          <ShieldAlert size={40} color="#D88700" />
-          <Text className={`text-center text-lg font-bold ${primary}`}>Verify your identity to create a trip</Text>
-          <Text className={`text-center text-sm leading-5 ${secondary}`}>
-            {profile?.verification_status === 'pending'
+        <EmptyState
+          key="unverified"
+          icon={<ShieldAlert size={34} color="#D88700" />}
+          title="Verify your identity to create a trip"
+          message={
+            profile?.verification_status === 'pending'
               ? 'Your ID verification is still under review. This usually takes 1-2 hours.'
               : profile?.verification_status === 'rejected'
                 ? 'Your last ID verification was rejected. Resubmit clearer documents to continue.'
-                : 'Upload a government ID and a selfie to unlock trip creation.'}
-          </Text>
-          {profile?.verification_status !== 'pending' && (
-            <TouchableOpacity onPress={() => router.push('/verify-id')} className="mt-2 rounded-2xl bg-[#2A55D4] px-6 py-3.5">
-              <Text className="text-base font-bold text-white">
-                {profile?.verification_status === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
+                : 'Upload a government ID and a selfie to unlock trip creation.'
+          }
+          action={
+            profile?.verification_status !== 'pending' ? (
+              <AnimatedPressable onPress={() => router.push('/verify-id')} className="rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+                <Text className="text-base font-bold text-white">
+                  {profile?.verification_status === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}
+                </Text>
+              </AnimatedPressable>
+            ) : undefined
+          }
+        />
       ) : vehiclesLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#2A55D4" />
+        <View key="loading" className="gap-4 px-4 pt-5">
+          <SkeletonCard height={220} />
+          <SkeletonCard height={120} />
+          <SkeletonCard height={160} />
         </View>
       ) : approvedVehicles.length === 0 ? (
-        <View className="flex-1 items-center justify-center gap-4 px-8">
-          <ShieldAlert size={40} color="#D88700" />
-          <Text className={`text-center text-lg font-bold ${primary}`}>Add and verify a vehicle to create a carpool trip</Text>
-          <Text className={`text-center text-sm leading-5 ${secondary}`}>
-            Riders need to know they&apos;re getting into a verified vehicle. Add your vehicle and submit it for review.
-          </Text>
-          <TouchableOpacity onPress={() => router.push('/vehicles')} className="mt-2 rounded-2xl bg-[#2A55D4] px-6 py-3.5">
-            <Text className="text-base font-bold text-white">Add Vehicle</Text>
-          </TouchableOpacity>
-        </View>
+        <EmptyState
+          key="no-vehicle"
+          icon={<Car size={34} color="#2A55D4" />}
+          title="Add and verify a vehicle first"
+          message="Riders need to know they're getting into a verified vehicle. Add your vehicle and submit it for review."
+          action={
+            <AnimatedPressable onPress={() => router.push('/vehicles')} className="rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+              <Text className="text-base font-bold text-white">Add Vehicle</Text>
+            </AnimatedPressable>
+          }
+        />
       ) : (
       <>
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
-        {errorMessage ? (
-          <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
-            <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>
+        <Card index={0} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<MapPin size={16} color="#2A55D4" />} title="Route" />
+          <View className="-mt-3">
+            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TRIP TITLE</Text>
+            <TextInput
+              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
+              placeholder="e.g., Weekday commute to Makati"
+              placeholderTextColor={placeholderColor}
+              maxLength={60}
+              value={title}
+              onChangeText={setTitle}
+            />
           </View>
-        ) : null}
 
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TRIP TITLE</Text>
-          <TextInput
-            className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="e.g., Weekday commute to Makati"
-            placeholderTextColor={placeholderColor}
-            maxLength={60}
-            value={title}
-            onChangeText={setTitle}
-          />
-        </View>
+          <MeetupLocationPicker label="MEETUP LOCATION" value={meetup} onChange={setMeetup} isDark={isDark} />
 
-        <MeetupLocationPicker label="MEETUP LOCATION" value={meetup} onChange={setMeetup} isDark={isDark} />
+          <View>
+            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DESTINATION</Text>
+            <TextInput
+              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
+              placeholder="e.g., Makati"
+              placeholderTextColor={placeholderColor}
+              maxLength={80}
+              value={destination}
+              onChangeText={setDestination}
+            />
+          </View>
+        </Card>
 
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DESTINATION</Text>
-          <TextInput
-            className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-            placeholder="e.g., Makati"
-            placeholderTextColor={placeholderColor}
-            maxLength={80}
-            value={destination}
-            onChangeText={setDestination}
-          />
-        </View>
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>VEHICLE</Text>
+        <Card index={1}>
+          <SectionTitle isDark={isDark} icon={<Car size={16} color="#2A55D4" />} title="Vehicle" />
           <View className="flex-row flex-wrap gap-2">
             {approvedVehicles.map((vehicle) => {
               const selected = selectedVehicleId === vehicle.id;
               return (
-                <TouchableOpacity
+                <AnimatedPressable
                   key={vehicle.id}
                   onPress={() => setSelectedVehicleId(vehicle.id)}
                   className={`flex-row items-center gap-2 rounded-full px-4 py-2.5 ${selected ? 'bg-[#2A55D4]' : `border ${border} ${inputBg}`}`}
@@ -315,94 +329,98 @@ export default function CreateTripScreen() {
                   <Text className={`text-[15px] font-semibold ${selected ? 'text-white' : primary}`}>
                     {vehicle.make} {vehicle.model}
                   </Text>
-                </TouchableOpacity>
+                </AnimatedPressable>
               );
             })}
           </View>
-        </View>
+        </Card>
 
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>MEETUP DATE &amp; TIME (OPTIONAL)</Text>
-          <View className="flex-row gap-3">
-            <TouchableOpacity
-              onPress={() => setShowStartDatePicker(true)}
-              className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
-            >
-              <Calendar size={18} color={startDate ? '#2A55D4' : placeholderColor} />
-              <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
-                {formatDateLabel(startDate)}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setShowStartTimePicker(true)}
-              className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
-            >
-              <Clock size={18} color={startDate ? '#2A55D4' : placeholderColor} />
-              <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
-                {formatTimeLabel(startDate)}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          {startDate ? (
-            <TouchableOpacity onPress={() => setStartDate(null)} className="mt-2 self-start">
-              <Text className="text-sm font-bold text-[#B91C1C]">Clear meetup date &amp; time</Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        {includeEnd ? (
-          <View>
-            <View className="mb-2 flex-row items-center justify-between">
-              <Text className={`text-[13px] font-bold ${secondary}`}>RETURN / END DATE &amp; TIME</Text>
-              <TouchableOpacity onPress={toggleIncludeEnd} className="flex-row items-center gap-1">
-                <X size={14} color="#B91C1C" />
-                <Text className="text-[13px] font-bold text-[#B91C1C]">Remove</Text>
-              </TouchableOpacity>
-            </View>
+        <Card index={2} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<Calendar size={16} color="#2A55D4" />} title="Schedule" />
+          <View className="-mt-3">
+            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>MEETUP DATE &amp; TIME (OPTIONAL)</Text>
             <View className="flex-row gap-3">
-              <TouchableOpacity
-                onPress={() => setShowEndDatePicker(true)}
+              <AnimatedPressable
+                onPress={() => setShowStartDatePicker(true)}
                 className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
               >
-                <Calendar size={18} color={endDate ? '#2A55D4' : placeholderColor} />
-                <Text className={`flex-1 text-base ${endDate ? inputText : ''}`} style={!endDate ? { color: placeholderColor } : undefined}>
-                  {formatDateLabel(endDate)}
+                <Calendar size={18} color={startDate ? '#2A55D4' : placeholderColor} />
+                <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
+                  {formatDateLabel(startDate)}
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setShowEndTimePicker(true)}
+              </AnimatedPressable>
+              <AnimatedPressable
+                onPress={() => setShowStartTimePicker(true)}
                 className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
               >
-                <Clock size={18} color={endDate ? '#2A55D4' : placeholderColor} />
-                <Text className={`flex-1 text-base ${endDate ? inputText : ''}`} style={!endDate ? { color: placeholderColor } : undefined}>
-                  {formatTimeLabel(endDate)}
+                <Clock size={18} color={startDate ? '#2A55D4' : placeholderColor} />
+                <Text className={`flex-1 text-base ${startDate ? inputText : ''}`} style={!startDate ? { color: placeholderColor } : undefined}>
+                  {formatTimeLabel(startDate)}
                 </Text>
-              </TouchableOpacity>
+              </AnimatedPressable>
             </View>
+            {startDate ? (
+              <AnimatedPressable onPress={() => setStartDate(null)} className="mt-2 self-start">
+                <Text className="text-sm font-bold text-[#B91C1C]">Clear meetup date &amp; time</Text>
+              </AnimatedPressable>
+            ) : null}
           </View>
-        ) : (
-          <TouchableOpacity
-            onPress={toggleIncludeEnd}
-            className={`flex-row items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-3.5 ${border}`}
-          >
-            <Plus size={16} color="#2A55D4" />
-            <Text className="text-sm font-bold text-[#2A55D4]">Add return / end time</Text>
-            <Flag size={14} color="#8A93A6" />
-          </TouchableOpacity>
-        )}
 
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>VISIBILITY</Text>
+          {includeEnd ? (
+            <Animated.View key="end-on" entering={FadeInDown.duration(250)}>
+              <View className="mb-2 flex-row items-center justify-between">
+                <Text className={`text-[13px] font-bold ${secondary}`}>RETURN / END DATE &amp; TIME</Text>
+                <AnimatedPressable onPress={toggleIncludeEnd} className="flex-row items-center gap-1">
+                  <X size={14} color="#B91C1C" />
+                  <Text className="text-[13px] font-bold text-[#B91C1C]">Remove</Text>
+                </AnimatedPressable>
+              </View>
+              <View className="flex-row gap-3">
+                <AnimatedPressable
+                  onPress={() => setShowEndDatePicker(true)}
+                  className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+                >
+                  <Calendar size={18} color={endDate ? '#2A55D4' : placeholderColor} />
+                  <Text className={`flex-1 text-base ${endDate ? inputText : ''}`} style={!endDate ? { color: placeholderColor } : undefined}>
+                    {formatDateLabel(endDate)}
+                  </Text>
+                </AnimatedPressable>
+                <AnimatedPressable
+                  onPress={() => setShowEndTimePicker(true)}
+                  className={`flex-1 flex-row items-center gap-2 rounded-2xl border px-4 py-4 ${border} ${inputBg}`}
+                >
+                  <Clock size={18} color={endDate ? '#2A55D4' : placeholderColor} />
+                  <Text className={`flex-1 text-base ${endDate ? inputText : ''}`} style={!endDate ? { color: placeholderColor } : undefined}>
+                    {formatTimeLabel(endDate)}
+                  </Text>
+                </AnimatedPressable>
+              </View>
+            </Animated.View>
+          ) : (
+            <AnimatedPressable
+              key="end-off"
+              onPress={toggleIncludeEnd}
+              className={`flex-row items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-3.5 ${border}`}
+            >
+              <Plus size={16} color="#2A55D4" />
+              <Text className="text-sm font-bold text-[#2A55D4]">Add return / end time</Text>
+              <Flag size={14} color="#8A93A6" />
+            </AnimatedPressable>
+          )}
+        </Card>
+
+        <Card index={3}>
+          <SectionTitle isDark={isDark} icon={<Globe size={16} color="#2A55D4" />} title="Visibility" />
           <View className="gap-2">
             {visibilityOptions.map((option) => {
               const selected = visibility === option.key;
               const OptionIcon = option.icon;
               return (
-                <TouchableOpacity
+                <AnimatedPressable
                   key={option.key}
                   onPress={() => setVisibility(option.key)}
                   className={`flex-row items-center gap-3 rounded-2xl border px-4 py-3.5 ${
-                    selected ? 'border-[#2A55D4] bg-[#E9F0FF]' : `${border} ${inputBg}`
+                    selected ? (isDark ? 'border-[#3B82F6] bg-[#172554]' : 'border-[#2A55D4] bg-[#E9F0FF]') : `${border} ${inputBg}`
                   }`}
                 >
                   <OptionIcon size={20} color={selected ? '#2A55D4' : '#8A93A6'} />
@@ -410,52 +428,55 @@ export default function CreateTripScreen() {
                     <Text className={`text-base font-bold ${selected ? 'text-[#2A55D4]' : primary}`}>{option.label}</Text>
                     <Text className={`mt-0.5 text-sm ${selected ? 'text-[#2A55D4]/80' : secondary}`}>{option.description}</Text>
                   </View>
-                </TouchableOpacity>
+                </AnimatedPressable>
               );
             })}
           </View>
-        </View>
+        </Card>
 
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL SEATS (OPTIONAL)</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="e.g., 7"
-              placeholderTextColor={placeholderColor}
-              keyboardType="number-pad"
-              maxLength={2}
-              value={seatsTotal}
-              onChangeText={(text) => setSeatsTotal(text.replace(/\D/g, '').slice(0, 2))}
-            />
-            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>
-              {seatSummary(seatsTotal)}
+        <Card index={4} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<Wallet size={16} color="#2A55D4" />} title="Seats & cost" />
+          <View className="-mt-3 flex-row gap-3">
+            <View className="flex-1">
+              <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL SEATS (OPTIONAL)</Text>
+              <TextInput
+                className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
+                placeholder="e.g., 7"
+                placeholderTextColor={placeholderColor}
+                keyboardType="number-pad"
+                maxLength={2}
+                value={seatsTotal}
+                onChangeText={(text) => setSeatsTotal(text.replace(/\D/g, '').slice(0, 2))}
+              />
+              <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>
+                {seatSummary(seatsTotal)}
+              </Text>
+            </View>
+            <View className="flex-1">
+              <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL TRIP COST (₱)</Text>
+              <TextInput
+                className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
+                placeholder="e.g., 800"
+                placeholderTextColor={placeholderColor}
+                keyboardType="decimal-pad"
+                maxLength={9}
+                value={totalCost}
+                onChangeText={(text) => setTotalCost(sanitizeCost(text))}
+              />
+              <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>For the whole trip, up to ₱999,999.99</Text>
+            </View>
+          </View>
+
+          <View className={`rounded-2xl border px-4 py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DFEE] bg-[#F4F7FF]'}`}>
+            <Text className={`text-sm leading-5 ${secondary}`}>
+              You set the <Text className="font-bold">total cost</Text> for the whole trip — the app splits it evenly and live as riders join. Inviting more
+              friends lowers everyone&apos;s share, including yours.
             </Text>
           </View>
-          <View className="flex-1">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL TRIP COST (₱)</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="e.g., 800"
-              placeholderTextColor={placeholderColor}
-              keyboardType="decimal-pad"
-              maxLength={9}
-              value={totalCost}
-              onChangeText={(text) => setTotalCost(sanitizeCost(text))}
-            />
-            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>For the whole trip, up to ₱999,999.99</Text>
-          </View>
-        </View>
+        </Card>
 
-        <View className={`rounded-2xl border px-4 py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DFEE] bg-[#F4F7FF]'}`}>
-          <Text className={`text-sm leading-5 ${secondary}`}>
-            You set the <Text className="font-bold">total cost</Text> for the whole trip — the app splits it evenly and live as riders join. Inviting more
-            friends lowers everyone&apos;s share, including yours.
-          </Text>
-        </View>
-
-        <View>
-          <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>NOTES (OPTIONAL)</Text>
+        <Card index={5}>
+          <SectionTitle isDark={isDark} icon={<NotebookPen size={16} color="#2A55D4" />} title="Notes (optional)" />
           <TextInput
             className={`min-h-[88px] rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
             placeholder="Luggage space, stopovers, etc."
@@ -465,11 +486,17 @@ export default function CreateTripScreen() {
             value={notes}
             onChangeText={setNotes}
           />
-        </View>
+        </Card>
 
-        <TouchableOpacity onPress={handleSubmit} disabled={submitting} className="mt-2 rounded-2xl bg-[#2A55D4] py-4">
+        {errorMessage ? (
+          <Animated.View entering={FadeIn.duration(200)} style={shakeStyle} className="rounded-xl bg-[#FEE2E2] px-4 py-3">
+            <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>
+          </Animated.View>
+        ) : null}
+
+        <AnimatedPressable onPress={handleSubmit} disabled={submitting} className="rounded-2xl bg-[#2A55D4] py-4 shadow-sm shadow-[#2A55D4]/30">
           {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-base font-bold text-white">Create Trip</Text>}
-        </TouchableOpacity>
+        </AnimatedPressable>
       </ScrollView>
 
       <DatePickerModal

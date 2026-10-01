@@ -234,7 +234,7 @@ secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.
-otp_length = 8
+otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
@@ -404,6 +404,15 @@ verify_jwt = false
 # Called by the database via pg_net, which has no user JWT -- authenticated
 # instead by the shared x-push-secret header (see supabase/functions/dispatch-push).
 [functions.dispatch-push]
+verify_jwt = false
+
+# Called by the database like dispatch-push; auth is the same x-push-secret.
+[functions.send-verification-email]
+verify_jwt = false
+
+# The app calls this with the user's JWT, and the Warning Mode escalation cron
+# job calls it with x-push-secret; the function checks both itself.
+[functions.send-sos-push]
 verify_jwt = false
 
 [analytics]

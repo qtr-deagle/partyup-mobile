@@ -20,6 +20,21 @@ export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
 });
 
 /**
+ * Channel name for a postgres_changes-only subscription, unique per call.
+ *
+ * supabase.channel(name) hands back the existing channel when one with that
+ * name is still open, and removeChannel() in an effect cleanup is async. So if
+ * a screen remounts before the old channel is gone, `.on()` lands on an
+ * already-subscribed channel and throws "cannot add postgres_changes callbacks
+ * after subscribe()". The name of a postgres_changes channel is local only, so
+ * a random suffix is safe. Don't use this for broadcast/presence channels:
+ * those need the same name on every device.
+ */
+export function uniqueChannelName(base: string) {
+  return `${base}:${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
  * Create a user profile in the public.profiles table after auth signup.
  * Calls a secure SQL function that bypasses RLS restrictions.
  *

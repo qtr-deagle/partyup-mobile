@@ -1,5 +1,8 @@
 import GuidedSelfieCapture from '@/components/GuidedSelfieCapture';
 import IdCameraCapture from '@/components/IdCameraCapture';
+import LegalNameFields from '@/components/LegalNameFields';
+import { legalNameColumns, validateLegalName, type LegalName } from '@/lib/names';
+import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { formatResidence } from '@/lib/bulacan';
@@ -10,7 +13,7 @@ import { submitIdVerification, type DocumentType } from '@/lib/verification';
 import { Redirect, useRouter } from 'expo-router';
 import { Camera, CheckCircle2, IdCard, MapPin, Upload } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const documentOptions: { label: string; value: DocumentType; needsBack: boolean }[] = [
@@ -51,6 +54,10 @@ export default function VerifyIdScreen() {
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeCapture, setActiveCapture] = useState<'front' | 'back' | 'selfie' | null>(null);
+  // null until the user edits, so the form keeps showing the name from
+  // sign-up even if the profile finishes loading after this screen mounts.
+  const [editedName, setEditedName] = useState<LegalName | null>(null);
+  const [editedNoMiddleName, setEditedNoMiddleName] = useState<boolean | null>(null);
 
   if (loading) {
     return null;
@@ -62,7 +69,16 @@ export default function VerifyIdScreen() {
 
   const selectedOption = documentOptions.find((option) => option.value === documentType)!;
   const residence = formatResidence(profile?.city);
-  const canSubmit = Boolean(residence && frontUri && selfieUri && (!selectedOption.needsBack || backUri) && !submitting);
+  const savedName: LegalName | null = profile?.first_name && profile.last_name
+    ? { firstName: profile.first_name, middleName: profile.middle_name ?? '', lastName: profile.last_name, suffix: profile.name_suffix ?? '' }
+    : null;
+  // Pre-filled from sign-up; accounts from before the legal-name fields
+  // start empty and have to fill it in.
+  const legalName = editedName ?? savedName ?? { firstName: '', middleName: '', lastName: '', suffix: '' };
+  const noMiddleName = editedNoMiddleName ?? Boolean(savedName && !savedName.middleName);
+  const nameChanged = !savedName || editedName !== null || editedNoMiddleName !== null;
+  const nameError = validateLegalName(legalName, noMiddleName);
+  const canSubmit = Boolean(residence && !nameError && frontUri && selfieUri && (!selectedOption.needsBack || backUri) && !submitting);
 
   const close = () => {
     if (router.canGoBack()) {
@@ -79,6 +95,19 @@ export default function VerifyIdScreen() {
 
     setSubmitting(true);
     setError(null);
+
+    if (nameChanged && session) {
+      const { error: nameSaveError } = await supabase
+        .from('profiles')
+        .update(legalNameColumns(legalName, noMiddleName))
+        .eq('id', session.user.id);
+      if (nameSaveError) {
+        setSubmitting(false);
+        feedback.error();
+        setError(nameSaveError.message);
+        return;
+      }
+    }
 
     const { error: submitError } = await submitIdVerification({
       documentType,
@@ -116,7 +145,8 @@ export default function VerifyIdScreen() {
         </View>
       </View>
 
-      <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
+      <ScrollView className="flex-1 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
         <View className="rounded-[22px] border border-[#E2E7F0] bg-white p-4 shadow-sm shadow-black/5">
           <View className="mb-5 flex-row items-start gap-2 rounded-2xl bg-[#FFF6E5] px-4 py-3">
             <MapPin size={18} color="#B26A00" />
@@ -125,6 +155,10 @@ export default function VerifyIdScreen() {
                 ? `Use an ID that shows your address in ${residence} (e.g. PhilSys, driver's license, voter's or postal ID). A passport has no address, so it can't confirm residency on its own.`
                 : 'Select your city or municipality in Bulacan before submitting your ID.'}
             </Text>
+          </View>
+          <View className="mb-6">
+            <Text className="mb-3 text-[16px] font-extrabold tracking-wide text-[#6B7590]">YOUR LEGAL NAME</Text>
+            <LegalNameFields value={legalName} onChange={setEditedName} noMiddleName={noMiddleName} onNoMiddleNameChange={setEditedNoMiddleName} />
           </View>
           <Text className="text-[16px] font-extrabold tracking-wide text-[#6B7590]">DOCUMENT TYPE</Text>
           <View className="mt-3 flex-row flex-wrap gap-2">
@@ -182,6 +216,7 @@ export default function VerifyIdScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <IdCameraCapture
         visible={activeCapture === 'front'}

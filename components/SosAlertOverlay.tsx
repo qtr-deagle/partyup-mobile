@@ -1,7 +1,7 @@
 import { useAuth } from '@/hooks/auth-provider';
 import { markNotificationRead } from '@/lib/notifications';
 import { getNotifications, registerForPushNotifications } from '@/lib/push';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import * as Haptics from 'expo-haptics';
 import type { NotificationResponse } from 'expo-notifications';
 import { useRouter } from 'expo-router';
@@ -56,7 +56,7 @@ export default function SosAlertOverlay() {
     })();
 
     const channel = supabase
-      .channel(`sos-notifications:${userId}`)
+      .channel(uniqueChannelName(`sos-notifications:${userId}`))
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, (payload) => {
         const row = payload.new as SosNotification & { type: string };
         if (row.type === 'safety') {

@@ -1,6 +1,8 @@
+import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { EmptyState, enterFromBelow, SkeletonCard } from '@/components/ui/motion';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getTheme, typography } from '@/lib/theme';
 import {
   getVerificationImageUrl,
   listPendingVerifications,
@@ -8,9 +10,10 @@ import {
   type PendingVerification,
 } from '@/lib/verification';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, ArrowLeft, BadgeCheck, Check, ShieldQuestion, X } from 'lucide-react-native';
+import { AlertTriangle, BadgeCheck, Check, ShieldQuestion, X } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, View } from 'react-native';
+import Animated, { FadeOutLeft, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const DOCUMENT_LABELS: Record<string, string> = {
@@ -84,7 +87,6 @@ export default function IdReviewScreen() {
   const { profile, loading: authLoading } = useAuth();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  const { titleColor } = getTheme(isDark);
 
   const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
@@ -161,23 +163,16 @@ export default function IdReviewScreen() {
         <ShieldQuestion size={40} color="#6C7A95" />
         <Text className={`mt-4 text-center text-headline-18 font-bold ${primary}`}>Staff access only</Text>
         <Text className={`mt-2 text-center text-base ${secondary}`}>This tool is limited to staff and admin accounts.</Text>
-        <TouchableOpacity onPress={() => router.back()} className="mt-6 rounded-2xl bg-[#2A55D4] px-6 py-3">
+        <AnimatedPressable onPress={() => router.back()} className="mt-6 rounded-2xl bg-[#2A55D4] px-6 py-3">
           <Text className="font-bold text-white">Go back</Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
       </View>
     );
   }
 
   return (
     <View className={`flex-1 ${background}`}>
-      <View className={`border-b px-4 pb-4 ${border}`} style={{ paddingTop: insets.top + 16 }}>
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="h-10 w-10 items-center justify-center" accessibilityLabel="Go back">
-            <ArrowLeft size={23} color={isDark ? '#FFFFFF' : '#1B2340'} />
-          </TouchableOpacity>
-          <Text className={`ml-3 ${typography.pageTitle} ${titleColor}`}>ID Verification Review</Text>
-        </View>
-      </View>
+      <ScreenHeader title="ID Verification Review" subtitle={!loading ? `${pending.length} pending` : undefined} />
 
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}>
@@ -188,18 +183,25 @@ export default function IdReviewScreen() {
         ) : null}
 
         {loading ? (
-          <ActivityIndicator className="mt-8" color="#2A55D4" />
-        ) : pending.length === 0 ? (
-          <View className={`items-center justify-center rounded-[28px] border border-dashed px-6 py-16 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#DCE3EF] bg-white'}`}>
-            <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
-              <BadgeCheck size={38} color="#19A06B" />
-            </View>
-            <Text className={`mt-6 text-headline-20 font-bold text-center ${primary}`}>All caught up</Text>
-            <Text className={`mt-2 text-center text-base leading-6 ${secondary}`}>No pending ID verifications to review right now.</Text>
+          <View key="loading" className="gap-4">
+            <SkeletonCard height={230} />
+            <SkeletonCard height={230} />
           </View>
+        ) : pending.length === 0 ? (
+          <EmptyState
+            key="empty"
+            icon={<BadgeCheck size={34} color="#19A06B" />}
+            title="All caught up"
+            message="No pending ID verifications to review right now."
+          />
         ) : (
-          pending.map((row) => (
-            <View key={row.id} className={`gap-3 rounded-2xl border p-4 ${card}`}>
+          pending.map((row, index) => (
+            <Animated.View
+              key={row.id}
+              entering={enterFromBelow(index)}
+              exiting={FadeOutLeft.duration(250)}
+              layout={LinearTransition.springify().damping(18)}
+              className={`gap-3 rounded-[22px] border p-4 shadow-sm ${card} ${isDark ? 'shadow-black/20' : 'shadow-black/5'}`}>
               <View className="flex-row items-center justify-between">
                 <View>
                   <Text className={`text-base font-black ${primary}`}>{row.display_name}</Text>
@@ -237,35 +239,35 @@ export default function IdReviewScreen() {
                     multiline
                   />
                   <View className="flex-row gap-2">
-                    <TouchableOpacity onPress={() => setRejectingId(null)} className={`flex-1 items-center rounded-2xl border py-3 ${border}`}>
+                    <AnimatedPressable onPress={() => setRejectingId(null)} className={`flex-1 items-center rounded-2xl border py-3 ${border}`}>
                       <Text className={`font-bold ${primary}`}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => void confirmReject()} disabled={busyId === row.id} className="flex-1 items-center rounded-2xl bg-[#E32727] py-3">
+                    </AnimatedPressable>
+                    <AnimatedPressable onPress={() => void confirmReject()} disabled={busyId === row.id} className="flex-1 items-center rounded-2xl bg-[#E32727] py-3">
                       {busyId === row.id ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-bold text-white">Confirm Reject</Text>}
-                    </TouchableOpacity>
+                    </AnimatedPressable>
                   </View>
                 </View>
               ) : (
                 <View className="flex-row gap-2">
-                  <TouchableOpacity
+                  <AnimatedPressable
                     onPress={() => startReject(row.id)}
                     disabled={busyId === row.id}
                     className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl border border-[#E32727] py-3"
                   >
                     <X size={16} color="#E32727" />
                     <Text className="font-bold text-[#E32727]">Reject</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
+                  </AnimatedPressable>
+                  <AnimatedPressable
                     onPress={() => void handleApprove(row.id)}
                     disabled={busyId === row.id}
                     className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#19A06B] py-3"
                   >
                     {busyId === row.id ? <ActivityIndicator color="#FFFFFF" /> : <Check size={16} color="#FFFFFF" />}
                     <Text className="font-bold text-white">Approve</Text>
-                  </TouchableOpacity>
+                  </AnimatedPressable>
                 </View>
               )}
-            </View>
+            </Animated.View>
           ))
         )}
       </ScrollView>

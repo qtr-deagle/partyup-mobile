@@ -2,7 +2,7 @@ import { useAuth } from '@/hooks/auth-provider';
 import { setSosTracking, upsertCurrentLocation } from '@/lib/location';
 import { getMyActiveSosAlert, markSosSafe, onSosChange, type SosAlert } from '@/lib/safety';
 import { feedback } from '@/lib/sounds';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import * as Location from 'expo-location';
 import { ShieldCheck, Siren } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
@@ -52,7 +52,7 @@ export default function ActiveSosBanner() {
     const unsubscribe = onSosChange(apply);
 
     const channel = supabase
-      .channel(`my-sos:${userId}`)
+      .channel(uniqueChannelName(`my-sos:${userId}`))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sos_alerts', filter: `user_id=eq.${userId}` }, (payload) => {
         apply(payload.new as SosAlert);
       })
