@@ -113,3 +113,9 @@ export async function detectFaceAgeRange(creds: AwsCredentials, imageBase64: str
     Attributes: ['AGE_RANGE'],
   });
 }
+
+export async function detectText(creds: AwsCredentials, imageBase64: string) {
+  return rekognitionRequest('DetectText', creds, {
+    Image: { Bytes: imageBase64 },
+  });
+}

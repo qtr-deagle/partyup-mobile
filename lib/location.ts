@@ -188,7 +188,7 @@ async function startTracking(mode: TrackingMode) {
       notificationTitle: mode === 'sos' ? 'PartyUp SOS active' : 'PartyUp',
       notificationBody:
         mode === 'sos'
-          ? 'Sharing your live location with PartyUp staff and your trusted circle'
+          ? 'Sharing your live location with PartyUp Guild Leaders and your trusted circle'
           : 'Sharing your location with your trusted circle & connections',
     },
   });

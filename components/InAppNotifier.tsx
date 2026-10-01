@@ -52,6 +52,9 @@ export function routeForNotification(data: Record<string, unknown>): Href | null
     return '/friends';
   }
   if (type === 'system') {
+    if (data.route === '/guild' || data.route === '/rewards') {
+      return data.route;
+    }
     return '/(tabs)/profile';
   }
   return null;
@@ -116,12 +119,16 @@ export default function InAppNotifier() {
           return;
         }
         void (async () => {
-          const { data: sender } = await supabase.from('profiles').select('display_name, avatar_url').eq('id', row.sender_id).maybeSingle();
+          const [{ data: sender }, { data: me }] = await Promise.all([
+            supabase.from('profiles').select('display_name, avatar_url').eq('id', row.sender_id).maybeSingle(),
+            supabase.from('chat_participants').select('muted').eq('thread_id', row.thread_id).eq('user_id', userId).maybeSingle(),
+          ]);
+          if (me?.muted) return;
           enqueue({
             key: `m:${row.id}`,
             kind: 'message',
             title: sender?.display_name ?? 'New message',
-            body: row.message_type === 'location' ? '📍 Shared a location' : row.body,
+            body: row.message_type === 'location' ? '📍 Shared a location' : row.message_type === 'image' ? '📷 Sent a photo' : row.body,
             avatarUrl: sender?.avatar_url,
             data: { type: 'message', thread_id: row.thread_id },
           });

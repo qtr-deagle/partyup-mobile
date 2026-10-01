@@ -74,7 +74,8 @@ export default function VehicleReviewScreen() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
 
-  const isStaff = profile?.role === 'staff' || profile?.role === 'admin';
+  // Verification reviews are an admin job.
+  const isStaff = profile?.role === 'admin';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,8 +134,8 @@ export default function VehicleReviewScreen() {
     return (
       <View className={`flex-1 items-center justify-center px-8 ${background}`} style={{ paddingTop: insets.top }}>
         <ShieldQuestion size={40} color="#6C7A95" />
-        <Text className={`mt-4 text-center text-headline-18 font-bold ${primary}`}>Staff access only</Text>
-        <Text className={`mt-2 text-center text-base ${secondary}`}>This tool is limited to staff and admin accounts.</Text>
+        <Text className={`mt-4 text-center text-headline-18 font-bold ${primary}`}>Admins only</Text>
+        <Text className={`mt-2 text-center text-base ${secondary}`}>Verification reviews are handled by PartyUp admins.</Text>
         <AnimatedPressable onPress={() => router.back()} className="mt-6 rounded-2xl bg-[#2A55D4] px-6 py-3">
           <Text className="font-bold text-white">Go back</Text>
         </AnimatedPressable>
@@ -172,7 +173,7 @@ export default function VehicleReviewScreen() {
               key={row.id}
               entering={enterFromBelow(index)}
               exiting={FadeOutLeft.duration(250)}
-              layout={LinearTransition.springify().damping(18)}
+              layout={LinearTransition.duration(250)}
               className={`gap-3 rounded-[22px] border p-4 shadow-sm ${card} ${isDark ? 'shadow-black/20' : 'shadow-black/5'}`}>
               <View className="flex-row items-center justify-between">
                 <View>

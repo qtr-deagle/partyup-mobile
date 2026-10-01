@@ -18,11 +18,11 @@ DEMO FLOW FOR PANELIST
 Recommended live flow for the panel, now that both gaps are closed:
 
 Register a fresh traveler account.
+Driver taps Complete Trip.
 Submit ID verification (let the selfie quality-retry trigger once to show it's real).
-Switch to your staff account → Settings → Review ID Verifications → Approve.
+Switch to your Guild Leader account → Settings → Review ID Verifications → Approve.
 Back on the traveler account, create a carpool, share the invite code.
 Second account joins, driver approves, rider pays (PayMongo sandbox is the more visual choice), driver confirms.
-Driver taps Complete Trip.
 Rate the other traveler from the now-completed trip.
 Close with Report/Block as a quick safety-feature highlight.ewdscxz
 
@@ -34,7 +34,7 @@ Setup — do this once, before the panel sits down:
 
 
 npm run demo:seed
-This wipes any leftover @partyup.demo accounts and creates fresh reviewer@partyup.demo (staff) and rider@partyup.demo (pre-approved traveler), both password Demo1234!. Don't run demo:reset again until you're done presenting or rehearsing a new run-through.
+This wipes any leftover @partyup.demo accounts and creates fresh reviewer@partyup.demo (Guild Leader) and rider@partyup.demo (pre-approved traveler), both password Demo1234!. Don't run demo:reset again until you're done presenting or rehearsing a new run-through.
 
 Use two devices/emulators side by side — it removes every sign-out/sign-in gap from the live flow:
 
@@ -57,7 +57,7 @@ Submit. Say: "This upload also kicks off a background AWS Rekognition face-match
 Sign in as reviewer@partyup.demo / Demo1234!.
 Settings (profile → gear/Settings) → "Review ID Verifications".
 Card for your Device A account appears with front/back/selfie photos + the AI match score. Tap Approve.
-Say: "Staff sees the same photos plus the AI's advisory score, and makes the real decision."
+Say: "The Guild Leader sees the same photos plus the AI's advisory score, and makes the real decision."
 4. Create a carpool (Device A)
 
 Carpooling tab → make sure the Carpool switch (not Tours) is selected → tap the + FAB → fill title, origin, destination, date/time, seats, total cost, visibility public → create.

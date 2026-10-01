@@ -1,3 +1,5 @@
+import { GuildSummaryCard } from '@/components/GuildSummaryCard';
+import { riseIn } from '@/components/ui/motion';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { parseTimestamp } from '@/lib/datetime';
 import type { StaffOverview, StaffSosAlert } from '@/lib/homeDashboard';
@@ -12,14 +14,16 @@ import {
   Map as MapIcon,
   Route,
   Settings,
+  Shield,
   ShieldAlert,
   ShieldCheck,
+  Target,
   UserPlus,
   Users,
 } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Alert, Text, View } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 
 function timeAgo(value: string) {
   const minutes = Math.max(0, Math.round((Date.now() - parseTimestamp(value).getTime()) / 60000));
@@ -33,9 +37,11 @@ function timeAgo(value: string) {
 type Props = {
   isDark: boolean;
   overview: StaffOverview | null;
+  // Verification queues are admin-only; Guild Leaders get guild shortcuts instead.
+  isAdmin: boolean;
 };
 
-export default function StaffDashboard({ isDark, overview }: Props) {
+export default function StaffDashboard({ isDark, overview, isAdmin }: Props) {
   const router = useRouter();
   const { primaryColor, accentColor, destructiveColor, warningColor, panelBackground, panelBorder, mutedPanel, mutedText, primaryText, softBorder } =
     getTheme(isDark);
@@ -50,7 +56,7 @@ export default function StaffDashboard({ isDark, overview }: Props) {
     });
 
   const showReportsInfo = () =>
-    Alert.alert('User reports', 'Reports are handled on the PartyUp staff website, where you can view evidence and resolve them.');
+    Alert.alert('User reports', 'Reports are handled by PartyUp admins on the admin website, where they can view evidence and resolve them.');
 
   const sosCount = overview?.active_sos.length ?? 0;
   const queueTotal = overview ? overview.pending_ids + overview.pending_vehicles + overview.open_reports : 0;
@@ -61,7 +67,7 @@ export default function StaffDashboard({ isDark, overview }: Props) {
       {/* Live SOS */}
       <Animated.View
         key={sosCount > 0 ? 'staff-sos-active' : 'staff-sos-clear'}
-        entering={FadeInDown.delay(80).duration(400).springify().damping(16)}
+        entering={riseIn(80)}
         className={`rounded-[24px] border-2 p-4 ${
           sosCount > 0
             ? isDark
@@ -115,9 +121,14 @@ export default function StaffDashboard({ isDark, overview }: Props) {
         )}
       </Animated.View>
 
-      {/* Review queues */}
+      {/* Guild, points and rank */}
+      <GuildSummaryCard isDark={isDark} delay={110} />
+
+      {/* Review queues (admins) */}
+      {isAdmin ? (
       <Animated.View
-        entering={FadeInDown.delay(140).duration(400).springify().damping(16)}
+        key="review-queues"
+        entering={riseIn(140)}
         className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
         <View className="flex-row items-center justify-between">
           <Text className={`${typography.sectionTitle} ${primaryText}`}>Review Queues</Text>
@@ -159,10 +170,11 @@ export default function StaffDashboard({ isDark, overview }: Props) {
           />
         </View>
       </Animated.View>
+      ) : null}
 
       {/* Platform snapshot */}
       <Animated.View
-        entering={FadeInDown.delay(200).duration(400).springify().damping(16)}
+        entering={riseIn(200)}
         className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
         <Text className={`${typography.sectionTitle} ${primaryText}`}>Platform Snapshot</Text>
         <View className="mt-4 flex-row flex-wrap justify-between gap-y-3">
@@ -227,8 +239,10 @@ export default function StaffDashboard({ isDark, overview }: Props) {
         </View>
       </Animated.View>
 
-      {/* Staff quick actions */}
-      <Animated.View entering={FadeInDown.delay(260).duration(400).springify().damping(16)} className="flex-row flex-wrap justify-between gap-y-4">
+      {/* Quick actions */}
+      <Animated.View entering={riseIn(260)} className="flex-row flex-wrap justify-between gap-y-4">
+        {isAdmin ? (
+          <>
         <ActionTile
           isDark={isDark}
           softBorder={softBorder}
@@ -249,6 +263,31 @@ export default function StaffDashboard({ isDark, overview }: Props) {
           primaryText={primaryText}
           mutedText={mutedText}
         />
+          </>
+        ) : (
+          <>
+        <ActionTile
+          isDark={isDark}
+          softBorder={softBorder}
+          icon={<Shield size={20} color={primaryColor} />}
+          title="My Guild"
+          subtitle="Members & requests"
+          onPress={() => router.push('/guild')}
+          primaryText={primaryText}
+          mutedText={mutedText}
+        />
+        <ActionTile
+          isDark={isDark}
+          softBorder={softBorder}
+          icon={<Target size={20} color={primaryColor} />}
+          title="Missions"
+          subtitle="Leader goals"
+          onPress={() => router.push({ pathname: '/guild', params: { tab: 'missions' } })}
+          primaryText={primaryText}
+          mutedText={mutedText}
+        />
+          </>
+        )}
         <ActionTile
           isDark={isDark}
           softBorder={softBorder}

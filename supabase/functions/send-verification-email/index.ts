@@ -89,7 +89,7 @@ function idCopy(data: {
     ...(data.reviewedAt && data.status !== 'received' ? [['Reviewed', data.reviewedAt] as [string, string]] : []),
   ];
   const footer =
-    "You're receiving this because an ID verification was submitted for your PartyUp account. Your documents are only visible to PartyUp staff. If this wasn't you, reply to this email right away.";
+    "You're receiving this because an ID verification was submitted for your PartyUp account. Your documents are only visible to PartyUp Guild Leaders. If this wasn't you, reply to this email right away.";
 
   switch (data.status) {
     case 'received':
@@ -148,7 +148,7 @@ function vehicleCopy(data: {
     ...(data.reviewedAt && data.status !== 'received' ? [['Reviewed', data.reviewedAt] as [string, string]] : []),
   ];
   const footer =
-    "You're receiving this because vehicle documents were submitted for your PartyUp account. Your documents are only visible to PartyUp staff. If this wasn't you, reply to this email right away.";
+    "You're receiving this because vehicle documents were submitted for your PartyUp account. Your documents are only visible to PartyUp Guild Leaders. If this wasn't you, reply to this email right away.";
 
   switch (data.status) {
     case 'received':

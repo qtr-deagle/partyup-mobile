@@ -1,3 +1,4 @@
+import { UserRankTag } from '@/components/guild/UserRankTag';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState, SkeletonCard } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
@@ -227,7 +228,7 @@ export default function FriendsScreen() {
     return (
       <Card key={connection.user_id} index={index}>
         <TouchableOpacity onPress={() => openProfile(connection)} className="flex-row items-center gap-3" accessibilityLabel={`View ${connection.display_name}'s profile`}>
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text></View>
+          <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text><UserRankTag userId={connection.user_id} isDark={isDark} variant="overlay" size={24} /></View>
           <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text numberOfLines={1} className={`mt-1 text-sm ${secondary}`}>{connection.interests.length ? connection.interests.join('  •  ') : 'No interests selected'}</Text></View>
         </TouchableOpacity>
         <View className="mt-4 flex-row gap-2">
@@ -249,7 +250,7 @@ export default function FriendsScreen() {
     return (
       <Card key={connection.user_id} index={index}>
         <View className="flex-row items-center gap-3">
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text></View>
+          <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text><UserRankTag userId={connection.user_id} isDark={isDark} variant="overlay" size={24} /></View>
           <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text className={`mt-1 text-sm ${secondary}`}>Awaiting response</Text></View>
         </View>
         <AnimatedPressable onPress={() => void updateRequest(connection, 'cancelled')} disabled={busy} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>

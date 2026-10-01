@@ -5,8 +5,9 @@
 //   1. Confirms the caller owns that row (via their JWT).
 //   2. Downloads the front-of-ID and selfie images from private storage.
 //   3. Calls AWS Rekognition CompareFaces (selfie vs ID photo) for a
-//      similarity score, and DetectFaces (on the ID photo) for an
-//      estimated age range.
+//      similarity score, DetectFaces (on the ID photo) for an estimated
+//      age range, and DetectText (ID front + back) to check the address
+//      is in Bulacan and matches the user's declared municipality.
 //   4. Writes ai_* columns back onto the row.
 //
 // It NEVER sets `status` or `profiles.verification_status` — those remain
@@ -14,7 +15,8 @@
 // This function only produces a hint for whoever reviews the queue.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { compareFaces, detectFaceAgeRange, type AwsCredentials } from './aws-sigv4.ts';
+import { compareFaces, detectFaceAgeRange, detectText, type AwsCredentials } from './aws-sigv4.ts';
+import { checkBulacanAddress, type AddressFlag } from './bulacan-address.ts';
 
 const MAX_IMAGE_BYTES = 5_000_000; // Rekognition's limit for inline (non-S3) image bytes
 
@@ -50,7 +52,16 @@ type AiResult = {
   ai_age_high: number | null;
   ai_flag: 'high_confidence' | 'needs_review' | 'low_similarity' | 'error';
   ai_underage_flag: boolean;
+  ai_address_flag: AddressFlag;
+  ai_detected_municipality: string | null;
   ai_error: string | null;
+};
+
+type AddressInput = {
+  // Passports carry no address, so the OCR call is skipped for them.
+  applicable: boolean;
+  images: string[];
+  declaredCity: string | null;
 };
 
 function flagFromSimilarity(similarity: number | null): AiResult['ai_flag'] {
@@ -60,10 +71,17 @@ function flagFromSimilarity(similarity: number | null): AiResult['ai_flag'] {
   return 'low_similarity';
 }
 
-async function runAiChecks(creds: AwsCredentials, selfieBase64: string, frontBase64: string): Promise<AiResult> {
+async function runAiChecks(
+  creds: AwsCredentials,
+  selfieBase64: string,
+  frontBase64: string,
+  address: AddressInput
+): Promise<AiResult> {
   let similarity: number | null = null;
   let ageLow: number | null = null;
   let ageHigh: number | null = null;
+  let addressFlag: AddressFlag = 'not_applicable';
+  let detectedMunicipality: string | null = null;
   const errors: string[] = [];
 
   try {
@@ -89,12 +107,32 @@ async function runAiChecks(creds: AwsCredentials, selfieBase64: string, frontBas
     errors.push(`Age detection failed: ${message}`);
   }
 
+  if (address.applicable) {
+    try {
+      const results = await Promise.all(address.images.map((image) => detectText(creds, image)));
+      const lines: string[] = results.flatMap((result) =>
+        (result.TextDetections ?? [])
+          .filter((detection: { Type?: string }) => detection.Type === 'LINE')
+          .map((detection: { DetectedText?: string }) => detection.DetectedText ?? '')
+      );
+      const check = checkBulacanAddress(lines, address.declaredCity);
+      addressFlag = check.flag;
+      detectedMunicipality = check.municipality;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      addressFlag = 'error';
+      errors.push(`Address check failed: ${message}`);
+    }
+  }
+
   return {
     ai_similarity_score: similarity,
     ai_age_low: ageLow,
     ai_age_high: ageHigh,
     ai_flag: flagFromSimilarity(similarity),
     ai_underage_flag: ageHigh !== null && ageHigh < 18,
+    ai_address_flag: addressFlag,
+    ai_detected_municipality: detectedMunicipality,
     ai_error: errors.length > 0 ? errors.join('; ') : null,
   };
 }
@@ -163,7 +201,7 @@ async function handleRequest(req: Request): Promise<Response> {
   });
   const { data: row, error: rowError } = await adminClient
     .from('id_verifications')
-    .select('id, user_id, front_image_path, selfie_image_path')
+    .select('id, user_id, document_type, front_image_path, back_image_path, selfie_image_path')
     .eq('id', verificationId)
     .maybeSingle();
   console.log('[verify-id-ai] checkpoint: row fetch done', { hasRow: !!row, rowError: rowError?.message });
@@ -198,9 +236,11 @@ async function handleRequest(req: Request): Promise<Response> {
     const creds: AwsCredentials = { accessKeyId, secretAccessKey, region };
     console.log('[verify-id-ai] checkpoint: AWS creds loaded, downloading images', { region });
 
-    const [frontBlob, selfieBlob] = await Promise.all([
+    const [frontBlob, selfieBlob, backBlob, profileResult] = await Promise.all([
       adminClient.storage.from('id-verifications').download(row.front_image_path),
       adminClient.storage.from('id-verifications').download(row.selfie_image_path),
+      row.back_image_path ? adminClient.storage.from('id-verifications').download(row.back_image_path) : null,
+      adminClient.from('profiles').select('city').eq('id', row.user_id).maybeSingle(),
     ]);
     console.log('[verify-id-ai] checkpoint: images downloaded', {
       frontOk: !frontBlob.error,
@@ -215,9 +255,16 @@ async function handleRequest(req: Request): Promise<Response> {
       blobToBase64(frontBlob.data),
       blobToBase64(selfieBlob.data),
     ]);
+    // The back is optional and only feeds the address check (PhilSys prints
+    // the address there), so a bad back image just means front-only OCR.
+    const backBase64 = backBlob?.data ? await blobToBase64(backBlob.data).catch(() => null) : null;
     console.log('[verify-id-ai] checkpoint: base64 encoded, calling Rekognition');
 
-    const result = await runAiChecks(creds, selfieBase64, frontBase64);
+    const result = await runAiChecks(creds, selfieBase64, frontBase64, {
+      applicable: row.document_type !== 'passport',
+      images: backBase64 ? [frontBase64, backBase64] : [frontBase64],
+      declaredCity: (profileResult.data?.city as string | null | undefined) ?? null,
+    });
     console.log('[verify-id-ai] checkpoint: Rekognition calls done', result);
     await writeResult(result);
     console.log('[verify-id-ai] checkpoint: DB write-back done');
@@ -226,6 +273,7 @@ async function handleRequest(req: Request): Promise<Response> {
       ai_flag: result.ai_flag,
       ai_similarity_score: result.ai_similarity_score,
       ai_underage_flag: result.ai_underage_flag,
+      ai_address_flag: result.ai_address_flag,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -235,6 +283,8 @@ async function handleRequest(req: Request): Promise<Response> {
       ai_age_high: null,
       ai_flag: 'error',
       ai_underage_flag: false,
+      ai_address_flag: 'error',
+      ai_detected_municipality: null,
       ai_error: message,
     });
     return jsonResponse({ ai_flag: 'error', error: message }, 200);

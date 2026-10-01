@@ -1,6 +1,6 @@
 import IdCameraCapture from '@/components/IdCameraCapture';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { SuccessOverlay, useShake } from '@/components/ui/motion';
+import { riseIn, SuccessOverlay, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -9,7 +9,7 @@ import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Camera, CheckCircle2, Car, FileText, IdCard, PenLine } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Image, Pressable, ScrollView, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function UploadTile({ label, uri, onPress, icon }: { label: string; uri: string | null; onPress: () => void; icon: React.ReactNode }) {
@@ -28,7 +28,7 @@ function UploadTile({ label, uri, onPress, icon }: { label: string; uri: string 
       {uri ? (
         <View className="w-full">
           <Image source={{ uri }} className="h-32 w-full rounded-2xl" resizeMode="cover" />
-          <Animated.View entering={ZoomIn.springify().damping(12)} className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full bg-[#10B981]">
+          <Animated.View entering={riseIn(0, 300)} className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full bg-[#10B981]">
             <CheckCircle2 size={18} color="#FFFFFF" />
           </Animated.View>
         </View>
@@ -247,7 +247,7 @@ export default function VerifyVehicleScreen() {
 
         <View className={`flex-row items-start gap-2 rounded-2xl px-4 py-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF2FF]'}`}>
           <CheckCircle2 size={18} color={isDark ? '#8FB0FF' : '#2747C7'} />
-          <Text className={`flex-1 text-[14px] leading-5 ${isDark ? 'text-[#C7D4F5]' : 'text-[#3646A0]'}`}>Your vehicle documents are only visible to PartyUp staff for review.</Text>
+          <Text className={`flex-1 text-[14px] leading-5 ${isDark ? 'text-[#C7D4F5]' : 'text-[#3646A0]'}`}>Your vehicle documents are only visible to PartyUp Guild Leaders for review.</Text>
         </View>
 
         <AnimatedPressable
@@ -276,7 +276,7 @@ export default function VerifyVehicleScreen() {
       <SuccessOverlay
         visible={submitted}
         title="Verification submitted"
-        message="Our staff will review your vehicle documents and notify you once it's done."
+        message="A Guild Leader will review your vehicle documents and notify you once it's done."
         durationMs={2200}
         onDone={finishSubmitted}
       />

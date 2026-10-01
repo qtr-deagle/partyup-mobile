@@ -63,7 +63,8 @@ async function buildChatPush(admin: SupabaseClient, id: string): Promise<Push | 
   }
 
   const [{ data: participants }, { data: sender }, { data: thread }, { data: blocks }] = await Promise.all([
-    admin.from('chat_participants').select('user_id').eq('thread_id', message.thread_id).neq('user_id', message.sender_id),
+    // Muted chats stay silent.
+    admin.from('chat_participants').select('user_id').eq('thread_id', message.thread_id).neq('user_id', message.sender_id).eq('muted', false),
     admin.from('profiles').select('display_name').eq('id', message.sender_id).maybeSingle(),
     admin.from('chat_threads').select('thread_type, title').eq('id', message.thread_id).maybeSingle(),
     // Anyone who blocked the sender gets nothing.
@@ -78,7 +79,7 @@ async function buildChatPush(admin: SupabaseClient, id: string): Promise<Push | 
 
   const senderName = sender?.display_name ?? 'New message';
   const isGroup = thread?.thread_type !== 'direct' && thread?.title;
-  const preview = message.message_type === 'location' ? '📍 Shared a location' : message.body;
+  const preview = message.message_type === 'location' ? '📍 Shared a location' : message.message_type === 'image' ? '📷 Sent a photo' : message.body;
   return {
     userIds,
     title: isGroup ? thread.title : senderName,

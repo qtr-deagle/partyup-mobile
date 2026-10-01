@@ -19,13 +19,22 @@ import ActiveSosBanner from '@/components/ActiveSosBanner';
 import WarningModeBanner from '@/components/WarningModeBanner';
 import InAppNotifier from '@/components/InAppNotifier';
 import SosAlertOverlay from '@/components/SosAlertOverlay';
+import SosEdgeTab from '@/components/SosEdgeTab';
 import { AuthProvider, useAuth } from '@/hooks/auth-provider';
 import { ThemePreferenceProvider, useColorScheme } from '@/hooks/use-color-scheme';
 import { preloadSounds } from '@/lib/sounds';
 import { useEffect } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, LogBox, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+// Dev-only noise: expo-sqlite (our Supabase session storage) opens an Expo
+// DevTools websocket to the dev server, and when the phone can't reach it
+// (Metro stopped, laptop asleep, Wi-Fi changed) it gives up after ~5 min with
+// "Error happened from the WebSocket connection: Exceeded max retries".
+// Harmless (release builds never open it), so keep it off the LogBox overlay;
+// it still prints in the Metro terminal.
+LogBox.ignoreLogs(['Error happened from the WebSocket connection']);
 
 export default function RootLayout() {
   return (
@@ -79,11 +88,16 @@ function RootLayoutContent() {
         <Stack.Screen name="vehicles" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         <Stack.Screen name="verify-id" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         <Stack.Screen name="verification-required" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="account-suspended" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="verify-vehicle" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="friends" options={{ headerShown: false }} />
         <Stack.Screen name="trusted-circle" options={{ headerShown: false }} />
         <Stack.Screen name="blocked-users" options={{ headerShown: false }} />
+        <Stack.Screen name="guild" options={{ headerShown: false }} />
+        <Stack.Screen name="guild/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="guild/chat" options={{ headerShown: false }} />
+        <Stack.Screen name="rewards" options={{ headerShown: false }} />
         <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
         <Stack.Screen name="id-review" options={{ headerShown: false }} />
         <Stack.Screen name="vehicle-review" options={{ headerShown: false }} />
@@ -91,10 +105,12 @@ function RootLayoutContent() {
         <Stack.Screen name="trip/create" options={{ headerShown: false }} />
         <Stack.Screen name="trip/create-tour" options={{ headerShown: false }} />
         <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="trip/chat/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="trip/join/[code]" options={{ headerShown: false }} />
       </Stack>
       <VerificationGate />
       <InAppNotifier />
+      <SosEdgeTab />
       <WarningModeBanner />
       <ActiveSosBanner />
       <SosAlertOverlay />
@@ -124,6 +140,9 @@ function VerificationGate() {
     profile !== null &&
     profile.role === 'traveler' &&
     (profile.verification_status !== 'approved' || !profile.city);
+  // Staff suspend accounts from the website by clearing is_active. Admins
+  // can't be suspended, so only travelers and Guild Leaders are held here.
+  const isSuspended = Boolean(session) && profile !== null && !profile.is_active && profile.role !== 'admin';
 
   useEffect(() => {
     if (!navigationState?.key || !profileReady) {
@@ -131,9 +150,20 @@ function VerificationGate() {
     }
 
     if (!session) {
-      if (currentSegment === 'verification-required') {
+      if (currentSegment === 'verification-required' || currentSegment === 'account-suspended') {
         router.replace('/(auth)/sign-in');
       }
+      return;
+    }
+
+    if (isSuspended) {
+      if (currentSegment !== 'account-suspended') {
+        router.replace('/account-suspended');
+      }
+      return;
+    }
+    if (currentSegment === 'account-suspended') {
+      router.replace(needsVerification ? '/verification-required' : '/(tabs)');
       return;
     }
 
@@ -142,7 +172,7 @@ function VerificationGate() {
     } else if (!needsVerification && currentSegment === 'verification-required') {
       router.replace('/(tabs)');
     }
-  }, [currentSegment, navigationState?.key, needsVerification, profileReady, router, session]);
+  }, [currentSegment, isSuspended, navigationState?.key, needsVerification, profileReady, router, session]);
 
   return null;
 }

@@ -11,10 +11,10 @@ import LegalNameFields from '@/components/LegalNameFields';
 import MunicipalityPicker from '@/components/MunicipalityPicker';
 import { displayNameFrom, legalNameColumns, validateLegalName, type LegalName } from '@/lib/names';
 import TermsModal from '@/components/TermsModal';
-import { useShake } from '@/components/ui/motion';
+import { riseIn, useShake } from '@/components/ui/motion';
 import { rateLimitWaitSeconds } from '@/lib/rateLimit';
 import { feedback } from '@/lib/sounds';
-import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInRight } from 'react-native-reanimated';
 import type { BulacanMunicipality } from '@/lib/bulacan';
 import { INTEREST_OPTIONS } from '@/lib/interests';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -372,7 +372,7 @@ export default function SignUpScreen() {
       <ScrollView contentContainerClassName="flex-grow justify-center px-4 pt-8"
         contentContainerStyle={{ paddingBottom: insets.bottom + 28 }} keyboardShouldPersistTaps="handled">
         {/* Separate layers: the entering animation and the shake both drive transform. */}
-        <Animated.View entering={FadeInDown.duration(500).springify().damping(18)} className="w-full">
+        <Animated.View entering={riseIn(0, 500)} className="w-full">
         <Animated.View style={shakeStyle} className="w-full rounded-[14px] bg-white px-5 py-6 shadow-lg shadow-black/10">
           <View className="items-center">
             <Text className="text-headline-24 font-bold text-[#2445B8]">Join PartyUp</Text>

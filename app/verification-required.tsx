@@ -115,7 +115,7 @@ export default function VerificationRequiredScreen() {
       ? {
           icon: <Clock size={44} color={warningColor} />,
           title: 'Your ID is under review',
-          body: "Thanks for submitting your documents. Our staff usually review them within 1-2 hours. We'll notify you once you're approved.",
+          body: "Thanks for submitting your documents. Our Guild Leaders usually review them within 1-2 hours. We'll notify you once you're approved.",
         }
       : status === 'rejected'
         ? {

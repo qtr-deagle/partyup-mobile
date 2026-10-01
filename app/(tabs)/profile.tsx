@@ -1,4 +1,5 @@
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { UserRankTag } from '@/components/guild/UserRankTag';
 import { enterFromBelow } from '@/components/ui/motion';
 import { useAuth } from '@/hooks/auth-provider';
 import { formatResidence } from '@/lib/bulacan';
@@ -12,7 +13,7 @@ import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
 import { getMyVerification, type IdVerification } from '@/lib/verification';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LogOut, Pencil, Shield, ShieldAlert, ShieldCheck, Star, Users } from 'lucide-react-native';
+import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LogOut, Pencil, Shield, ShieldAlert, ShieldCheck, Star, Trophy, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -182,6 +183,10 @@ export default function ProfileScreen() {
               <Text className={`shrink text-center text-headline-20 font-bold ${textPrimary}`} numberOfLines={2}>{profile?.display_name ?? ''}</Text>
               {profile?.verification_status === 'approved' ? <ShieldCheck size={18} color="#00A56A" /> : null}
             </View>
+
+            <TouchableOpacity onPress={() => router.push('/guild')} activeOpacity={0.8} className="mt-2" accessibilityLabel="Open your guild rank">
+              <UserRankTag userId={profile?.id} isDark={isDark} variant="title" role={profile?.role} />
+            </TouchableOpacity>
 
             {profileAge ? (
               <View className="mt-2 flex-row items-center gap-2">
@@ -358,6 +363,11 @@ export default function ProfileScreen() {
             <Text className="text-center text-[15px] font-bold text-white">Manage Emergency Contacts</Text>
           </TouchableOpacity>
         </SectionCard>
+
+        <TouchableOpacity onPress={() => router.push('/guild')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
+          <Trophy size={20} color="#2647B8" />
+          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>My Guild & Rewards</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity onPress={() => router.push('/vehicles')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
           <Car size={20} color="#2647B8" />

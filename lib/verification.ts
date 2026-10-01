@@ -24,12 +24,24 @@ export type IdVerification = {
   ai_age_high: number | null;
   ai_flag: 'high_confidence' | 'needs_review' | 'low_similarity' | 'error' | null;
   ai_underage_flag: boolean;
+  ai_address_flag: AiAddressFlag | null;
+  ai_detected_municipality: string | null;
   ai_error: string | null;
 };
+
+export type AiAddressFlag =
+  | 'match'
+  | 'other_bulacan_town'
+  | 'bulacan_unknown_town'
+  | 'not_bulacan'
+  | 'not_found'
+  | 'not_applicable'
+  | 'error';
 
 export type PendingVerification = IdVerification & {
   display_name: string;
   avatar_url: string | null;
+  city: string | null;
 };
 
 export type SubmitIdVerificationInput = {
@@ -147,13 +159,14 @@ export async function listPendingVerifications() {
 
   const rows = data as IdVerification[];
   const userIds = Array.from(new Set(rows.map((row) => row.user_id)));
-  const { data: profiles } = await supabase.from('profiles').select('id, display_name, avatar_url').in('id', userIds);
+  const { data: profiles } = await supabase.from('profiles').select('id, display_name, avatar_url, city').in('id', userIds);
   const profileById = new Map((profiles ?? []).map((row) => [row.id as string, row]));
 
   const merged: PendingVerification[] = rows.map((row) => ({
     ...row,
     display_name: (profileById.get(row.user_id)?.display_name as string) ?? 'Unknown traveler',
     avatar_url: (profileById.get(row.user_id)?.avatar_url as string | null) ?? null,
+    city: (profileById.get(row.user_id)?.city as string | null) ?? null,
   }));
 
   return { data: merged, error: null };

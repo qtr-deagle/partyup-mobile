@@ -1,6 +1,7 @@
 import { DEFAULT_FILTERS, FiltersModal, countActiveFilters, type FiltersValue } from '@/components/discover/FiltersModal';
 import { MyTripModal } from '@/components/discover/MyTripModal';
 import { SwipeCard } from '@/components/discover/SwipeCard';
+import { UserRankTag } from '@/components/guild/UserRankTag';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
@@ -365,7 +366,7 @@ export default function DiscoverScreen() {
                   className="flex-row items-center gap-3"
                   accessibilityLabel={`View ${profile.display_name}'s profile`}
                 >
-                  <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{profile.display_name.charAt(0).toUpperCase()}</Text></View>
+                  <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{profile.display_name.charAt(0).toUpperCase()}</Text><UserRankTag userId={profile.id} isDark={isDark} variant="overlay" size={24} /></View>
                   <View className="flex-1"><Text className={`text-headline-20 font-bold ${textPrimary}`}>{profile.display_name}</Text><Text className={`mt-1 text-sm ${textSecondary}`}>{profile.interests.length ? profile.interests.join('  •  ') : 'No interests selected'}</Text></View>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => void handleRequest(profile.id)} disabled={requestingId === profile.id} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${profile.request_status === 'accepted' || profile.request_status === 'outgoing_pending' ? 'bg-[#9EAFE9]' : 'bg-[#284BD6]'}`}>

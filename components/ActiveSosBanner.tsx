@@ -44,7 +44,7 @@ export default function ActiveSosBanner() {
       alertIdRef.current = null;
       setAlert(null);
       if (next.resolved_by && next.resolved_by !== userId) {
-        Alert.alert('SOS resolved', 'PartyUp staff marked your emergency alert as resolved. Live location sharing has stopped.');
+        Alert.alert('SOS resolved', 'PartyUp Guild Leaders marked your emergency alert as resolved. Live location sharing has stopped.');
       }
     };
 
@@ -111,7 +111,7 @@ export default function ActiveSosBanner() {
     if (!alert) {
       return;
     }
-    Alert.alert("I'm safe", 'End the emergency alert and stop sharing your live location with PartyUp staff?', [
+    Alert.alert("I'm safe", 'End the emergency alert and stop sharing your live location with PartyUp Guild Leaders?', [
       { text: 'Keep SOS on', style: 'cancel' },
       {
         text: "Yes, I'm safe",
@@ -150,7 +150,7 @@ export default function ActiveSosBanner() {
         <View className="ml-3 flex-1">
           <Text className="text-[14px] font-bold text-white">SOS active</Text>
           <Text numberOfLines={2} className="mt-0.5 text-[12px] leading-4 text-white/85">
-            Staff and your trusted circle can see your live location.
+            Guild Leaders and your trusted circle can see your live location.
           </Text>
         </View>
         <TouchableOpacity

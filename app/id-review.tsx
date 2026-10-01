@@ -44,6 +44,29 @@ function aiFlagColor(row: PendingVerification) {
   return '#6C7A95';
 }
 
+// Advisory OCR read of the ID address vs the municipality the user declared.
+function addressCheck(row: PendingVerification): { label: string; color: string } | null {
+  const declared = row.city ?? 'none';
+  switch (row.ai_address_flag) {
+    case 'match':
+      return { label: `Address: ${row.ai_detected_municipality}, Bulacan · matches declared`, color: '#19A06B' };
+    case 'other_bulacan_town':
+      return { label: `Address says ${row.ai_detected_municipality}, declared ${declared}`, color: '#B4650B' };
+    case 'bulacan_unknown_town':
+      return { label: `Bulacan address, town unclear · declared ${declared}`, color: '#B4650B' };
+    case 'not_bulacan':
+      return { label: 'No Bulacan address found on ID', color: '#E32727' };
+    case 'not_found':
+      return { label: 'Address unreadable · check manually', color: '#6C7A95' };
+    case 'not_applicable':
+      return { label: 'Passport has no address · check manually', color: '#6C7A95' };
+    case 'error':
+      return { label: 'Address check failed', color: '#6C7A95' };
+    default:
+      return null;
+  }
+}
+
 function VerificationImage({ path, label, isDark }: { path: string | null; label: string; isDark: boolean }) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,7 +125,8 @@ export default function IdReviewScreen() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
 
-  const isStaff = profile?.role === 'staff' || profile?.role === 'admin';
+  // Verification reviews are an admin job.
+  const isStaff = profile?.role === 'admin';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,8 +185,8 @@ export default function IdReviewScreen() {
     return (
       <View className={`flex-1 items-center justify-center px-8 ${background}`} style={{ paddingTop: insets.top }}>
         <ShieldQuestion size={40} color="#6C7A95" />
-        <Text className={`mt-4 text-center text-headline-18 font-bold ${primary}`}>Staff access only</Text>
-        <Text className={`mt-2 text-center text-base ${secondary}`}>This tool is limited to staff and admin accounts.</Text>
+        <Text className={`mt-4 text-center text-headline-18 font-bold ${primary}`}>Admins only</Text>
+        <Text className={`mt-2 text-center text-base ${secondary}`}>Verification reviews are handled by PartyUp admins.</Text>
         <AnimatedPressable onPress={() => router.back()} className="mt-6 rounded-2xl bg-[#2A55D4] px-6 py-3">
           <Text className="font-bold text-white">Go back</Text>
         </AnimatedPressable>
@@ -200,7 +224,7 @@ export default function IdReviewScreen() {
               key={row.id}
               entering={enterFromBelow(index)}
               exiting={FadeOutLeft.duration(250)}
-              layout={LinearTransition.springify().damping(18)}
+              layout={LinearTransition.duration(250)}
               className={`gap-3 rounded-[22px] border p-4 shadow-sm ${card} ${isDark ? 'shadow-black/20' : 'shadow-black/5'}`}>
               <View className="flex-row items-center justify-between">
                 <View>
@@ -227,6 +251,14 @@ export default function IdReviewScreen() {
                   {row.ai_similarity_score !== null ? ` · ${Math.round(row.ai_similarity_score)}% match` : ''}
                 </Text>
               </View>
+              {(() => {
+                const address = addressCheck(row);
+                return address ? (
+                  <Text className="-mt-2 text-xs font-bold" style={{ color: address.color }}>
+                    {address.label}
+                  </Text>
+                ) : null;
+              })()}
 
               {rejectingId === row.id ? (
                 <View className="gap-2">

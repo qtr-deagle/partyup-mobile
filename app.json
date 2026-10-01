@@ -92,7 +92,15 @@
           "color": "#E32727"
         }
       ],
-      "expo-audio"
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "PartyUp uses your photos so you can set a profile picture and send photos in chat.",
+          "cameraPermission": "PartyUp uses your camera to capture your ID, a selfie for verification, and photos you send in chat."
+        }
+      ],
+      "expo-audio",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -5,10 +5,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
-import { FloatingIcon, useShake } from '@/components/ui/motion';
+import { FloatingIcon, riseIn, useShake } from '@/components/ui/motion';
 import { formatWait, rateLimitWaitSeconds } from '@/lib/rateLimit';
 import { feedback } from '@/lib/sounds';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Same rules as sign-up, so a reset can't produce a weaker password.
@@ -191,7 +191,7 @@ export default function ForgotPasswordScreen() {
         {/* No swipe-back on the password step: leaving it has to sign out first. */}
         <Stack.Screen options={{ gestureEnabled: step !== 'password' }} />
         {/* Separate layers: the entering animation and the shake both drive transform. */}
-        <Animated.View entering={FadeInDown.duration(500).springify().damping(18)} className="w-full">
+        <Animated.View entering={riseIn(0, 500)} className="w-full">
         <Animated.View style={shakeStyle} className="w-full rounded-[14px] bg-white px-6 py-7 shadow-lg shadow-black/10">
           <TouchableOpacity
             onPress={handleBack}

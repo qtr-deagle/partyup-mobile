@@ -1,17 +1,21 @@
+import { PlayerRankCard } from '@/components/guild/PlayerRankCard';
+import { useAuth } from '@/hooks/auth-provider';
+import { ProfileTrophies } from '@/components/guild/ProfileTrophies';
 import { ReportUserModal } from '@/components/ReportUserModal';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { Skeleton } from '@/components/ui/motion';
+import { riseIn, Skeleton } from '@/components/ui/motion';
 import { Card } from '@/components/ui/screen-header';
 import { formatResidence } from '@/lib/bulacan';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { blockUser, unblockUser } from '@/lib/blocking';
+import { cancelGuildInvite, getGuildInviteStatus, inviteToGuild, type GuildInviteStatus } from '@/lib/guilds';
 import { createOrGetDirectThread, getFriendRequestStatuses, getProfileById, removeFriend, respondToFriendRequest, sendFriendRequest, type SearchProfile } from '@/lib/social';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, BadgeCheck, Check, Flag, MapPin, Shield, ShieldOff, Star, UserPlus, X } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, Check, Flag, Lock, MailCheck, MapPin, Pencil, Shield, ShieldOff, Star, UserPlus, Users, X } from 'lucide-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, Text, View } from 'react-native';
-import Animated, { FadeIn, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function getAge(dateOfBirth: string | null) {
@@ -26,9 +30,10 @@ function getAge(dateOfBirth: string | null) {
 
 export default function PublicProfileScreen() {
   const router = useRouter();
+  const { session } = useAuth();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ id: string; displayName?: string; interests?: string; avatarUrl?: string; requestStatus?: string; requestId?: string }>();
+  const params = useLocalSearchParams<{ id: string; displayName?: string; interests?: string; avatarUrl?: string; requestStatus?: string; requestId?: string; place?: string; period?: string }>();
   const [requesting, setRequesting] = useState(false);
   const [requestStatus, setRequestStatus] = useState(params.requestStatus || '');
   const [requestId, setRequestId] = useState(params.requestId || '');
@@ -37,6 +42,9 @@ export default function PublicProfileScreen() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
+  // Set only when the viewer leads or officers a guild.
+  const [inviteStatus, setInviteStatus] = useState<GuildInviteStatus | null>(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
   const displayName = fullProfile?.display_name ?? params.displayName ?? 'PartyUp traveler';
   const interests = useMemo(() => {
     if (fullProfile) return fullProfile.interests;
@@ -66,6 +74,7 @@ export default function PublicProfileScreen() {
         setFullProfile(result.data);
         setProfileLoading(false);
       }),
+      getGuildInviteStatus(params.id).then((result) => setInviteStatus(result.data)),
     ]);
   }, [params.id]);
   const { refreshing, refreshControl } = usePullToRefresh(loadProfile);
@@ -179,7 +188,45 @@ export default function PublicProfileScreen() {
     setFullProfile((current) => (current ? { ...current, is_blocked_by_me: false } : current));
   }
 
+  async function handleInvite() {
+    if (!inviteStatus) return;
+    setInviteBusy(true);
+    setErrorMessage(null);
+    const { error } = await inviteToGuild(params.id);
+    // Re-read either way: on failure the rules may have changed since load.
+    const refreshed = await getGuildInviteStatus(params.id);
+    setInviteBusy(false);
+    setInviteStatus(refreshed.data);
+    if (error) {
+      setErrorMessage(error.message);
+      return;
+    }
+    Alert.alert('Invite sent', `${displayName} will get a notification to join ${inviteStatus.guild_name}.`);
+  }
+
+  function confirmCancelInvite() {
+    if (!inviteStatus?.invite_id) return;
+    const inviteId = inviteStatus.invite_id;
+    Alert.alert('Cancel invite?', `Withdraw ${displayName}'s invite to ${inviteStatus.guild_name}?`, [
+      { text: 'Keep invite', style: 'cancel' },
+      {
+        text: 'Cancel invite',
+        style: 'destructive',
+        onPress: async () => {
+          setInviteBusy(true);
+          const { error } = await cancelGuildInvite(inviteId);
+          const refreshed = await getGuildInviteStatus(params.id);
+          setInviteBusy(false);
+          setInviteStatus(refreshed.data);
+          if (error) setErrorMessage(error.message);
+        },
+      },
+    ]);
+  }
+
   const isFriendish = requestStatus === 'accepted' || requestStatus === 'outgoing_pending';
+  // Opened on yourself (e.g. from a leaderboard or roster): no friend/report/block.
+  const isSelf = !!session?.user.id && session.user.id === params.id;
   const divider = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
 
   return (
@@ -203,7 +250,7 @@ export default function PublicProfileScreen() {
       <View className="-mt-16 gap-4 px-4">
         <Card index={0} className="items-center px-5 pb-5 pt-0">
           <Animated.View
-            entering={ZoomIn.delay(80).springify().damping(14)}
+            entering={riseIn(80)}
             className={`-mt-12 h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 bg-[#B7C4EC] ${isDark ? 'border-[#111B2E]' : 'border-white'}`}>
             {avatarUrl ? (
               <Image source={{ uri: avatarUrl }} className="h-full w-full" />
@@ -256,17 +303,59 @@ export default function PublicProfileScreen() {
 
           {errorMessage ? <Text className="mt-5 self-stretch rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
 
-          {!fullProfile?.is_blocked_by_me ? (
+          {isSelf ? (
             <AnimatedPressable
+              key="edit-self"
+              onPress={() => router.push('/edit-profile')}
+              className={`mt-5 flex-row items-center justify-center gap-2 self-stretch rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#284BD6] bg-white'}`}>
+              <Pencil size={16} color={isDark ? '#E2E8F0' : '#284BD6'} />
+              <Text className={`font-bold ${isDark ? 'text-[#E2E8F0]' : 'text-[#284BD6]'}`}>Edit profile</Text>
+            </AnimatedPressable>
+          ) : !fullProfile?.is_blocked_by_me ? (
+            <>
+            <AnimatedPressable
+              key="friend"
               onPress={requestStatus === 'accepted' ? confirmRemoveFriend : () => void handleRequest()}
               disabled={requesting}
               className={`mt-5 flex-row items-center justify-center gap-2 self-stretch rounded-2xl py-3.5 ${isFriendish ? 'bg-[#9EAFE9]' : 'bg-[#284BD6] shadow-sm shadow-[#284BD6]/30'}`}>
               {requesting ? <ActivityIndicator color="#FFFFFF" /> : <>{requestStatus === 'accepted' || requestStatus === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : requestStatus === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{requestStatus === 'accepted' ? 'Friends' : requestStatus === 'outgoing_pending' ? 'Cancel request' : requestStatus === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
             </AnimatedPressable>
+
+            {inviteStatus?.invite_id ? (
+              <AnimatedPressable
+                key="invite-sent"
+                onPress={confirmCancelInvite}
+                disabled={inviteBusy}
+                className={`mt-3 flex-row items-center justify-center gap-2 self-stretch rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#CBD5F5] bg-[#F5F7FF]'}`}>
+                {inviteBusy ? <ActivityIndicator color={isDark ? '#A5B8F5' : '#284BD6'} /> : <MailCheck size={17} color={isDark ? '#A5B8F5' : '#284BD6'} />}
+                <Text className={`font-bold ${isDark ? 'text-[#A5B8F5]' : 'text-[#284BD6]'}`}>Invited to {inviteStatus.guild_name} · Cancel</Text>
+              </AnimatedPressable>
+            ) : inviteStatus?.can_invite ? (
+              <AnimatedPressable
+                key="invite"
+                onPress={() => void handleInvite()}
+                disabled={inviteBusy}
+                className={`mt-3 flex-row items-center justify-center gap-2 self-stretch rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#284BD6] bg-white'}`}>
+                {inviteBusy ? <ActivityIndicator color={isDark ? '#E2E8F0' : '#284BD6'} /> : <Users size={17} color={isDark ? '#E2E8F0' : '#284BD6'} />}
+                <Text className={`font-bold ${isDark ? 'text-[#E2E8F0]' : 'text-[#284BD6]'}`}>Invite to {inviteStatus.guild_name}</Text>
+              </AnimatedPressable>
+            ) : inviteStatus?.reason ? (
+              <View
+                key="invite-blocked"
+                className={`mt-3 flex-row items-center gap-2 self-stretch rounded-2xl px-4 py-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#F5F7FB]'}`}>
+                <Lock size={15} color={isDark ? '#94A3B8' : '#6C7A95'} />
+                <Text className={`flex-1 text-sm ${secondary}`}>Can't invite to {inviteStatus.guild_name}: {inviteStatus.reason}</Text>
+              </View>
+            ) : null}
+            </>
           ) : null}
         </Card>
 
-        <Card index={1}>
+        <PlayerRankCard userId={params.id} isDark={isDark} place={params.place ? Number(params.place) : null} period={params.period} />
+
+        <ProfileTrophies userId={params.id} isDark={isDark} index={1} />
+
+        <Card index={2}>
           <Text className={`text-[16px] font-bold ${primary}`}>Travel interests</Text>
           {interests.length ? (
             <View className="mt-3 flex-row flex-wrap gap-2">
@@ -279,7 +368,8 @@ export default function PublicProfileScreen() {
           ) : <Text className={`mt-3 text-sm ${secondary}`}>No interests selected yet.</Text>}
         </Card>
 
-        <Card index={2} className="flex-row py-1">
+        {isSelf ? null : (
+        <Card index={3} className="flex-row py-1">
           <AnimatedPressable onPress={() => setReportModalVisible(true)} scaleTo={0.97} className={`flex-1 flex-row items-center justify-center gap-2 border-r py-3 ${divider}`}>
             <Flag size={16} color={isDark ? '#94A3B8' : '#6C7A95'} />
             <Text className={`font-bold ${secondary}`}>Report</Text>
@@ -305,6 +395,7 @@ export default function PublicProfileScreen() {
             )}
           </AnimatedPressable>
         </Card>
+        )}
       </View>
 
       <ReportUserModal

@@ -204,7 +204,7 @@ export default function VerifyIdScreen() {
 
           <View className="mt-4 flex-row items-start gap-2 rounded-2xl bg-[#EEF2FF] px-4 py-3">
             <CheckCircle2 size={18} color="#2747C7" />
-            <Text className="flex-1 text-[14px] leading-5 text-[#3646A0]">Your documents are only visible to PartyUp staff for review.</Text>
+            <Text className="flex-1 text-[14px] leading-5 text-[#3646A0]">Your documents are only visible to PartyUp Guild Leaders for review.</Text>
           </View>
 
           <TouchableOpacity
@@ -247,7 +247,7 @@ export default function VerifyIdScreen() {
       <SuccessOverlay
         visible={submitted}
         title="Verification submitted"
-        message="We'll run a quick automatic check, then our staff will review your documents. You'll get a notification when it's done."
+        message="We'll run a quick automatic check, then a Guild Leader will review your documents. You'll get a notification when it's done."
         durationMs={2600}
         onDone={close}
       />

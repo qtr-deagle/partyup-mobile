@@ -1,8 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 
-export type ProfileRole = 'traveler' | 'staff' | 'admin';
+export type ProfileRole = 'traveler' | 'guild_leader' | 'admin';
 export type VerificationStatus = 'unverified' | 'pending' | 'approved' | 'rejected';
 
 export type UserProfile = {
@@ -111,6 +112,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     void refreshProfile();
+  }, [refreshProfile]);
+
+  // Staff can change role/verification/suspension from the website; pick that
+  // up whenever the app comes back to the foreground.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void refreshProfile();
+      }
+    });
+    return () => subscription.remove();
   }, [refreshProfile]);
 
   const signOut = useMemo(

@@ -66,9 +66,15 @@ export type Conversation = {
   last_message: string | null;
   last_message_at: string | null;
   last_message_sender_id: string | null;
+  last_message_type: ChatMessage['message_type'] | null;
+  last_message_deleted: boolean;
   other_last_read_at: string | null;
   other_last_delivered_at: string | null;
   unread_count: number;
+  muted: boolean;
+  pinned: boolean;
+  // Set after "Delete chat": messages before it stay hidden for me.
+  cleared_at: string | null;
 };
 
 // Where one of my messages is on its way to the other person.
@@ -81,9 +87,24 @@ export type ChatMessage = {
   thread_id: string;
   sender_id: string;
   body: string;
-  message_type: 'text' | 'system' | 'location';
+  message_type: 'text' | 'system' | 'location' | 'image';
   created_at: string;
+  // Set when a message was unsent or removed (body is then empty).
+  deleted_at?: string | null;
+  // Who removed it: the sender (unsend) or a guild moderator.
+  deleted_by?: string | null;
+  // Photo messages: a path in the private chat-media bucket.
+  image_path?: string | null;
+  image_width?: number | null;
+  image_height?: number | null;
+  reply_to_id?: string | null;
 };
+
+export const REACTION_EMOJIS = ['❤️', '😆', '😮', '😢', '😡', '👍'] as const;
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+export type ChatReaction = { message_id: string; user_id: string; emoji: ReactionEmoji };
+
+const MESSAGE_COLUMNS = 'id, thread_id, sender_id, body, message_type, created_at, deleted_at, deleted_by, image_path, image_width, image_height, reply_to_id';
 
 export async function searchProfiles(query: string) {
   let response;
@@ -264,22 +285,97 @@ export async function listDirectConversations() {
   return { data: (data ?? []) as Conversation[], error };
 }
 
-export async function getChatMessages(threadId: string) {
-  const { data, error } = await withRequestTimeout(supabase
-    .from('chat_messages')
-    .select('id, thread_id, sender_id, body, message_type, created_at')
-    .eq('thread_id', threadId)
-    .order('created_at', { ascending: true }), 'Loading messages');
+// `since` hides messages from before a "Delete chat".
+export async function getChatMessages(threadId: string, since?: string | null) {
+  let query = supabase.from('chat_messages').select(MESSAGE_COLUMNS).eq('thread_id', threadId);
+  if (since) query = query.gt('created_at', since);
+  const { data, error } = await withRequestTimeout(query.order('created_at', { ascending: true }), 'Loading messages');
   return { data: (data ?? []) as ChatMessage[], error };
 }
 
-export async function sendChatMessage(threadId: string, senderId: string, body: string) {
+export type OutgoingPhoto = { path: string; width: number; height: number };
+
+export async function sendChatMessage(threadId: string, senderId: string, body: string, options: { replyToId?: string | null; photo?: OutgoingPhoto } = {}) {
+  const { photo, replyToId } = options;
   const { data, error } = await supabase
     .from('chat_messages')
-    .insert({ thread_id: threadId, sender_id: senderId, body, message_type: 'text' })
-    .select('id, thread_id, sender_id, body, message_type, created_at')
+    .insert({
+      thread_id: threadId,
+      sender_id: senderId,
+      body,
+      message_type: photo ? 'image' : 'text',
+      image_path: photo?.path ?? null,
+      image_width: photo?.width ?? null,
+      image_height: photo?.height ?? null,
+      reply_to_id: replyToId ?? null,
+    })
+    .select(MESSAGE_COLUMNS)
     .single();
   return { data: data as ChatMessage | null, error };
+}
+
+export async function unsendMessage(messageId: string) {
+  return supabase.rpc('unsend_chat_message', { p_message_id: messageId });
+}
+
+export async function getReactions(threadId: string) {
+  const { data, error } = await supabase.from('chat_message_reactions').select('message_id, user_id, emoji').eq('thread_id', threadId);
+  return { data: (data ?? []) as ChatReaction[], error };
+}
+
+// `null` removes my reaction. thread_id is filled in by the database.
+export async function setReaction(messageId: string, userId: string, emoji: ReactionEmoji | null) {
+  if (!emoji) {
+    return supabase.from('chat_message_reactions').delete().eq('message_id', messageId).eq('user_id', userId);
+  }
+  return supabase.from('chat_message_reactions').upsert({ message_id: messageId, user_id: userId, emoji }, { onConflict: 'message_id,user_id' });
+}
+
+export async function setChatMuted(threadId: string, muted: boolean) {
+  return supabase.rpc('set_chat_muted', { p_thread_id: threadId, p_muted: muted });
+}
+
+export async function setChatPinned(threadId: string, pinned: boolean) {
+  return supabase.rpc('set_chat_pinned', { p_thread_id: threadId, p_pinned: pinned });
+}
+
+// A carpool or tour group chat, for the Messages list.
+export type GroupConversation = {
+  thread_id: string;
+  trip_id: string;
+  title: string;
+  trip_type: 'carpool' | 'tour';
+  trip_status: string;
+  member_count: number;
+  last_message: string | null;
+  last_message_type: ChatMessage['message_type'] | null;
+  last_message_deleted: boolean;
+  last_message_at: string | null;
+  last_message_sender_id: string | null;
+  last_sender_name: string | null;
+  unread_count: number;
+  muted: boolean;
+  pinned: boolean;
+};
+
+export async function listGroupConversations() {
+  const { data, error } = await withRequestTimeout(supabase.rpc('list_group_conversations'), 'Loading group chats');
+  return { data: (data ?? []) as GroupConversation[], error };
+}
+
+export async function getTripChatThread(tripId: string) {
+  const { data, error } = await withRequestTimeout(supabase.rpc('get_trip_chat_thread', { p_trip_id: tripId }), 'Opening trip chat');
+  return { data: (data ?? null) as string | null, error };
+}
+
+// My own mute/pin settings for a thread.
+export async function getChatPrefs(threadId: string, userId: string) {
+  const { data, error } = await supabase.from('chat_participants').select('muted, pinned_at').eq('thread_id', threadId).eq('user_id', userId).maybeSingle();
+  return { data: { muted: Boolean(data?.muted), pinned: Boolean(data?.pinned_at) }, error };
+}
+
+export async function clearChatForMe(threadId: string) {
+  return supabase.rpc('clear_chat_for_me', { p_thread_id: threadId });
 }
 
 export async function markThreadRead(threadId: string) {

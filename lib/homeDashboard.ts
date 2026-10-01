@@ -76,32 +76,19 @@ export type StaffOverview = {
   ongoing_trips: number;
 };
 
-function startOfTodayManila() {
-  // Manila is UTC+8 with no DST.
-  const now = new Date(Date.now() + 8 * 3600 * 1000);
-  now.setUTCHours(0, 0, 0, 0);
-  return new Date(now.getTime() - 8 * 3600 * 1000).toISOString();
-}
+type OverviewCounts = Record<
+  'pending_ids' | 'pending_vehicles' | 'open_reports' | 'total_travelers' | 'verified_travelers' | 'new_travelers_today' | 'open_trips' | 'ongoing_trips',
+  number | string
+>;
 
-// Relies on staff/admin RLS, which lets these roles read every row.
+// Counts come from get_staff_overview_counts() (leaders can't read every
+// row anymore); active SOS alerts are readable by leaders and admins.
 export async function getStaffOverview() {
-  const count = (query: PromiseLike<{ count: number | null; error: unknown }>) =>
-    Promise.resolve(query).then((result) => (result.error ? 0 : result.count ?? 0));
-  const profiles = () => supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'traveler');
-  const trips = () => supabase.from('trips').select('id', { count: 'exact', head: true });
-
   try {
-    const [pendingIds, pendingVehicles, openReports, totalTravelers, verifiedTravelers, newToday, openTrips, ongoingTrips, sosResult] =
+    const [countsResult, sosResult] =
       await withRequestTimeout(
         Promise.all([
-          count(supabase.from('id_verifications').select('id', { count: 'exact', head: true }).eq('status', 'pending')),
-          count(supabase.from('vehicles').select('id', { count: 'exact', head: true }).eq('verification_status', 'pending')),
-          count(supabase.from('reports').select('id', { count: 'exact', head: true }).in('status', ['open', 'reviewing'])),
-          count(profiles()),
-          count(profiles().eq('verification_status', 'approved')),
-          count(profiles().gte('created_at', startOfTodayManila())),
-          count(trips().in('status', ['open', 'full'])),
-          count(trips().eq('status', 'ongoing')),
+          supabase.rpc('get_staff_overview_counts'),
           supabase
             .from('sos_alerts')
             .select('id, user_id, trigger_reason, latitude, longitude, created_at')
@@ -118,22 +105,24 @@ export async function getStaffOverview() {
       ? await supabase.from('profiles').select('id, display_name').in('id', userIds)
       : { data: [] as { id: string; display_name: string | null }[] };
     const nameById = new Map((names ?? []).map((row) => [row.id, row.display_name]));
+    const counts = ((countsResult.data as OverviewCounts[] | null) ?? [])[0];
+    const n = (key: keyof OverviewCounts) => Number(counts?.[key] ?? 0);
 
     const data: StaffOverview = {
-      pending_ids: pendingIds,
-      pending_vehicles: pendingVehicles,
-      open_reports: openReports,
+      pending_ids: n('pending_ids'),
+      pending_vehicles: n('pending_vehicles'),
+      open_reports: n('open_reports'),
       active_sos: alerts.map((alert) => ({
         ...alert,
         latitude: alert.latitude == null ? null : Number(alert.latitude),
         longitude: alert.longitude == null ? null : Number(alert.longitude),
         display_name: nameById.get(alert.user_id) ?? 'Unknown traveler',
       })) as StaffSosAlert[],
-      total_travelers: totalTravelers,
-      verified_travelers: verifiedTravelers,
-      new_travelers_today: newToday,
-      open_trips: openTrips,
-      ongoing_trips: ongoingTrips,
+      total_travelers: n('total_travelers'),
+      verified_travelers: n('verified_travelers'),
+      new_travelers_today: n('new_travelers_today'),
+      open_trips: n('open_trips'),
+      ongoing_trips: n('ongoing_trips'),
     };
     return { data, error: null };
   } catch (error) {

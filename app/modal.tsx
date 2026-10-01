@@ -1,5 +1,5 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, ChevronRight, IdCard, MapPin, Shield, ShieldAlert, ShieldCheck, SunMedium, Trash2, UserX, Users, Volume2 } from 'lucide-react-native';
+import { AlertTriangle, ChevronRight, IdCard, MapPin, PanelRightOpen, Shield, ShieldAlert, ShieldCheck, SunMedium, Trash2, Trophy, UserX, Users, Volume2 } from 'lucide-react-native';
 import { useCallback, useState, type ReactNode } from 'react';
 import { ScrollView, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme, useThemePreference } from '@/hooks/use-color-scheme';
 import { setLocationVisibility } from '@/lib/location';
 import { setSafetyPreferences } from '@/lib/safety';
+import { setSosEdgeEnabled, useSosEdge } from '@/lib/sos-edge';
 import { setSoundEnabled, useSoundEnabled } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
 
@@ -87,6 +88,7 @@ export default function ModalScreen() {
 
   const isDark = colorScheme === 'dark';
   const soundEnabled = useSoundEnabled();
+  const sosEdge = useSosEdge();
 
   useFocusEffect(
     useCallback(() => {
@@ -198,6 +200,17 @@ export default function ModalScreen() {
               onValueChange={(next) => void handleToggleEmergencySos(next)}
               isDark={isDark}
             />
+
+            {profile?.emergency_sos_enabled !== false && (
+              <SettingRow
+                icon={<IconBadge tint={isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}><PanelRightOpen size={17} color="#E32727" /></IconBadge>}
+                title="SOS Edge Button"
+                description="Keep an SOS tab on the edge of every screen. It starts a Warning Mode countdown. Drag it to move it."
+                value={sosEdge.enabled}
+                onValueChange={setSosEdgeEnabled}
+                isDark={isDark}
+              />
+            )}
           </View>
 
           <View className={`mt-4 rounded-[18px] border px-4 py-4 ${isDark ? 'border-[#1F3B3D] bg-[#0F1F24]' : 'border-[#B8EAC9] bg-[#EEFDF3]'}`}>
@@ -237,7 +250,13 @@ export default function ModalScreen() {
             label="Manage Blocked Users"
             onPress={() => router.push('/blocked-users')}
           />
-          {profile?.role === 'staff' || profile?.role === 'admin' ? (
+          <NavRow
+            isDark={isDark}
+            icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><Trophy size={17} color="#2647B8" /></IconBadge>}
+            label="Guild & Rewards"
+            onPress={() => router.push('/guild')}
+          />
+          {profile?.role === 'admin' ? (
             <NavRow
               isDark={isDark}
               icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><IdCard size={17} color="#2647B8" /></IconBadge>}

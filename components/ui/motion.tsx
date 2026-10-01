@@ -8,7 +8,6 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeOut,
-  ZoomIn,
   useAnimatedStyle,
   useSharedValue,
   withDelay,
@@ -22,13 +21,17 @@ import Animated, {
 const STAGGER_MS = 55;
 const MAX_STAGGER_ITEMS = 8;
 
-// Entrance for list rows / cards: fade + rise, staggered by index. Items past
+// The app's one entrance: fade 0 → 100% while rising from just below into
+// place, on an ease-out curve. Deliberately no springs: springs overshoot
+// and settle, which reads as a zigzag/bounce.
+export function riseIn(delay = 0, duration = 420) {
+  return FadeInDown.delay(delay).duration(duration).easing(Easing.out(Easing.cubic));
+}
+
+// Entrance for list rows / cards: riseIn, staggered by index. Items past
 // the first few share one delay so long lists don't trickle in slowly.
 export function enterFromBelow(index = 0) {
-  return FadeInDown.delay(Math.min(index, MAX_STAGGER_ITEMS) * STAGGER_MS)
-    .duration(380)
-    .springify()
-    .damping(18);
+  return riseIn(Math.min(index, MAX_STAGGER_ITEMS) * STAGGER_MS, 380);
 }
 
 type RevealProps = {
@@ -142,12 +145,12 @@ export function SuccessOverlay({ visible, title, message, onDone, durationMs = 1
     <Modal transparent visible={visible} animationType="fade" statusBarTranslucent>
       <View className="flex-1 items-center justify-center bg-black/45 px-10">
         <Animated.View
-          entering={ZoomIn.springify().damping(14)}
+          entering={riseIn(0, 380)}
           exiting={FadeOut}
           className={`w-full items-center rounded-3xl px-6 py-8 ${isDark ? 'bg-[#0F172A]' : 'bg-white'}`}>
           <View className="h-24 w-24 items-center justify-center">
             <Animated.View className="absolute h-20 w-20 rounded-full bg-[#10B981]/40" style={ringStyle} />
-            <Animated.View entering={ZoomIn.delay(80).springify().damping(10).stiffness(220)} className="h-20 w-20 items-center justify-center rounded-full bg-[#10B981]">
+            <Animated.View entering={riseIn(120, 380)} className="h-20 w-20 items-center justify-center rounded-full bg-[#10B981]">
               <Check size={42} color="#FFFFFF" strokeWidth={3} />
             </Animated.View>
           </View>
@@ -178,10 +181,10 @@ export function useShake() {
   return { style, shake };
 }
 
-// Springy scale-in for badges/counters that appear or change.
+// Smooth rise-in for badges/counters that appear or change.
 export function PopIn({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <Animated.View entering={ZoomIn.springify().damping(12)} className={className}>
+    <Animated.View entering={riseIn(0, 300)} className={className}>
       {children}
     </Animated.View>
   );

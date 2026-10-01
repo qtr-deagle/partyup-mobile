@@ -1,5 +1,5 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { EmptyState, SkeletonCard, SuccessOverlay, useShake } from '@/components/ui/motion';
+import { EmptyState, riseIn, SkeletonCard, SuccessOverlay, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -20,7 +20,7 @@ import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { AlertTriangle, Bell, BellOff, CheckCircle2, Clock, Info, MapPin, Plus, Shield, ShieldAlert, UserPlus, Users, X, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeIn, FadeInRight, ZoomIn } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EMERGENCY_INFO_MAX = 200;
@@ -412,7 +412,7 @@ export default function TrustedCircleScreen() {
 
       <Modal visible={addVisible} transparent animationType="fade" onRequestClose={closeAddModal}>
         <View className="flex-1 items-center justify-center bg-black/45 px-4">
-          <Animated.View entering={ZoomIn.springify().damping(16)} className={`w-full max-w-[440px] rounded-[28px] px-4 py-5 shadow-lg shadow-black/25 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
+          <Animated.View entering={riseIn(0, 380)} className={`w-full max-w-[440px] rounded-[28px] px-4 py-5 shadow-lg shadow-black/25 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
             <View className={`flex-row items-start justify-between gap-4 border-b pb-4 ${border}`}>
               <View className="flex-1">
                 <Text className={`text-headline-24 font-bold ${primary}`}>Add Emergency Contact</Text>

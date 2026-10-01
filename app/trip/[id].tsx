@@ -1,3 +1,4 @@
+import { UserRankTag } from '@/components/guild/UserRankTag';
 import { RateUserModal } from '@/components/RateUserModal';
 import { SuccessOverlay } from '@/components/ui/motion';
 import { ReportUserModal } from '@/components/ReportUserModal';
@@ -31,7 +32,7 @@ import { getTheme, typography } from '@/lib/theme';
 import { getTourDetail, joinPublicTrip, listTripItinerary, type ItineraryDay, type TourDetail } from '@/lib/tours';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { ArrowLeft, BadgeCheck, Calendar, Check, Flag, MapPin, Share2, Sparkles, Star, Users, Wallet, X } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, Calendar, Check, Flag, MapPin, MessageCircle, Share2, Sparkles, Star, Users, Wallet, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -535,6 +536,16 @@ export default function TripDetailScreen() {
           </View>
         ) : null}
 
+        {detail.my_status === 'accepted' ? (
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: '/trip/chat/[id]', params: { id: detail.id } })}
+            className="flex-row items-center justify-center gap-2 rounded-2xl bg-[#2A55D4] py-3.5"
+            accessibilityLabel="Open group chat">
+            <MessageCircle size={18} color="#FFFFFF" />
+            <Text className="text-base font-bold text-white">Group Chat</Text>
+          </TouchableOpacity>
+        ) : null}
+
         <TouchableOpacity
           onPress={handleShareInvite}
           disabled={busyId === 'share'}
@@ -553,7 +564,10 @@ export default function TripDetailScreen() {
                 const given = givenRatings.get(member.user_id);
                 return (
                   <View key={member.id} className={`flex-row items-center gap-3 rounded-2xl border p-4 ${card}`}>
-                    <Text className={`flex-1 text-base font-bold ${primary}`}>{member.display_name}</Text>
+                    <View className="flex-1">
+                      <Text className={`text-base font-bold ${primary}`}>{member.display_name}</Text>
+                      <UserRankTag userId={member.user_id} isDark={isDark} />
+                    </View>
                     {given ? (
                       <View className="flex-row items-center gap-1">
                         <Star size={16} color="#F5A623" fill="#F5A623" />
@@ -579,7 +593,10 @@ export default function TripDetailScreen() {
                 <Text className={`text-headline-18 font-bold ${primary}`}>Pending requests ({pendingRequests.length})</Text>
                 {pendingRequests.map((member) => (
                   <View key={member.id} className={`rounded-2xl border p-4 ${card}`}>
-                    <Text className={`text-base font-bold ${primary}`}>{member.display_name}</Text>
+                    <View className="flex-row items-center justify-between gap-2">
+                      <Text className={`flex-1 text-base font-bold ${primary}`}>{member.display_name}</Text>
+                      <UserRankTag userId={member.user_id} isDark={isDark} />
+                    </View>
                     {member.invited_by_display_name ? <Text className={`mt-0.5 text-sm ${secondary}`}>Invited by {member.invited_by_display_name}</Text> : null}
                     <View className="mt-3 flex-row gap-2">
                       <TouchableOpacity
@@ -613,6 +630,7 @@ export default function TripDetailScreen() {
                     <View key={member.id} className={`flex-row items-center justify-between rounded-2xl border p-4 ${card}`}>
                       <View className="flex-1">
                         <Text className={`text-base font-bold ${primary}`}>{member.display_name}</Text>
+                        <UserRankTag userId={member.user_id} isDark={isDark} />
                         {member.invited_by_display_name ? <Text className={`mt-0.5 text-sm ${secondary}`}>Invited by {member.invited_by_display_name}</Text> : null}
                       </View>
                       <View className={`rounded-full px-3 py-1.5 ${colors.bg}`}>

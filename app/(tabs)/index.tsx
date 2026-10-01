@@ -1,10 +1,12 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { routeForNotification } from '@/components/InAppNotifier';
+import { GuildSummaryCard } from '@/components/GuildSummaryCard';
 import NotificationModal from '@/components/NotificationModal';
 import StaffDashboard from '@/components/StaffDashboard';
-import { PopIn } from '@/components/ui/motion';
+import { PopIn, riseIn } from '@/components/ui/motion';
 import WarningModeModal from '@/components/WarningModeModal';
 import { useAuth } from '@/hooks/auth-provider';
+import { useSosTrigger } from '@/hooks/use-sos-trigger';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { startTrip } from '@/lib/carpool';
@@ -19,7 +21,6 @@ import {
 } from '@/lib/homeDashboard';
 import { requestLocationPermissions, startBackgroundLocationTracking, upsertCurrentLocation } from '@/lib/location';
 import { listNotifications, markNotificationRead, type AppNotification } from '@/lib/notifications';
-import { triggerSosAlert } from '@/lib/safety';
 import { listIncomingFriendRequests, type IncomingFriendRequest } from '@/lib/social';
 import { feedback } from '@/lib/sounds';
 import { supabase, uniqueChannelName } from '@/lib/supabase';
@@ -29,7 +30,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { Bell, MapPin, Navigation, Send, Shield, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
+import Animated, { FadeIn } from 'react-native-reanimated';
 
 const TRIP_STATUS_LABELS: Record<ActiveTripSummary['status'], string> = {
   draft: 'Draft',
@@ -62,9 +63,13 @@ export default function HomeScreen() {
   const [staffOverview, setStaffOverview] = useState<StaffOverview | null>(null);
   const [startingTrip, setStartingTrip] = useState(false);
   const [sharingLocation, setSharingLocation] = useState(false);
-  const [sendingSos, setSendingSos] = useState(false);
+  const { requestSos, sendingSos } = useSosTrigger();
   const isDark = useColorScheme() === 'dark';
-  const isStaff = profile?.role === 'staff' || profile?.role === 'admin';
+  // Leaders are travelers with extra duties: they get Leader HQ on top of the
+  // traveler home. Admins (referees) only get the operations view.
+  const isLeader = profile?.role === 'guild_leader';
+  const isAdmin = profile?.role === 'admin';
+  const isStaff = isLeader || isAdmin;
 
   const loadDashboard = useCallback(async () => {
     if (isStaff) {
@@ -72,7 +77,7 @@ export default function HomeScreen() {
       if (!staffResult.error) {
         setStaffOverview(staffResult.data);
       }
-      return;
+      if (isAdmin) return;
     }
     const [tripResult, safetyResult] = await Promise.all([getActiveTripSummary(), getSafetyOverview()]);
     if (!tripResult.error) {
@@ -81,7 +86,7 @@ export default function HomeScreen() {
     if (!safetyResult.error) {
       setSafety(safetyResult.data);
     }
-  }, [isStaff]);
+  }, [isStaff, isAdmin]);
 
   const loadHome = useCallback(
     () =>
@@ -217,44 +222,6 @@ export default function HomeScreen() {
     Alert.alert('Location shared', 'Your live location is now being shared.');
   }
 
-  function handleSosPress() {
-    if (profile?.emergency_sos_enabled === false) {
-      Alert.alert('Emergency SOS is disabled', 'Enable Emergency SOS in Settings to use this feature.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Open Settings', onPress: () => router.push('/modal') },
-      ]);
-      return;
-    }
-    Alert.alert(
-      'Send emergency SOS?',
-      "This immediately alerts PartyUp staff and your trusted circle, and shares your live location until you tap \"I'm safe\".",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Send SOS', style: 'destructive', onPress: () => void sendSos() },
-      ]
-    );
-  }
-
-  async function sendSos() {
-    setSendingSos(true);
-    const { data, error } = await triggerSosAlert(activeTrip?.trip_id ?? null);
-    setSendingSos(false);
-    if (error) {
-      feedback.error();
-      Alert.alert('Unable to send SOS', error.message);
-      return;
-    }
-    feedback.notify();
-    Alert.alert(
-      'SOS sent',
-      'PartyUp staff can now see your live location' +
-        (data && data.recipient_count > 0
-          ? ` and ${data.recipient_count} trusted contact${data.recipient_count === 1 ? ' was' : 's were'} notified.`
-          : ". You don't have any trusted contacts with alerts enabled yet.") +
-        " Tap \"I'm safe\" when you're OK."
-    );
-  }
-
   const firstName = profile?.display_name?.trim().split(/\s+/)[0] ?? '';
   const countdownLabel = activeTrip ? formatCountdown(activeTrip.start_at) : null;
   const isVerified = safety?.verification_status === 'approved';
@@ -302,17 +269,17 @@ export default function HomeScreen() {
 
         <View className="mt-8">
           <Text className={`${typography.pageTitle} ${titleColor}`}>{greeting()}{firstName ? `, ${firstName}` : ''} 👋</Text>
-          <Text className={`mt-2 text-base ${subtitleColor}`}>{isStaff ? 'Operations overview for PartyUp staff' : 'Your trip and safety status'}</Text>
+          <Text className={`mt-2 text-base ${subtitleColor}`}>{isAdmin ? 'Operations overview' : isLeader ? 'Leader HQ, your trips and safety' : 'Your trip and safety status'}</Text>
         </View>
       </Animated.View>
 
       <View className="px-4 pt-6 flex flex-col gap-4">
-        {isStaff ? (
-          <StaffDashboard key="staff-dashboard" isDark={isDark} overview={staffOverview} />
-        ) : activeTrip ? (
+        {isStaff ? <StaffDashboard key="staff-dashboard" isDark={isDark} overview={staffOverview} isAdmin={isAdmin} /> : null}
+
+        {isAdmin ? null : activeTrip ? (
           <Animated.View
             key="active-trip-card"
-            entering={FadeInDown.delay(80).duration(400).springify().damping(16)}
+            entering={riseIn(80)}
             className={`rounded-[24px] border-2 p-4 shadow-sm ${isDark ? 'border-[#3B82F6] bg-[#111B2E] shadow-black/20' : 'border-[#1E40AF] bg-[#EAF0FF] shadow-[#1E40AF]/10'}`}>
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2">
@@ -370,7 +337,7 @@ export default function HomeScreen() {
         ) : (
           <Animated.View
             key="no-active-trip-card"
-            entering={FadeInDown.delay(80).duration(400).springify().damping(16)}
+            entering={riseIn(80)}
             className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
             <Text className={`${typography.sectionTitle} ${primaryText}`}>No active trip</Text>
             <Text className={`mt-2 text-base ${mutedText}`}>Create a carpool trip or accept a ride request to see it here.</Text>
@@ -380,10 +347,13 @@ export default function HomeScreen() {
           </Animated.View>
         )}
 
-        {!isStaff && (
+        {/* Leaders get the guild card inside Leader HQ. */}
+        {!isStaff && <GuildSummaryCard key="guild-summary-card" isDark={isDark} />}
+
+        {!isAdmin && (
           <Animated.View
             key="safety-overview-card"
-            entering={FadeInDown.delay(140).duration(400).springify().damping(16)}
+            entering={riseIn(140)}
             className={`rounded-[24px] border-2 p-4 ${isDark ? 'border-[#10B981] bg-[#0D1E1A]' : 'border-[#059669] bg-[#E5F6EF]'}`}>
             <View className="flex-row items-center gap-2">
               <Shield size={20} color={accentColor} />
@@ -441,7 +411,7 @@ export default function HomeScreen() {
         )}
 
         <Animated.View
-          entering={FadeInDown.delay(200).duration(400).springify().damping(16)}
+          entering={riseIn(200)}
           className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
           <View className="flex-row items-center justify-between">
             <Text className={`${typography.sectionTitle} ${primaryText}`}>Recent Activity</Text>
@@ -467,8 +437,8 @@ export default function HomeScreen() {
           </View>
         </Animated.View>
 
-        {!isStaff && (
-          <Animated.View key="traveler-quick-actions" entering={FadeInDown.delay(320).duration(400).springify().damping(16)} className="flex-row gap-4 pb-6">
+        {!isAdmin && (
+          <Animated.View key="traveler-quick-actions" entering={riseIn(320)} className="flex-row gap-4 pb-6">
             <AnimatedPressable
               onPress={() => router.push('/(tabs)/map')}
               className={`flex-1 rounded-[22px] border px-4 py-4 ${softBorder} ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
@@ -480,7 +450,7 @@ export default function HomeScreen() {
             </AnimatedPressable>
 
             <AnimatedPressable
-              onPress={handleSosPress}
+              onPress={() => requestSos(activeTrip?.trip_id ?? null)}
               disabled={sendingSos}
               className={`flex-1 rounded-[22px] border-2 px-4 py-4 ${isDark ? 'border-[#7A2D2D] bg-[#251416]' : 'border-[#FFB1A9] bg-[#FFF3F1]'}`}>
               <View className={`h-11 w-11 items-center justify-center rounded-full ${isDark ? 'bg-[#422022]' : 'bg-[#FFE1DC]'}`}>

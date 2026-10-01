@@ -1,41 +1,51 @@
+import { ChatInfoSheet } from '@/components/ChatInfoSheet';
+import { Composer, QUICK_REACTION } from '@/components/chat/Composer';
+import { MessageActionsSheet } from '@/components/chat/MessageActionsSheet';
+import { formatTime, MessageBubble, messageSummary, StatusTick } from '@/components/chat/MessageBubble';
+import { PhotoViewer } from '@/components/chat/PhotoViewer';
+import { GuildEmblem } from '@/components/GuildEmblem';
 import { ReportUserModal } from '@/components/ReportUserModal';
-import { EmptyState, enterFromBelow, PopIn, SkeletonRow } from '@/components/ui/motion';
+import { EmptyState, enterFromBelow, PopIn, riseIn, SkeletonRow } from '@/components/ui/motion';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
+import { useThreadMessages, type ScreenMessage } from '@/hooks/use-thread-messages';
 import { setActiveChatThread } from '@/lib/active-chat';
-import { parseTimestamp } from '@/lib/datetime';
-import { ensureAcceptedDirectThreads, getChatMessages, getThreadReceipts, listDirectConversations, markThreadRead, messageStatus, sendChatMessage, type ChatMessage, type Conversation, type MessageStatus, type ThreadReceipts } from '@/lib/social';
+import { blockUser } from '@/lib/blocking';
+import { pickChatPhoto, type PickedPhoto } from '@/lib/chat-media';
+import { getGuildChatPreview, type GuildChatPreview } from '@/lib/guilds';
+import {
+  clearChatForMe,
+  ensureAcceptedDirectThreads,
+  getThreadReceipts,
+  listDirectConversations,
+  listGroupConversations,
+  messageStatus,
+  removeFriend,
+  setChatMuted,
+  setChatPinned,
+  type ChatMessage,
+  type Conversation,
+  type GroupConversation,
+  type MessageStatus,
+  type ThreadReceipts,
+} from '@/lib/social';
 import { feedback } from '@/lib/sounds';
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Image } from 'expo-image';
-import { useLocalSearchParams } from 'expo-router';
-import { AlertCircle, ArrowLeft, Check, CheckCheck, Clock3, MessageCircle, MoreVertical, Search, Send, ShieldCheck } from 'lucide-react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, BellOff, Car, Info, Map as MapIcon, MessageCircle, Pin, Search, ShieldCheck } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import Animated, { FadeIn, FadeInUp, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from 'react-native-reanimated';
-
-// A message on screen: `pending` marks one still in flight from this device,
-// and `localKey` keeps its React key stable once the server copy replaces it.
-type ScreenMessage = ChatMessage & { pending?: 'sending' | 'failed'; localKey?: string };
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated, { FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // How long a "typing…" signal lasts without a refresh from the other side.
 const TYPING_TIMEOUT_MS = 4000;
 const TYPING_RESEND_MS = 2500;
-const SEEN_COLOR = '#7DD3FC';
-
-function formatTime(value: string | null) {
-  return value ? parseTimestamp(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }) : '';
-}
-
-function StatusTick({ status, color, size = 14 }: { status: MessageStatus; color: string; size?: number }) {
-  if (status === 'sending') return <Clock3 size={size - 2} color={color} />;
-  if (status === 'failed') return <AlertCircle size={size} color="#FCA5A5" />;
-  if (status === 'sent') return <Check size={size} color={color} strokeWidth={2.5} />;
-  return <CheckCheck size={size} color={status === 'seen' ? SEEN_COLOR : color} strokeWidth={2.5} />;
-}
 
 const STATUS_LABELS: Record<MessageStatus, string> = {
   sending: 'Sending…',
@@ -65,14 +75,37 @@ function Avatar({ name, url, size = 48 }: { name: string; url: string | null; si
   );
 }
 
+function previewText(type: ChatMessage['message_type'] | null, body: string | null, deleted: boolean, mine: boolean) {
+  if (deleted) return mine ? 'You unsent a message' : 'Unsent a message';
+  return type === 'image' ? '📷 Photo' : body ?? '';
+}
+
+function conversationPreview(conversation: Conversation, mine: boolean) {
+  if (!conversation.last_message_at) return 'Say hi to your new friend 👋';
+  const text = previewText(conversation.last_message_type, conversation.last_message, conversation.last_message_deleted, mine);
+  return conversation.last_message_deleted ? text : `${mine ? 'You: ' : ''}${text}`;
+}
+
+function groupPreview(group: GroupConversation, myUserId: string | undefined) {
+  if (!group.last_message_at) return 'Say hi to the group 👋';
+  const mine = group.last_message_sender_id === myUserId;
+  const text = previewText(group.last_message_type, group.last_message, group.last_message_deleted, mine);
+  if (group.last_message_deleted) return text;
+  return `${mine ? 'You' : (group.last_sender_name ?? 'Someone').split(' ')[0]}: ${text}`;
+}
+
+type ListItem = { kind: 'direct'; conversation: Conversation; pinned: boolean; at: string | null } | { kind: 'group'; group: GroupConversation; pinned: boolean; at: string | null };
+
 export default function ChatScreen() {
   const params = useLocalSearchParams<{ threadId?: string }>();
+  const router = useRouter();
   const { session } = useAuth();
   const myUserId = session?.user.id;
   const isDark = useColorScheme() === 'dark';
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [groups, setGroups] = useState<GroupConversation[]>([]);
+  const [guildChat, setGuildChat] = useState<GuildChatPreview | null>(null);
   const [selected, setSelected] = useState<Conversation | null>(null);
-  const [messages, setMessages] = useState<ScreenMessage[]>([]);
   const [messageText, setMessageText] = useState('');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -84,18 +117,51 @@ export default function ChatScreen() {
   const lastTypingSent = useRef(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatSearch, setChatSearch] = useState('');
   const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [replyTo, setReplyTo] = useState<ScreenMessage | null>(null);
+  const [actionTarget, setActionTarget] = useState<ScreenMessage | null>(null);
+  const [viewerUri, setViewerUri] = useState<string | null>(null);
+  // Mute/pin changes made here win over the (slower) list refresh.
+  const [prefOverrides, setPrefOverrides] = useState<Record<string, { muted?: boolean; pinned?: boolean }>>({});
   // Last ?threadId applied, so a later push for a different chat still opens it.
   const appliedThreadParam = useRef<string | null>(null);
-  // Messages present when a chat opens render instantly; only new ones animate in.
-  const [initialMessageIds, setInitialMessageIds] = useState<Set<string>>(() => new Set());
   const scrollRef = useRef<ScrollView>(null);
+  // Where each message sits in the list, so tapping a quoted reply can jump to it.
+  const messageOffsets = useRef<Record<string, number>>({});
+  const inputRef = useRef<TextInput>(null);
+  const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
+  // The keyboard also covers the tab bar (same height as in (tabs)/_layout), so
+  // only the part above it needs padding to lift the message box into view.
+  const keyboardPadding = Math.max(keyboardHeight - (58 + Math.max(insets.bottom, 8)), 0);
+  useEffect(() => {
+    if (keyboardHeight > 0) scrollRef.current?.scrollToEnd({ animated: true });
+  }, [keyboardHeight]);
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-white';
   const borderColor = isDark ? 'border-[#22324B]' : 'border-[#E7EAF2]';
   const panelBackground = isDark ? 'bg-[#111B2E]' : 'bg-[#F6F7FB]';
   const textPrimary = isDark ? 'text-white' : 'text-[#182847]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
+  const iconMuted = isDark ? '#94A3B8' : '#67748D';
   const { titleColor } = getTheme(isDark);
+
+  const thread = useThreadMessages({
+    threadId: selected?.thread_id ?? null,
+    myUserId,
+    since: selected?.cleared_at,
+    onIncoming: () => setOtherTyping(false),
+    onError: setErrorMessage,
+  });
+
+  const prefsOf = useCallback(
+    (conversation: Conversation) => ({
+      muted: prefOverrides[conversation.thread_id]?.muted ?? conversation.muted,
+      pinned: prefOverrides[conversation.thread_id]?.pinned ?? conversation.pinned,
+    }),
+    [prefOverrides],
+  );
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
@@ -106,14 +172,25 @@ export default function ChatScreen() {
         setErrorMessage(ensureResult.error.message);
         return;
       }
-      const result = await listDirectConversations();
+      const [result, groupResult, guildResult] = await Promise.all([
+        listDirectConversations(),
+        listGroupConversations(),
+        myUserId ? getGuildChatPreview(myUserId) : Promise.resolve({ data: null, error: null }),
+      ]);
+      setGuildChat(guildResult.data);
+      if (!groupResult.error) setGroups(groupResult.data);
       if (result.error) setErrorMessage(result.error.message);
       else {
         setConversations(result.data);
+        setPrefOverrides({});
         if (params.threadId && appliedThreadParam.current !== params.threadId) {
           appliedThreadParam.current = params.threadId;
           const matchingConversation = result.data.find((conversation) => conversation.thread_id === params.threadId);
+          const matchingGroup = groupResult.data.find((group) => group.thread_id === params.threadId);
           if (matchingConversation) setSelected(matchingConversation);
+          // Not a direct chat: pushes for group chats land here too.
+          else if (matchingGroup) router.push({ pathname: '/trip/chat/[id]', params: { id: matchingGroup.trip_id } });
+          else if (guildResult.data?.thread_id === params.threadId) router.push('/guild/chat');
         }
       }
     } catch (error) {
@@ -121,12 +198,28 @@ export default function ChatScreen() {
     } finally {
       setLoading(false);
     }
-  }, [params.threadId]);
+  }, [params.threadId, router, myUserId]);
   const { refreshControl } = usePullToRefresh(loadConversations);
 
   useEffect(() => {
     void loadConversations();
   }, [loadConversations]);
+
+  const refreshLists = useCallback(() => {
+    void listDirectConversations().then((result) => {
+      if (!result.error) setConversations(result.data);
+    });
+    void listGroupConversations().then((result) => {
+      if (!result.error) setGroups(result.data);
+    });
+    if (!myUserId) return;
+    void getGuildChatPreview(myUserId).then((result) => {
+      if (!result.error) setGuildChat(result.data);
+    });
+  }, [myUserId]);
+
+  // Coming back from a group chat screen clears its unread badge.
+  useFocusEffect(refreshLists);
 
   // Tell the in-app notifier which chat is on screen so it stays quiet for it.
   useEffect(() => {
@@ -137,56 +230,30 @@ export default function ChatScreen() {
   // Keep the list's previews, ticks and unread counts live while it's showing.
   useEffect(() => {
     if (selected || !myUserId) return;
-    const refresh = () => {
-      void listDirectConversations().then((result) => {
-        if (!result.error) setConversations(result.data);
-      });
-    };
     const channel = supabase
       .channel(uniqueChannelName(`chat-list:${myUserId}`))
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, refresh)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_participants' }, refresh)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, refreshLists)
+      // Unsends change the preview too.
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_messages' }, refreshLists)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_participants' }, refreshLists)
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [selected, myUserId]);
+  }, [selected, myUserId, refreshLists]);
 
+  // Typing, presence and the other person's delivered/seen marks. Messages
+  // themselves come through useThreadMessages.
   useEffect(() => {
     if (!selected || !myUserId) return;
     let active = true;
     const threadId = selected.thread_id;
-    void getChatMessages(threadId).then((result) => {
-      if (active && !result.error) {
-        setInitialMessageIds(new Set(result.data.map((message) => message.id)));
-        setMessages(result.data);
-      }
-      void markThreadRead(threadId);
-    });
     void getThreadReceipts(threadId, selected.other_user_id).then((result) => {
       if (active && !result.error) setReceipts(result.data);
     });
 
     const channel = supabase
       .channel(`chat:${threadId}`, { config: { presence: { key: myUserId } } })
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `thread_id=eq.${threadId}` }, (payload) => {
-        const incoming = payload.new as ChatMessage;
-        setMessages((current) => {
-          if (current.some((message) => message.id === incoming.id)) return current;
-          // Realtime can beat the insert's own response; swap it in for the optimistic copy.
-          const pendingIndex = incoming.sender_id === myUserId ? current.findIndex((message) => message.pending === 'sending' && message.body === incoming.body) : -1;
-          if (pendingIndex === -1) return [...current, incoming];
-          const next = [...current];
-          next[pendingIndex] = { ...incoming, localKey: current[pendingIndex].localKey };
-          return next;
-        });
-        if (incoming.sender_id !== myUserId) {
-          feedback.received();
-          setOtherTyping(false);
-        }
-        void markThreadRead(threadId);
-      })
-      // The other person's delivered/seen marks.
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_participants', filter: `thread_id=eq.${threadId}` }, (payload) => {
         const row = payload.new as { user_id: string; last_read_at: string | null; last_delivered_at: string | null };
         if (row.user_id !== myUserId) setReceipts({ readAt: row.last_read_at, deliveredAt: row.last_delivered_at });
@@ -230,89 +297,200 @@ export default function ChatScreen() {
     }
   }
 
-  function openConversation(conversation: Conversation) {
-    feedback.select();
-    setMessages([]);
-    setErrorMessage(null);
-    setReceipts({ readAt: conversation.other_last_read_at, deliveredAt: conversation.other_last_delivered_at });
+  function resetConversationState() {
+    setReplyTo(null);
+    setActionTarget(null);
+    setReceipts({ readAt: null, deliveredAt: null });
     setOtherTyping(false);
     setOtherHere(false);
+    messageOffsets.current = {};
+  }
+
+  function openConversation(conversation: Conversation) {
+    feedback.select();
+    resetConversationState();
+    setErrorMessage(null);
+    setReceipts({ readAt: conversation.other_last_read_at, deliveredAt: conversation.other_last_delivered_at });
     setSelected(conversation);
   }
 
   function closeConversation() {
     setSelected(null);
-    setMessages([]);
-    setReceipts({ readAt: null, deliveredAt: null });
-    setOtherTyping(false);
-    setOtherHere(false);
+    setChatSearchOpen(false);
+    setChatSearch('');
+    resetConversationState();
     void loadConversations();
   }
 
-  // Shows the message immediately as "Sending…", then swaps in the saved row.
-  async function deliver(body: string, localKey: string) {
-    if (!selected || !myUserId) return;
-    const { data, error } = await sendChatMessage(selected.thread_id, myUserId, body);
-    if (error || !data) {
-      feedback.error();
-      setMessages((current) => current.map((message) => (message.localKey === localKey && message.pending ? { ...message, pending: 'failed' } : message)));
-      return;
-    }
-    feedback.sent();
-    setMessages((current) => {
-      const index = current.findIndex((message) => message.localKey === localKey);
-      if (index === -1 || !current[index].pending) return current;
-      // Realtime already delivered the saved copy under its own key.
-      if (current.some((message) => message.id === data.id)) return current.filter((_, i) => i !== index);
-      const next = [...current];
-      next[index] = { ...data, localKey };
-      return next;
+  function openProfile() {
+    if (!selected) return;
+    setMenuVisible(false);
+    router.push({ pathname: '/profile/[id]', params: { id: selected.other_user_id, displayName: selected.display_name, avatarUrl: selected.avatar_url ?? '' } });
+  }
+
+  function confirmBlock() {
+    if (!selected) return;
+    const target = selected;
+    setMenuVisible(false);
+    Alert.alert(`Block ${target.display_name}?`, "You won't see them in Discover, nearby travelers, or search, and any friend connection will be removed.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: () =>
+          void blockUser(target.other_user_id).then(({ error }) => {
+            if (error) {
+              setErrorMessage(error.message);
+              return;
+            }
+            closeConversation();
+          }),
+      },
+    ]);
+  }
+
+  function confirmUnfriend() {
+    if (!selected) return;
+    const target = selected;
+    setMenuVisible(false);
+    Alert.alert(`Unfriend ${target.display_name}?`, 'You can send them a friend request again later.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Unfriend',
+        style: 'destructive',
+        onPress: () =>
+          void removeFriend(target.other_user_id).then(({ error }) => {
+            if (error) {
+              setErrorMessage(error.message);
+              return;
+            }
+            closeConversation();
+          }),
+      },
+    ]);
+  }
+
+  function confirmDeleteChat() {
+    if (!selected) return;
+    const target = selected;
+    setMenuVisible(false);
+    Alert.alert('Delete this chat?', `This removes the conversation with ${target.display_name} for you only. They'll still see it.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () =>
+          void clearChatForMe(target.thread_id).then(({ error }) => {
+            if (error) {
+              setErrorMessage(error.message);
+              return;
+            }
+            closeConversation();
+          }),
+      },
+    ]);
+  }
+
+  function togglePref(kind: 'muted' | 'pinned') {
+    if (!selected) return;
+    const threadId = selected.thread_id;
+    const next = !prefsOf(selected)[kind];
+    feedback.select();
+    setPrefOverrides((current) => ({ ...current, [threadId]: { ...current[threadId], [kind]: next } }));
+    void (kind === 'muted' ? setChatMuted(threadId, next) : setChatPinned(threadId, next)).then(({ error }) => {
+      if (!error) return;
+      setErrorMessage(error.message);
+      setPrefOverrides((current) => ({ ...current, [threadId]: { ...current[threadId], [kind]: !next } }));
     });
+  }
+
+  function queue(body: string, photo?: PickedPhoto) {
+    setErrorMessage(null);
+    thread.queueMessage(body, { photo, replyTo });
+    setReplyTo(null);
   }
 
   function sendMessage() {
     const body = messageText.trim();
-    if (!body || !selected || !myUserId) return;
-    const localKey = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    setMessages((current) => [
-      ...current,
-      { id: localKey, localKey, thread_id: selected.thread_id, sender_id: myUserId, body, message_type: 'text', created_at: new Date().toISOString(), pending: 'sending' },
-    ]);
+    if (!body) return;
     setMessageText('');
-    setErrorMessage(null);
     lastTypingSent.current = 0;
     broadcastTyping(false);
-    void deliver(body, localKey);
+    queue(body);
   }
 
-  function retryMessage(message: ScreenMessage) {
-    if (message.pending !== 'failed' || !message.localKey) return;
-    const localKey = message.localKey;
-    setMessages((current) => current.map((item) => (item.localKey === localKey ? { ...item, pending: 'sending' } : item)));
-    void deliver(message.body, localKey);
+  async function sendPhoto(source: 'camera' | 'library') {
+    const photo = await pickChatPhoto(source);
+    if (photo) queue('', photo);
+  }
+
+  function handlePressMessage(message: ScreenMessage) {
+    if (message.pending === 'failed') {
+      thread.retry(message);
+      return;
+    }
+    if (message.message_type === 'image' && !message.deleted_at) {
+      const uri = thread.photoUriFor(message);
+      if (uri) setViewerUri(uri);
+    }
+  }
+
+  function confirmUnsend(message: ScreenMessage) {
+    setActionTarget(null);
+    Alert.alert('Unsend message?', 'It will be removed for everyone in this chat.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Unsend',
+        style: 'destructive',
+        onPress: () => {
+          if (replyTo?.id === message.id) setReplyTo(null);
+          thread.removeMessage(message);
+        },
+      },
+    ]);
+  }
+
+  function jumpTo(messageId: string) {
+    const y = messageOffsets.current[messageId];
+    if (y !== undefined) scrollRef.current?.scrollTo({ y: Math.max(y - 80, 0), animated: true });
   }
 
   function statusOf(message: ScreenMessage): MessageStatus {
     return message.pending ?? messageStatus(message.created_at, receipts);
   }
 
-  const lastMineIndex = messages.reduce((found, message, index) => (message.sender_id === myUserId ? index : found), -1);
-  const canSend = messageText.trim().length > 0;
-  const sendButtonStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: withSpring(canSend ? 1 : 0.86, { damping: 14, stiffness: 220 }) }],
-    opacity: withSpring(canSend ? 1 : 0.5),
-  }));
-
   if (selected) {
+    const { messages } = thread;
+    const prefs = prefsOf(selected);
+    const firstName = selected.display_name.split(' ')[0];
+    const searchTerm = chatSearchOpen ? chatSearch.trim().toLowerCase() : '';
+    const shownMessages = searchTerm ? messages.filter((message) => !message.deleted_at && message.body.toLowerCase().includes(searchTerm)) : messages;
+    const lastMineIndex = messages.reduce((found, message, index) => (message.sender_id === myUserId ? index : found), -1);
+
+    const replyLabelFor = (message: ScreenMessage, quoted: ChatMessage) => {
+      const quotedMine = quoted.sender_id === myUserId;
+      if (message.sender_id === myUserId) return quotedMine ? 'You replied to yourself' : `You replied to ${firstName}`;
+      return quotedMine ? `${firstName} replied to you` : `${firstName} replied`;
+    };
+
     return (
-      <KeyboardAvoidingView className={`flex-1 ${screenBackground}`} behavior="padding">
+      <View className={`flex-1 ${screenBackground}`} style={{ paddingBottom: keyboardPadding }}>
         <View className={`flex-row items-center gap-3 border-b px-4 py-3 ${borderColor}`}>
           <TouchableOpacity onPress={closeConversation} hitSlop={10}>
             <ArrowLeft size={24} color="#284BD6" />
           </TouchableOpacity>
-          <Avatar name={selected.display_name} url={selected.avatar_url} size={40} />
+          <TouchableOpacity onPress={openProfile} activeOpacity={0.7} accessibilityLabel={`View ${selected.display_name}'s profile`} className="flex-1 flex-row items-center gap-3">
+          <View>
+            <Avatar name={selected.display_name} url={selected.avatar_url} size={40} />
+            {otherHere ? (
+              <Animated.View key="header-online" entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)} className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 bg-[#10B981] ${isDark ? 'border-[#0B1220]' : 'border-white'}`} />
+            ) : null}
+          </View>
           <View className="flex-1">
-            <Text numberOfLines={1} className={`text-lg font-bold ${titleColor}`}>{selected.display_name}</Text>
+            <View className="flex-row items-center gap-1.5">
+              <Text numberOfLines={1} className={`shrink text-lg font-bold ${titleColor}`}>{selected.display_name}</Text>
+              {prefs.muted ? <BellOff size={14} color={iconMuted} /> : null}
+            </View>
             {otherTyping ? (
               <Text className="text-xs font-semibold text-[#284BD6]">typing…</Text>
             ) : otherHere ? (
@@ -321,13 +499,25 @@ export default function ChatScreen() {
                 <Text className={`text-xs ${textSecondary}`}>In this chat now</Text>
               </View>
             ) : (
-              <Text className={`text-xs ${textSecondary}`}>Direct chat</Text>
+              <Text className={`text-xs ${textSecondary}`}>Tap to view profile</Text>
             )}
           </View>
-          <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat options" hitSlop={10}>
-            <MoreVertical size={23} color={isDark ? '#E2E8F0' : '#182847'} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat info" hitSlop={10}>
+            <Info size={24} color="#284BD6" />
           </TouchableOpacity>
         </View>
+        {chatSearchOpen ? (
+          <Animated.View key="chat-search" entering={riseIn(0, 220)} className={`flex-row items-center gap-2 border-b px-4 py-2 ${borderColor}`}>
+            <View className={`flex-1 flex-row items-center gap-2 rounded-full border px-3.5 py-2 ${borderColor} ${panelBackground}`}>
+              <Search size={17} color="#7A859D" />
+              <TextInput autoFocus value={chatSearch} onChangeText={setChatSearch} placeholder="Search in conversation" placeholderTextColor="#94A3B8" className={`flex-1 py-0 ${textPrimary}`} />
+            </View>
+            <TouchableOpacity onPress={() => { setChatSearchOpen(false); setChatSearch(''); }} hitSlop={8}>
+              <Text className="font-semibold text-[#284BD6]">Done</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        ) : null}
         <View className={`flex-row items-center gap-2 border-b px-4 py-2.5 ${borderColor} ${panelBackground}`}>
           <ShieldCheck size={16} color="#10B981" />
           <Text className={`flex-1 text-xs leading-5 ${textSecondary}`}>Keep plans and payments inside PartyUp. Never share OTP codes or passwords in chat.</Text>
@@ -339,36 +529,50 @@ export default function ChatScreen() {
           contentContainerStyle={{ paddingVertical: 16 }}
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-          {messages.length === 0 ? (
+          {thread.loaded && messages.length === 0 ? (
             <Animated.View key="empty-chat" entering={FadeIn.delay(250)} className="items-center pt-16">
               <Text className="text-4xl">👋</Text>
-              <Text className={`mt-3 text-center text-sm ${textSecondary}`}>Say hi to {selected.display_name.split(' ')[0]}!</Text>
+              <Text className={`mt-3 text-center text-sm ${textSecondary}`}>Say hi to {firstName}!</Text>
             </Animated.View>
           ) : null}
-          {messages.map((message, index) => {
+          {searchTerm && shownMessages.length === 0 ? (
+            <Text key="no-matches" className={`pt-10 text-center text-sm ${textSecondary}`}>No messages match “{chatSearch.trim()}”.</Text>
+          ) : null}
+          {shownMessages.map((message, index) => {
             const mine = message.sender_id === myUserId;
-            const isNew = !initialMessageIds.has(message.id);
-            const status = mine ? statusOf(message) : null;
+            const isNew = !thread.initialIds.has(message.id);
+            const status = mine && !message.deleted_at ? statusOf(message) : null;
             const failed = status === 'failed';
+            const quoted = message.reply_to_id ? thread.messagesById.get(message.reply_to_id) ?? null : null;
             // Messenger-style: spell out the status under my latest message only.
-            const showStatusLabel = mine && index === lastMineIndex;
+            const showStatusLabel = !searchTerm && mine && index === lastMineIndex && status;
             return (
               <Animated.View
                 key={message.localKey ?? message.id}
-                entering={isNew ? FadeInUp.springify().damping(16) : undefined}
-                layout={LinearTransition.springify().damping(18)}
+                entering={isNew ? riseIn(0, 300) : undefined}
+                layout={LinearTransition.duration(250)}
+                onLayout={(event) => {
+                  messageOffsets.current[message.id] = event.nativeEvent.layout.y;
+                }}
                 className={`mb-2.5 ${mine ? 'items-end' : 'items-start'}`}>
-                <Pressable
-                  disabled={!failed}
-                  onPress={() => retryMessage(message)}
-                  className={`max-w-[80%] px-4 py-2.5 ${mine ? `rounded-2xl rounded-br-md ${failed ? 'bg-[#284BD6]/60' : 'bg-[#284BD6]'}` : `rounded-2xl rounded-bl-md border ${borderColor} ${panelBackground}`}`}>
-                  <Text className={`text-base ${mine ? 'text-white' : textPrimary}`}>{message.body}</Text>
-                  <View className={`mt-1 flex-row items-center gap-1 ${mine ? 'justify-end' : ''}`}>
-                    <Text className={`text-[11px] ${mine ? 'text-white/70' : textSecondary}`}>{formatTime(message.created_at)}</Text>
-                    {status ? <StatusTick status={status} color="rgba(255,255,255,0.7)" /> : null}
-                  </View>
-                </Pressable>
-                {showStatusLabel && status ? (
+                <MessageBubble
+                  message={message}
+                  mine={mine}
+                  isDark={isDark}
+                  status={status}
+                  photoUri={thread.photoUriFor(message)}
+                  replyTo={quoted}
+                  replyLabel={quoted ? replyLabelFor(message, quoted) : null}
+                  reactions={thread.reactionsByMessage.get(message.id) ?? []}
+                  onLongPress={() => {
+                    if (message.pending) return;
+                    feedback.select();
+                    setActionTarget(message);
+                  }}
+                  onPress={() => handlePressMessage(message)}
+                  onPressReply={() => quoted && jumpTo(quoted.id)}
+                />
+                {showStatusLabel ? (
                   <Animated.View key={`status-${status}`} entering={FadeIn.duration(200)} className="mt-1 flex-row items-center gap-1 pr-1">
                     {status === 'seen' ? <Avatar name={selected.display_name} url={selected.avatar_url} size={14} /> : null}
                     <Text className={`text-[11px] ${failed ? 'font-semibold text-[#DC2626]' : textSecondary}`}>
@@ -380,7 +584,7 @@ export default function ChatScreen() {
             );
           })}
           {otherTyping ? (
-            <Animated.View key="typing-indicator" entering={FadeInUp.duration(180)} exiting={FadeOut.duration(150)} className="mb-2.5 flex-row items-end gap-2">
+            <Animated.View key="typing-indicator" entering={riseIn(0, 180)} exiting={FadeOut.duration(150)} className="mb-2.5 flex-row items-end gap-2">
               <Avatar name={selected.display_name} url={selected.avatar_url} size={24} />
               <View className={`flex-row items-center gap-1.5 rounded-2xl rounded-bl-md border px-4 py-3.5 ${borderColor} ${panelBackground}`}>
                 {[0, 1, 2].map((dot) => <TypingDot key={dot} index={dot} color={isDark ? '#94A3B8' : '#7A859D'} />)}
@@ -388,32 +592,71 @@ export default function ChatScreen() {
             </Animated.View>
           ) : null}
         </ScrollView>
-        <View className={`flex-row items-center gap-2 border-t px-4 py-3 ${borderColor}`}>
-          <TextInput
-            value={messageText}
-            onChangeText={handleChangeText}
-            onSubmitEditing={sendMessage}
-            placeholder="Type a message"
-            placeholderTextColor="#94A3B8"
-            returnKeyType="send"
-            className={`flex-1 rounded-full border px-4 py-3 ${borderColor} ${panelBackground} ${textPrimary}`}
-          />
-          <Animated.View style={sendButtonStyle}>
-            <TouchableOpacity onPress={sendMessage} disabled={!canSend} className="h-12 w-12 items-center justify-center rounded-full bg-[#284BD6]">
-              <Send size={18} color="#FFFFFF" />
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-        <Modal transparent visible={menuVisible} animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-          <Pressable className="flex-1 bg-black/30" onPress={() => setMenuVisible(false)}>
-            <View className={`absolute right-4 top-16 w-64 rounded-2xl p-2 shadow-lg ${isDark ? 'bg-[#252525]' : 'bg-white'}`}>
-              <Text className={`px-3 py-2 text-sm font-bold ${textPrimary}`}>{selected.display_name}</Text>
-              <TouchableOpacity onPress={() => { setMenuVisible(false); setReportModalVisible(true); }} className="px-3 py-3">
-                <Text className="text-base text-[#DC2626]">Report</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Modal>
+        <Composer
+          isDark={isDark}
+          accent="#284BD6"
+          value={messageText}
+          onChangeText={handleChangeText}
+          onSend={sendMessage}
+          onQuickReaction={() => queue(QUICK_REACTION)}
+          onPhoto={(source) => void sendPhoto(source)}
+          reply={replyTo ? { label: `Replying to ${replyTo.sender_id === myUserId ? 'yourself' : firstName}`, summary: messageSummary(replyTo) } : null}
+          onCancelReply={() => setReplyTo(null)}
+          inputRef={inputRef}
+        />
+        <ChatInfoSheet
+          visible={menuVisible}
+          onClose={() => setMenuVisible(false)}
+          isDark={isDark}
+          name={selected.display_name}
+          avatarUrl={selected.avatar_url}
+          status={otherTyping ? 'typing' : otherHere ? 'here' : 'idle'}
+          messageCount={messages.filter((message) => !message.pending && !message.deleted_at).length}
+          firstMessageAt={messages[0]?.created_at ?? null}
+          muted={prefs.muted}
+          pinned={prefs.pinned}
+          photos={thread.sharedPhotos}
+          onViewProfile={openProfile}
+          onToggleMute={() => togglePref('muted')}
+          onTogglePin={() => togglePref('pinned')}
+          onOpenPhoto={(url) => {
+            setMenuVisible(false);
+            setViewerUri(url);
+          }}
+          onDelete={confirmDeleteChat}
+          onSearch={() => {
+            setMenuVisible(false);
+            setChatSearch('');
+            setChatSearchOpen(true);
+          }}
+          onReport={() => {
+            setMenuVisible(false);
+            setReportModalVisible(true);
+          }}
+          onUnfriend={confirmUnfriend}
+          onBlock={confirmBlock}
+        />
+        <MessageActionsSheet
+          visible={actionTarget !== null}
+          isDark={isDark}
+          preview={actionTarget ? messageSummary(actionTarget) : ''}
+          mine={actionTarget?.sender_id === myUserId}
+          myReaction={actionTarget ? thread.myReactionFor(actionTarget.id) : null}
+          onClose={() => setActionTarget(null)}
+          onReact={(emoji) => {
+            if (!actionTarget) return;
+            setActionTarget(null);
+            thread.react(actionTarget, emoji);
+          }}
+          onReply={() => {
+            if (!actionTarget) return;
+            setActionTarget(null);
+            setReplyTo(actionTarget);
+            inputRef.current?.focus();
+          }}
+          onUnsend={() => actionTarget && confirmUnsend(actionTarget)}
+        />
+        <PhotoViewer uri={viewerUri} onClose={() => setViewerUri(null)} />
         <ReportUserModal
           visible={reportModalVisible}
           onClose={() => setReportModalVisible(false)}
@@ -421,14 +664,21 @@ export default function ChatScreen() {
           reportedUserId={selected.other_user_id}
           targetDisplayName={selected.display_name}
         />
-      </KeyboardAvoidingView>
+      </View>
     );
   }
 
   const query = search.trim().toLowerCase();
   const visibleConversations = query ? conversations.filter((conversation) => conversation.display_name.toLowerCase().includes(query)) : conversations;
-  const newFriends = visibleConversations.filter((conversation) => !conversation.last_message);
-  const showSkeleton = loading && conversations.length === 0;
+  const visibleGroups = query ? groups.filter((group) => group.title.toLowerCase().includes(query)) : groups;
+  const newFriends = visibleConversations.filter((conversation) => !conversation.last_message_at);
+  const showSkeleton = loading && conversations.length === 0 && groups.length === 0 && !guildChat;
+  const showGuildChat = guildChat !== null && (!query || guildChat.guild.name.toLowerCase().includes(query));
+  // One list like Messenger: pinned first, then most recent activity.
+  const listItems: ListItem[] = [
+    ...visibleConversations.map((conversation) => ({ kind: 'direct' as const, conversation, pinned: prefsOf(conversation).pinned, at: conversation.last_message_at })),
+    ...visibleGroups.map((group) => ({ kind: 'group' as const, group, pinned: group.pinned, at: group.last_message_at })),
+  ].sort((a, b) => Number(b.pinned) - Number(a.pinned) || (b.at ?? '').localeCompare(a.at ?? ''));
 
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl} keyboardShouldPersistTaps="handled">
@@ -445,8 +695,41 @@ export default function ChatScreen() {
           {[0, 1, 2, 3, 4].map((index) => <SkeletonRow key={index} />)}
         </View>
       ) : null}
-      {!loading && !conversations.length ? (
-        <EmptyState icon={<MessageCircle size={34} color="#3B82F6" />} title="No conversations yet" message="Add a friend to start chatting." />
+      {!loading && !conversations.length && !groups.length && !guildChat ? (
+        <EmptyState icon={<MessageCircle size={34} color="#3B82F6" />} title="No conversations yet" message="Add a friend or join a trip to start chatting." />
+      ) : null}
+
+      {showGuildChat && guildChat ? (
+        <Animated.View key="guild-chat" entering={enterFromBelow(0)} className="px-4 pt-3">
+          <TouchableOpacity
+            onPress={() => {
+              feedback.select();
+              router.push('/guild/chat');
+            }}
+            accessibilityLabel={`Open ${guildChat.guild.name} guild chat`}
+            className={`flex-row items-center gap-3 rounded-2xl border px-3 py-3 ${borderColor} ${panelBackground}`}>
+            <GuildEmblem emblem={guildChat.guild.emblem} color={guildChat.guild.color} size={48} />
+            <View className="flex-1">
+              <View className="flex-row items-center justify-between">
+                <View className="flex-1 flex-row items-center gap-1.5">
+                  <Text numberOfLines={1} className={`shrink text-base ${guildChat.unread_count ? 'font-bold' : 'font-semibold'} ${textPrimary}`}>{guildChat.guild.name}</Text>
+                  <View className="rounded px-1.5 py-0.5" style={{ backgroundColor: `${guildChat.guild.color}22` }}>
+                    <Text className="text-[9px] font-black" style={{ color: guildChat.guild.color }}>GUILD</Text>
+                  </View>
+                </View>
+                {guildChat.last_message_at ? <Text className={`ml-2 text-xs ${guildChat.unread_count ? 'font-bold text-[#284BD6]' : textSecondary}`}>{formatTime(guildChat.last_message_at)}</Text> : null}
+              </View>
+              <Text numberOfLines={1} className={`mt-0.5 ${guildChat.unread_count ? `font-bold ${textPrimary}` : `font-normal ${textSecondary}`}`}>
+                {guildChat.last_message ? `${guildChat.last_message_sender_id === myUserId ? 'You: ' : ''}${guildChat.last_message}` : 'Say hi to your guild 👋'}
+              </Text>
+            </View>
+            {guildChat.unread_count ? (
+              <PopIn className="h-6 min-w-6 items-center justify-center rounded-full bg-[#284BD6] px-1.5">
+                <Text className="text-xs font-bold text-white">{guildChat.unread_count}</Text>
+              </PopIn>
+            ) : null}
+          </TouchableOpacity>
+        </Animated.View>
       ) : null}
 
       {newFriends.length > 0 ? (
@@ -466,10 +749,56 @@ export default function ChatScreen() {
       ) : null}
 
       <View className="px-4 pt-4">
-        {visibleConversations.map((conversation, index) => {
+        {listItems.map((item, index) => {
+          if (item.kind === 'group') {
+            const { group } = item;
+            const unread = group.unread_count > 0;
+            const isTour = group.trip_type === 'tour';
+            const color = isTour ? '#0E9F6E' : '#2A55D4';
+            const Icon = isTour ? MapIcon : Car;
+            return (
+              <Animated.View key={group.thread_id} entering={enterFromBelow(index)}>
+                <TouchableOpacity
+                  onPress={() => {
+                    feedback.select();
+                    router.push({ pathname: '/trip/chat/[id]', params: { id: group.trip_id } });
+                  }}
+                  accessibilityLabel={`Open ${group.title} group chat`}
+                  className={`flex-row items-center gap-3 border-b px-1 py-3.5 ${borderColor}`}>
+                  <View className="h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: `${color}1F` }}>
+                    <Icon size={22} color={color} />
+                  </View>
+                  <View className="flex-1">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-1 flex-row items-center gap-1.5">
+                        <Text numberOfLines={1} className={`shrink text-base ${unread ? 'font-bold' : 'font-semibold'} ${textPrimary}`}>{group.title}</Text>
+                        <View className="rounded px-1.5 py-0.5" style={{ backgroundColor: `${color}22` }}>
+                          <Text className="text-[9px] font-black" style={{ color }}>{isTour ? 'TOUR' : 'CARPOOL'}</Text>
+                        </View>
+                        {group.muted ? <BellOff size={13} color={iconMuted} /> : null}
+                        {group.pinned ? <Pin size={13} color={iconMuted} /> : null}
+                      </View>
+                      {group.last_message_at ? <Text className={`ml-2 text-xs ${unread && !group.muted ? 'font-bold text-[#284BD6]' : textSecondary}`}>{formatTime(group.last_message_at)}</Text> : null}
+                    </View>
+                    <Text numberOfLines={1} className={`mt-0.5 ${!group.last_message_at ? 'font-medium text-[#284BD6]' : group.last_message_deleted ? `italic ${textSecondary}` : unread ? `font-bold ${textPrimary}` : `font-normal ${textSecondary}`}`}>
+                      {groupPreview(group, myUserId)}
+                    </Text>
+                  </View>
+                  {unread ? (
+                    <PopIn className={`h-6 min-w-6 items-center justify-center rounded-full px-1.5 ${group.muted ? 'bg-[#94A3B8]' : 'bg-[#284BD6]'}`}>
+                      <Text className="text-xs font-bold text-white">{group.unread_count}</Text>
+                    </PopIn>
+                  ) : null}
+                </TouchableOpacity>
+              </Animated.View>
+            );
+          }
+
+          const { conversation } = item;
+          const { muted, pinned } = prefsOf(conversation);
           const unread = conversation.unread_count > 0;
-          const lastIsMine = Boolean(conversation.last_message) && conversation.last_message_sender_id === myUserId;
-          const lastStatus = lastIsMine && conversation.last_message_at
+          const lastIsMine = Boolean(conversation.last_message_at) && conversation.last_message_sender_id === myUserId;
+          const lastStatus = lastIsMine && conversation.last_message_at && !conversation.last_message_deleted
             ? messageStatus(conversation.last_message_at, { readAt: conversation.other_last_read_at, deliveredAt: conversation.other_last_delivered_at })
             : null;
           return (
@@ -478,18 +807,22 @@ export default function ChatScreen() {
                 <Avatar name={conversation.display_name} url={conversation.avatar_url} />
                 <View className="flex-1">
                   <View className="flex-row items-center justify-between">
-                    <Text numberOfLines={1} className={`flex-1 text-base ${unread ? 'font-bold' : 'font-semibold'} ${textPrimary}`}>{conversation.display_name}</Text>
-                    {conversation.last_message_at ? <Text className={`ml-2 text-xs ${unread ? 'font-bold text-[#284BD6]' : textSecondary}`}>{formatTime(conversation.last_message_at)}</Text> : null}
+                    <View className="flex-1 flex-row items-center gap-1.5">
+                      <Text numberOfLines={1} className={`shrink text-base ${unread ? 'font-bold' : 'font-semibold'} ${textPrimary}`}>{conversation.display_name}</Text>
+                      {muted ? <BellOff size={13} color={iconMuted} /> : null}
+                      {pinned ? <Pin size={13} color={iconMuted} /> : null}
+                    </View>
+                    {conversation.last_message_at ? <Text className={`ml-2 text-xs ${unread && !muted ? 'font-bold text-[#284BD6]' : textSecondary}`}>{formatTime(conversation.last_message_at)}</Text> : null}
                   </View>
                   <View className="mt-0.5 flex-row items-center gap-1">
-                    {lastIsMine && lastStatus ? <StatusTick status={lastStatus} color={isDark ? '#94A3B8' : '#67748D'} size={15} /> : null}
-                    <Text numberOfLines={1} className={`flex-1 ${!conversation.last_message ? 'font-medium text-[#284BD6]' : unread ? `font-bold ${textPrimary}` : `font-normal ${textSecondary}`}`}>
-                      {conversation.last_message ? `${lastIsMine ? 'You: ' : ''}${conversation.last_message}` : 'Say hi to your new friend 👋'}
+                    {lastStatus ? <StatusTick status={lastStatus} color={iconMuted} size={15} /> : null}
+                    <Text numberOfLines={1} className={`flex-1 ${!conversation.last_message_at ? 'font-medium text-[#284BD6]' : conversation.last_message_deleted ? `italic ${textSecondary}` : unread ? `font-bold ${textPrimary}` : `font-normal ${textSecondary}`}`}>
+                      {conversationPreview(conversation, lastIsMine)}
                     </Text>
                   </View>
                 </View>
                 {unread ? (
-                  <PopIn className="h-6 min-w-6 items-center justify-center rounded-full bg-[#284BD6] px-1.5">
+                  <PopIn className={`h-6 min-w-6 items-center justify-center rounded-full px-1.5 ${muted ? 'bg-[#94A3B8]' : 'bg-[#284BD6]'}`}>
                     <Text className="text-xs font-bold text-white">{conversation.unread_count}</Text>
                   </PopIn>
                 ) : null}
@@ -497,7 +830,7 @@ export default function ChatScreen() {
             </Animated.View>
           );
         })}
-        {query && visibleConversations.length === 0 && conversations.length > 0 ? (
+        {query && listItems.length === 0 && !showGuildChat && (conversations.length > 0 || groups.length > 0) ? (
           <Text className={`pt-8 text-center text-sm ${textSecondary}`}>No chats match “{search.trim()}”.</Text>
         ) : null}
       </View>
