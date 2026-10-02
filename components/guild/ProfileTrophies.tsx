@@ -1,9 +1,10 @@
+import { BadgeDetailModal } from '@/components/guild/BadgeDetailModal';
 import { BadgeMedal, SeasonMedal } from '@/components/guild/TrophyMedals';
 import { Card } from '@/components/ui/screen-header';
 import { useRankInfo } from '@/hooks/use-rank-info';
-import { badgesFor, getPointsSummary, getSeasonAwards, seasonLabel, type PointsSummary, type SeasonAward } from '@/lib/guilds';
+import { badgesFor, getPointsSummary, getSeasonAwards, seasonLabel, type Badge, type PointsSummary, type SeasonAward } from '@/lib/guilds';
 import { useEffect, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 
 // Trophy shelf for a public profile: season medals first, then earned
 // badges. Hidden entirely for someone who hasn't won anything yet.
@@ -11,6 +12,7 @@ export function ProfileTrophies({ userId, isDark, index = 0 }: { userId: string;
   const info = useRankInfo(userId);
   const [summary, setSummary] = useState<PointsSummary | null>(null);
   const [seasons, setSeasons] = useState<SeasonAward[]>([]);
+  const [openBadge, setOpenBadge] = useState<Badge | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,14 +55,15 @@ export function ProfileTrophies({ userId, isDark, index = 0 }: { userId: string;
 
       <View className="mt-3 flex-row flex-wrap gap-y-3">
         {badges.map((badge) => (
-          <View key={badge.id} className="w-1/4 items-center px-1" style={{ opacity: badge.earned ? 1 : 0.45 }}>
+          <Pressable key={badge.id} onPress={() => setOpenBadge(badge)} className="w-1/4 items-center px-1" style={{ opacity: badge.earned ? 1 : 0.45 }} accessibilityLabel={`${badge.name} requirements`}>
             <BadgeMedal icon={badge.icon} tier={badge.tier} maxTier={badge.thresholds.length} size={42} />
             <Text className={`mt-1 text-center text-[10px] font-bold ${badge.earned ? primary : secondary}`} numberOfLines={2}>
               {badge.name}
             </Text>
-          </View>
+          </Pressable>
         ))}
       </View>
+      <BadgeDetailModal badge={openBadge} isDark={isDark} ownerName="This traveler" onClose={() => setOpenBadge(null)} />
     </Card>
   );
 }

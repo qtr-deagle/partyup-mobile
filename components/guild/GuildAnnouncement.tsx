@@ -9,7 +9,7 @@ import Animated from 'react-native-reanimated';
 type Props = {
   guild: Guild;
   isDark: boolean;
-  // Leader or officer.
+  // The Guild Leader.
   canEdit: boolean;
   onSaved: () => void;
 };
@@ -24,7 +24,7 @@ function postedAgo(iso: string | null) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-// Pinned guild announcement. Leaders and officers can post, edit or clear it;
+// Pinned guild announcement. The leader can post, edit or clear it;
 // posting notifies every member.
 export function GuildAnnouncement({ guild, isDark, canEdit, onSaved }: Props) {
   const [editing, setEditing] = useState(false);

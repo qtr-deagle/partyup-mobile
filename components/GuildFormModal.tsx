@@ -1,4 +1,5 @@
 import { GuildEmblem } from '@/components/GuildEmblem';
+import { GuildColorPicker } from '@/components/guild/GuildColorPicker';
 import { RankMedal } from '@/components/guild/RankMedal';
 import { riseIn } from '@/components/ui/motion';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -10,10 +11,12 @@ import {
   GUILD_FOCUS_OPTIONS,
   GUILD_BASE_MEMBERS,
   GUILD_MAX_MEMBERS,
-  GUILD_MEMBERS_PER_LEVEL,
+  GUILD_LEVELS_PER_STEP,
+  GUILD_MEMBERS_PER_STEP,
   GUILD_MIN_RANKS,
   GUILD_NAME_IDEAS,
   formatGuildAreas,
+  isReadableOnWhite,
   RANKS,
   type Guild,
   type GuildEmblem as Emblem,
@@ -55,6 +58,7 @@ type Props = {
 };
 
 export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onClose, onSubmit }: Props) {
+  const [sliderDragging, setSliderDragging] = useState(false);
   const [name, setName] = useState('');
   const [tagline, setTagline] = useState('');
   const [emblem, setEmblem] = useState<Emblem>('shield');
@@ -84,7 +88,8 @@ export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onC
   const placeholderColor = isDark ? '#64748B' : '#9AA3B1';
   const chip = isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#DCE3EF] bg-[#F4F6FA]';
   const trimmed = name.trim();
-  const canSubmit = trimmed.length >= 3 && trimmed.length <= 30 && !busy;
+  const colorOk = isReadableOnWhite(color);
+  const canSubmit = trimmed.length >= 3 && trimmed.length <= 30 && colorOk && !busy;
   const minRankPoints = minRank ? RANKS.find((rank) => rank.name === minRank)?.min : null;
 
   function toggleFocus(id: GuildFocus) {
@@ -117,7 +122,7 @@ export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onC
             </TouchableOpacity>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerClassName="gap-4 pb-2">
+          <ScrollView keyboardShouldPersistTaps="handled" scrollEnabled={!sliderDragging} contentContainerClassName="gap-4 pb-2">
             <View className="items-center pt-1">
               <GuildEmblem emblem={emblem} color={color} size={64} />
               <Text className={`mt-2 text-lg font-black ${primary}`}>{trimmed || 'Your guild name'}</Text>
@@ -172,17 +177,7 @@ export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onC
 
             <View>
               <Text className={`mb-2 text-sm font-semibold ${primary}`}>Color</Text>
-              <View className="flex-row flex-wrap gap-2.5">
-                {GUILD_COLORS.map((option) => (
-                  <TouchableOpacity
-                    key={option}
-                    onPress={() => setColor(option)}
-                    accessibilityLabel={`Color ${option}`}
-                    className="h-9 w-9 rounded-full"
-                    style={{ backgroundColor: option, borderWidth: 3, borderColor: color === option ? (isDark ? '#FFFFFF' : '#1B2340') : 'transparent' }}
-                  />
-                ))}
-              </View>
+              <GuildColorPicker value={color} isDark={isDark} onChange={setColor} onDraggingChange={setSliderDragging} />
             </View>
 
             <View>
@@ -200,134 +195,136 @@ export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onC
               <Text className={`mt-1 text-right text-[11px] ${secondary}`}>{description.length}/300</Text>
             </View>
 
-            <View>
-              <View className="mb-2 flex-row items-center justify-between">
-                <Text className={`text-sm font-semibold ${primary}`}>Travel focus</Text>
-                <Text className={`text-xs ${secondary}`}>
-                  {focus.length}/{GUILD_FOCUS_MAX}
+            <>
+              <View>
+                <View className="mb-2 flex-row items-center justify-between">
+                  <Text className={`text-sm font-semibold ${primary}`}>Travel focus</Text>
+                  <Text className={`text-xs ${secondary}`}>
+                    {focus.length}/{GUILD_FOCUS_MAX}
+                  </Text>
+                </View>
+                <View className="flex-row flex-wrap gap-2">
+                  {GUILD_FOCUS_OPTIONS.map((option) => {
+                    const selected = focus.includes(option.id);
+                    const full = !selected && focus.length >= GUILD_FOCUS_MAX;
+                    return (
+                      <TouchableOpacity
+                        key={option.id}
+                        onPress={() => toggleFocus(option.id)}
+                        disabled={full}
+                        accessibilityLabel={option.label}
+                        className={`rounded-full border px-3 py-1.5 ${selected ? '' : chip}`}
+                        style={[chipStyle(selected), full ? { opacity: 0.45 } : null]}>
+                        <Text className={`text-xs font-bold ${selected ? primary : secondary}`}>{option.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View className={`h-px ${isDark ? 'bg-[#22324B]' : 'bg-[#E2E8F0]'}`} />
+              <Text className={`-mb-2 text-xs font-black uppercase tracking-[2px] ${secondary}`}>Joining rules</Text>
+
+              <View>
+                <Text className={`mb-2 text-sm font-semibold ${primary}`}>Who can join</Text>
+                <View className="flex-row gap-2">
+                  {JOIN_OPTIONS.map((option) => {
+                    const selected = joinPolicy === option.id;
+                    const Icon = option.id === 'approval' ? ShieldCheck : DoorOpen;
+                    return (
+                      <TouchableOpacity
+                        key={option.id}
+                        onPress={() => setJoinPolicy(option.id)}
+                        accessibilityLabel={option.label}
+                        className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border py-2.5 ${selected ? '' : chip}`}
+                        style={selected ? { borderColor: color, backgroundColor: `${color}1F` } : undefined}>
+                        <Icon size={15} color={selected ? color : isDark ? '#94A3B8' : '#6C7A95'} />
+                        <Text className={`text-xs font-bold ${selected ? primary : secondary}`}>{option.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text className={`mt-1.5 text-xs ${secondary}`}>{JOIN_OPTIONS.find((option) => option.id === joinPolicy)?.hint}</Text>
+              </View>
+
+              <View>
+                <Text className={`mb-2 text-sm font-semibold ${primary}`}>Minimum rank</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+                  <TouchableOpacity
+                    onPress={() => setMinRank(null)}
+                    accessibilityLabel="Any rank"
+                    className={`items-center justify-center rounded-xl border px-3.5 py-2 ${minRank === null ? '' : chip}`}
+                    style={chipStyle(minRank === null)}>
+                    <Users size={22} color={minRank === null ? color : isDark ? '#94A3B8' : '#6C7A95'} />
+                    <Text className={`mt-1 text-xs font-bold ${minRank === null ? primary : secondary}`}>Anyone</Text>
+                  </TouchableOpacity>
+                  {GUILD_MIN_RANKS.map((rank) => {
+                    const selected = minRank === rank;
+                    return (
+                      <TouchableOpacity
+                        key={rank}
+                        onPress={() => setMinRank(rank)}
+                        accessibilityLabel={`${rank} rank and up`}
+                        className={`items-center justify-center rounded-xl border px-3 py-2 ${selected ? '' : chip}`}
+                        style={chipStyle(selected)}>
+                        <RankMedal rank={rank} size={24} />
+                        <Text className={`mt-1 text-xs font-bold ${selected ? primary : secondary}`}>{rank}+</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <Text className={`mt-1.5 text-xs ${secondary}`}>
+                  {minRank
+                    ? `Only travelers at ${minRank} rank (${minRankPoints}+ pts) or higher can join or request to join. Current members stay.`
+                    : 'Travelers of any rank can join.'}
                 </Text>
               </View>
-              <View className="flex-row flex-wrap gap-2">
-                {GUILD_FOCUS_OPTIONS.map((option) => {
-                  const selected = focus.includes(option.id);
-                  const full = !selected && focus.length >= GUILD_FOCUS_MAX;
-                  return (
-                    <TouchableOpacity
-                      key={option.id}
-                      onPress={() => toggleFocus(option.id)}
-                      disabled={full}
-                      accessibilityLabel={option.label}
-                      className={`rounded-full border px-3 py-1.5 ${selected ? '' : chip}`}
-                      style={[chipStyle(selected), full ? { opacity: 0.45 } : null]}>
-                      <Text className={`text-xs font-bold ${selected ? primary : secondary}`}>{option.label}</Text>
+
+              <View>
+                <View className="mb-2 flex-row items-center justify-between">
+                  <Text className={`text-sm font-semibold ${primary}`}>Member locations</Text>
+                  {areas.length > 0 ? (
+                    <TouchableOpacity onPress={() => setAreas([])} accessibilityLabel="Allow all of Bulacan">
+                      <Text className="text-xs font-bold" style={{ color }}>
+                        Clear
+                      </Text>
                     </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View className={`h-px ${isDark ? 'bg-[#22324B]' : 'bg-[#E2E8F0]'}`} />
-            <Text className={`-mb-2 text-xs font-black uppercase tracking-[2px] ${secondary}`}>Joining rules</Text>
-
-            <View>
-              <Text className={`mb-2 text-sm font-semibold ${primary}`}>Who can join</Text>
-              <View className="flex-row gap-2">
-                {JOIN_OPTIONS.map((option) => {
-                  const selected = joinPolicy === option.id;
-                  const Icon = option.id === 'approval' ? ShieldCheck : DoorOpen;
-                  return (
-                    <TouchableOpacity
-                      key={option.id}
-                      onPress={() => setJoinPolicy(option.id)}
-                      accessibilityLabel={option.label}
-                      className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border py-2.5 ${selected ? '' : chip}`}
-                      style={selected ? { borderColor: color, backgroundColor: `${color}1F` } : undefined}>
-                      <Icon size={15} color={selected ? color : isDark ? '#94A3B8' : '#6C7A95'} />
-                      <Text className={`text-xs font-bold ${selected ? primary : secondary}`}>{option.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text className={`mt-1.5 text-xs ${secondary}`}>{JOIN_OPTIONS.find((option) => option.id === joinPolicy)?.hint}</Text>
-            </View>
-
-            <View>
-              <Text className={`mb-2 text-sm font-semibold ${primary}`}>Minimum rank</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
-                <TouchableOpacity
-                  onPress={() => setMinRank(null)}
-                  accessibilityLabel="Any rank"
-                  className={`items-center justify-center rounded-xl border px-3.5 py-2 ${minRank === null ? '' : chip}`}
-                  style={chipStyle(minRank === null)}>
-                  <Users size={22} color={minRank === null ? color : isDark ? '#94A3B8' : '#6C7A95'} />
-                  <Text className={`mt-1 text-xs font-bold ${minRank === null ? primary : secondary}`}>Anyone</Text>
-                </TouchableOpacity>
-                {GUILD_MIN_RANKS.map((rank) => {
-                  const selected = minRank === rank;
-                  return (
-                    <TouchableOpacity
-                      key={rank}
-                      onPress={() => setMinRank(rank)}
-                      accessibilityLabel={`${rank} rank and up`}
-                      className={`items-center justify-center rounded-xl border px-3 py-2 ${selected ? '' : chip}`}
-                      style={chipStyle(selected)}>
-                      <RankMedal rank={rank} size={24} />
-                      <Text className={`mt-1 text-xs font-bold ${selected ? primary : secondary}`}>{rank}+</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-              <Text className={`mt-1.5 text-xs ${secondary}`}>
-                {minRank
-                  ? `Only travelers at ${minRank} rank (${minRankPoints}+ pts) or higher can join or request to join. Current members stay.`
-                  : 'Travelers of any rank can join.'}
-              </Text>
-            </View>
-
-            <View>
-              <View className="mb-2 flex-row items-center justify-between">
-                <Text className={`text-sm font-semibold ${primary}`}>Member locations</Text>
-                {areas.length > 0 ? (
-                  <TouchableOpacity onPress={() => setAreas([])} accessibilityLabel="Allow all of Bulacan">
-                    <Text className="text-xs font-bold" style={{ color }}>
-                      Clear
-                    </Text>
+                  ) : null}
+                </View>
+                <View className="flex-row flex-wrap gap-2">
+                  <TouchableOpacity
+                    onPress={() => setAreas([])}
+                    accessibilityLabel="All of Bulacan"
+                    className={`rounded-full border px-3 py-1.5 ${areas.length === 0 ? '' : chip}`}
+                    style={chipStyle(areas.length === 0)}>
+                    <Text className={`text-xs font-bold ${areas.length === 0 ? primary : secondary}`}>All of Bulacan</Text>
                   </TouchableOpacity>
-                ) : null}
+                  {BULACAN_MUNICIPALITIES.map((area) => {
+                    const selected = areas.includes(area);
+                    return (
+                      <TouchableOpacity
+                        key={area}
+                        onPress={() => toggleArea(area)}
+                        accessibilityLabel={area}
+                        accessibilityState={{ selected }}
+                        className={`rounded-full border px-3 py-1.5 ${selected ? '' : chip}`}
+                        style={chipStyle(selected)}>
+                        <Text className={`text-xs font-bold ${selected ? primary : secondary}`}>{area}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text className={`mt-1.5 text-xs ${secondary}`}>
+                  {areas.length > 0
+                    ? `Only travelers whose verified city is ${formatGuildAreas(areas)} can join. Current members stay.`
+                    : 'Travelers from anywhere in Bulacan can join. Pick one or more to limit it.'}
+                </Text>
               </View>
-              <View className="flex-row flex-wrap gap-2">
-                <TouchableOpacity
-                  onPress={() => setAreas([])}
-                  accessibilityLabel="All of Bulacan"
-                  className={`rounded-full border px-3 py-1.5 ${areas.length === 0 ? '' : chip}`}
-                  style={chipStyle(areas.length === 0)}>
-                  <Text className={`text-xs font-bold ${areas.length === 0 ? primary : secondary}`}>All of Bulacan</Text>
-                </TouchableOpacity>
-                {BULACAN_MUNICIPALITIES.map((area) => {
-                  const selected = areas.includes(area);
-                  return (
-                    <TouchableOpacity
-                      key={area}
-                      onPress={() => toggleArea(area)}
-                      accessibilityLabel={area}
-                      accessibilityState={{ selected }}
-                      className={`rounded-full border px-3 py-1.5 ${selected ? '' : chip}`}
-                      style={chipStyle(selected)}>
-                      <Text className={`text-xs font-bold ${selected ? primary : secondary}`}>{area}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text className={`mt-1.5 text-xs ${secondary}`}>
-                {areas.length > 0
-                  ? `Only travelers whose verified city is ${formatGuildAreas(areas)} can join. Current members stay.`
-                  : 'Travelers from anywhere in Bulacan can join. Pick one or more to limit it.'}
-              </Text>
-            </View>
 
-            <Text className={`text-xs ${secondary}`}>
-              Guilds hold {GUILD_BASE_MEMBERS} members at Level 1, +{GUILD_MEMBERS_PER_LEVEL} per level (max {GUILD_MAX_MEMBERS}).
-            </Text>
+              <Text className={`text-xs ${secondary}`}>
+                Guilds hold {GUILD_BASE_MEMBERS} members at Level 1, +{GUILD_MEMBERS_PER_STEP} every {GUILD_LEVELS_PER_STEP} levels (max {GUILD_MAX_MEMBERS}).
+              </Text>
+            </>
 
             {errorMessage ? (
               <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">

@@ -2,7 +2,9 @@ import type { BulacanMunicipality } from '@/lib/bulacan';
 import { withRequestTimeout } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
 
-export type GuildEmblem = 'shield' | 'flame' | 'mountain' | 'compass' | 'star' | 'wave' | 'leaf' | 'crown';
+export type GuildEmblem =
+  | 'shield' | 'flame' | 'mountain' | 'compass' | 'star' | 'wave' | 'leaf' | 'crown'
+  | 'car' | 'bike' | 'tent' | 'trees' | 'sun' | 'palm' | 'anchor' | 'plane' | 'camera' | 'utensils' | 'heart' | 'bolt';
 export type LeaderboardPeriod = 'week' | 'month' | 'all';
 // 'open': anyone verified joins instantly. 'approval': the leader accepts requests.
 export type JoinPolicy = 'open' | 'approval';
@@ -37,7 +39,7 @@ export type Guild = {
   // Municipalities members must live in (profiles.city); empty = all of Bulacan.
   areas: BulacanMunicipality[];
   focus: GuildFocus[];
-  // Pinned message from the leader or an officer.
+  // Pinned message from the leader.
   announcement: string | null;
   announcement_at: string | null;
   created_at: string;
@@ -69,7 +71,6 @@ export type GuildMemberStanding = {
   joined_at: string;
   points: number;
   lifetime_points: number;
-  member_role: 'member' | 'officer';
 };
 
 export type PointsSummary = {
@@ -318,7 +319,7 @@ export async function cancelJoinRequest() {
 }
 
 // ---------------------------------------------------------------------------
-// Guild invites: leaders/officers invite from a profile; the server only
+// Guild invites: leaders invite from a profile; the server only
 // allows it when the traveler meets the guild's rank, area and cap rules.
 // ---------------------------------------------------------------------------
 
@@ -340,7 +341,7 @@ export type MyGuildInvite = {
   created_at: string;
 };
 
-// Null when the caller doesn't lead or officer a guild.
+// Null when the caller doesn't lead a guild.
 export async function getGuildInviteStatus(userId: string) {
   const result = await run<GuildInviteStatus[]>(supabase.rpc('get_guild_invite_status', { p_user_id: userId }), 'Checking guild invite', []);
   return { data: result.data[0] ?? null, error: result.error };
@@ -363,12 +364,8 @@ export async function respondGuildInvite(inviteId: string, accept: boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// Guild leadership: officers, announcement, chat.
+// Guild leadership: announcement, handover, chat.
 // ---------------------------------------------------------------------------
-
-export async function setGuildOfficer(userId: string, officer: boolean) {
-  return run<null>(supabase.rpc('set_guild_officer', { p_user_id: userId, p_officer: officer }), 'Updating officer', null);
-}
 
 // Empty text clears the announcement.
 export async function setGuildAnnouncement(guildId: string, text: string) {
@@ -380,12 +377,12 @@ export async function transferGuildLeadership(successorId: string) {
   return run<null>(supabase.rpc('transfer_guild_leadership', { p_successor_id: successorId }), 'Handing over the guild', null);
 }
 
-// The top officer takes over. Returns their name.
+// The eligible member with the most points takes over. Returns their name.
 export async function stepDownAsLeader() {
   return run<string | null>(supabase.rpc('step_down_as_leader'), 'Stepping down', null);
 }
 
-// Sender, leader or officers. Soft delete: members see "Message removed".
+// Sender or leader. Soft delete: members see "Message removed".
 export async function deleteGuildChatMessage(messageId: string) {
   return run<null>(supabase.rpc('delete_guild_chat_message', { p_message_id: messageId }), 'Deleting message', null);
 }
@@ -644,9 +641,16 @@ export function rankDiscount(points: number) {
   return index >= 5 ? 20 : index >= 4 ? 10 : 0;
 }
 
-// Price after the rank discount; must match redeem_guild_reward().
-export function rewardPrice(cost: number, points: number) {
-  return Math.max(1, Math.ceil((cost * (100 - rankDiscount(points))) / 100));
+// Price after the rank discount plus the guild-level discount; must match
+// redeem_guild_reward() (202610020007).
+export function rewardPrice(cost: number, points: number, guildLevel = 0) {
+  return Math.max(1, Math.ceil((cost * (100 - totalDiscount(points, guildLevel))) / 100));
+}
+
+// Rank + guild discount together never pass this, so rewards stay worth earning.
+export const MAX_TOTAL_DISCOUNT = 25;
+export function totalDiscount(points: number, guildLevel = 0) {
+  return Math.min(MAX_TOTAL_DISCOUNT, rankDiscount(points) + guildPerkDiscount(guildLevel));
 }
 
 export function rankIndexOf(name: string | null | undefined) {
@@ -658,13 +662,81 @@ export function guildLevel(lifetimePoints: number) {
   return Math.floor(lifetimePoints / GUILD_LEVEL_STEP) + 1;
 }
 
-// Guild size: 20 at Level 1, +5 per level, up to 50 (leader included).
-// Mirrors guild_member_cap() in migration 202610010015.
-export const GUILD_BASE_MEMBERS = 20;
-export const GUILD_MEMBERS_PER_LEVEL = 5;
-export const GUILD_MAX_MEMBERS = 50;
+// Guild size: 10 at Level 1, +2 every 5 levels (Lv 6, 11, ...), up to 20
+// (leader included). Mirrors guild_member_cap() in migration 202610020006.
+export const GUILD_BASE_MEMBERS = 10;
+export const GUILD_MEMBERS_PER_STEP = 2;
+export const GUILD_LEVELS_PER_STEP = 5;
+export const GUILD_MAX_MEMBERS = 20;
 export function guildMemberCap(lifetimePoints: number) {
-  return Math.min(GUILD_MAX_MEMBERS, GUILD_BASE_MEMBERS + GUILD_MEMBERS_PER_LEVEL * (guildLevel(lifetimePoints) - 1));
+  const steps = Math.floor((guildLevel(lifetimePoints) - 1) / GUILD_LEVELS_PER_STEP);
+  return Math.min(GUILD_MAX_MEMBERS, GUILD_BASE_MEMBERS + GUILD_MEMBERS_PER_STEP * steps);
+}
+
+// The next level that raises the cap (6, 11, 16, ...).
+export function nextCapLevel(level: number) {
+  return (Math.floor((level - 1) / GUILD_LEVELS_PER_STEP) + 1) * GUILD_LEVELS_PER_STEP + 1;
+}
+
+// ---------------------------------------------------------------------------
+// Guild level perks (Clash of Clans style). Every member gets them. Mirrors
+// guild_perk_discount() / guild_perk_mission_bonus() in 202610020007.
+// ---------------------------------------------------------------------------
+
+export type GuildPerkKind = 'members' | 'missions' | 'discount';
+export type GuildPerk = { level: number; kind: GuildPerkKind; label: string };
+
+// 3% off rewards at Lv 5, 6% at Lv 12, 10% at Lv 20.
+export function guildPerkDiscount(level: number) {
+  return level >= 20 ? 10 : level >= 12 ? 6 : level >= 5 ? 3 : 0;
+}
+
+// +10% mission points at Lv 3, +15% at 9, +20% at 15, +25% at 22.
+export function guildMissionBonus(level: number) {
+  return level >= 22 ? 25 : level >= 15 ? 20 : level >= 9 ? 15 : level >= 3 ? 10 : 0;
+}
+
+// A mission's payout with the bonus; rounds up like claim_mission() so small
+// missions still get +1.
+export function withMissionBonus(reward: number, level: number) {
+  return reward + Math.ceil((reward * guildMissionBonus(level)) / 100);
+}
+
+function buildGuildPerks(): GuildPerk[] {
+  const perks: GuildPerk[] = [];
+  for (let level = 1; level <= 30; level += 1) {
+    const before = Math.max(level - 1, 0);
+    const lifetimeAt = (lvl: number) => (lvl - 1) * GUILD_LEVEL_STEP;
+    if (level === 1 || guildMemberCap(lifetimeAt(level)) > guildMemberCap(lifetimeAt(before || 1))) {
+      perks.push({ level, kind: 'members', label: `${guildMemberCap(lifetimeAt(level))} member slots` });
+    }
+    if (guildMissionBonus(level) > guildMissionBonus(before)) {
+      perks.push({ level, kind: 'missions', label: `+${guildMissionBonus(level)}% mission points` });
+    }
+    if (guildPerkDiscount(level) > guildPerkDiscount(before)) {
+      perks.push({ level, kind: 'discount', label: `${guildPerkDiscount(level)}% off every reward` });
+    }
+  }
+  return perks;
+}
+
+export const GUILD_PERKS = buildGuildPerks();
+
+// Unlocked perks, newest per kind -- what the guild has right now.
+export function activeGuildPerks(level: number) {
+  const latest = new Map<GuildPerkKind, GuildPerk>();
+  for (const perk of GUILD_PERKS) if (perk.level <= level) latest.set(perk.kind, perk);
+  return [...latest.values()];
+}
+
+export function nextGuildPerk(level: number) {
+  return GUILD_PERKS.find((perk) => perk.level > level) ?? null;
+}
+
+// The caller's guild level; 0 when they're not in a guild.
+export async function getMyGuildLevel() {
+  const result = await run<number>(supabase.rpc('get_my_guild_level'), 'Loading guild level', 0);
+  return { ...result, data: num(result.data) };
 }
 
 export type BadgeIcon = 'verified' | 'guild' | 'car' | 'road' | 'host' | 'crown' | 'gate' | 'recruit';
@@ -681,9 +753,13 @@ export type Badge = {
   earned: boolean;
   // "Complete 15 trips", or a done message at max tier.
   description: string;
+  // One requirement per tier, e.g. ["Complete 10 trips", "Complete 25 trips", ...].
+  requirements: string[];
+  // Where in the app you go to make progress.
+  how: string;
 };
 
-type BadgeDef = { id: string; name: string; icon: BadgeIcon; thresholds: number[]; goal: (n: number) => string; count: number; leaderOnly?: boolean };
+type BadgeDef = { id: string; name: string; icon: BadgeIcon; thresholds: number[]; goal: (n: number) => string; how: string; count: number; leaderOnly?: boolean };
 
 // Travelers don't see badges only Guild Leaders can earn.
 export function badgesFor(summary: PointsSummary | null, role?: string | null): Badge[] {
@@ -692,13 +768,13 @@ export function badgesFor(summary: PointsSummary | null, role?: string | null): 
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   const defs: BadgeDef[] = [
-    { id: 'verified', name: 'Verified', icon: 'verified', thresholds: [1], goal: () => 'Get your ID approved', count: count('id_verified') },
-    { id: 'guildmate', name: 'Guildmate', icon: 'guild', thresholds: [1], goal: () => 'Join a guild', count: count('guild_joined') + count('guild_founded') },
-    { id: 'first-ride', name: 'First Ride', icon: 'car', thresholds: [1], goal: () => 'Complete a trip', count: trips },
-    { id: 'road-warrior', name: 'Road Warrior', icon: 'road', thresholds: [10, 25, 50], goal: (n) => `Complete ${plural(n, 'trip')}`, count: trips },
-    { id: 'host', name: 'Trip Host', icon: 'host', thresholds: [5, 15, 40], goal: (n) => `Host ${plural(n, 'completed trip')}`, count: count('trip_hosted') },
-    { id: 'founder', name: 'Guild Founder', icon: 'crown', thresholds: [1], goal: () => 'Found a guild', count: count('guild_founded'), leaderOnly: true },
-    { id: 'recruiter', name: 'Recruiter', icon: 'recruit', thresholds: [5, 15, 40], goal: (n) => `Welcome ${plural(n, 'member')} to your guild`, count: count('guild_recruit'), leaderOnly: true },
+    { id: 'verified', name: 'Verified', icon: 'verified', thresholds: [1], goal: () => 'Get your ID approved', how: 'Submit your ID for verification. It counts once an admin approves it.', count: count('id_verified') },
+    { id: 'guildmate', name: 'Guildmate', icon: 'guild', thresholds: [1], goal: () => 'Join a guild', how: 'Open the Guilds leaderboard and join or request to join a guild.', count: count('guild_joined') + count('guild_founded') },
+    { id: 'first-ride', name: 'First Ride', icon: 'car', thresholds: [1], goal: () => 'Complete a trip', how: 'Join a carpool or tour and finish the trip.', count: trips },
+    { id: 'road-warrior', name: 'Road Warrior', icon: 'road', thresholds: [10, 25, 50], goal: (n) => `Complete ${plural(n, 'trip')}`, how: 'Every carpool or tour you finish, as a rider or host, counts.', count: trips },
+    { id: 'host', name: 'Trip Host', icon: 'host', thresholds: [5, 15, 40], goal: (n) => `Host ${plural(n, 'completed trip')}`, how: 'Create a carpool or tour and see it through to the end.', count: count('trip_hosted') },
+    { id: 'founder', name: 'Guild Founder', icon: 'crown', thresholds: [1], goal: () => 'Found a guild', how: 'Get approved as a Guild Leader, then create your guild.', count: count('guild_founded'), leaderOnly: true },
+    { id: 'recruiter', name: 'Recruiter', icon: 'recruit', thresholds: [5, 15, 40], goal: (n) => `Welcome ${plural(n, 'member')} to your guild`, how: 'Invite travelers or accept join requests to your guild.', count: count('guild_recruit'), leaderOnly: true },
   ];
 
   const visible = role === 'traveler' ? defs.filter((def) => !def.leaderOnly) : defs;
@@ -714,6 +790,8 @@ export function badgesFor(summary: PointsSummary | null, role?: string | null): 
       count: def.count,
       earned: tier > 0,
       description: nextTarget === undefined ? 'Fully earned!' : `${def.goal(nextTarget)}${def.thresholds.length > 1 ? ` (${def.count}/${nextTarget})` : ''}`,
+      requirements: def.thresholds.map((threshold) => def.goal(threshold)),
+      how: def.how,
     };
   });
 }
@@ -808,7 +886,11 @@ export const EARNING_GUIDE: { role: 'guild_leader' | 'traveler'; label: string; 
   { role: 'traveler', label: 'Join a guild', points: 10, once: true },
 ];
 
-export const GUILD_EMBLEMS: GuildEmblem[] = ['shield', 'flame', 'mountain', 'compass', 'star', 'wave', 'leaf', 'crown'];
+// Mirrors the guilds.emblem check in migration 202610020009.
+export const GUILD_EMBLEMS: GuildEmblem[] = [
+  'shield', 'flame', 'mountain', 'compass', 'star', 'wave', 'leaf', 'crown',
+  'car', 'bike', 'tent', 'trees', 'sun', 'palm', 'anchor', 'plane', 'camera', 'utensils', 'heart', 'bolt',
+];
 export const GUILD_COLORS = ['#2563EB', '#059669', '#DC2626', '#D97706', '#7C3AED', '#DB2777', '#0891B2', '#1E293B'];
 
 // Bulacan-flavored name ideas for leaders founding a guild.
@@ -822,3 +904,53 @@ export const GUILD_NAME_IDEAS = [
   'Sierra Madre Seekers',
   'San Jose Del Monte Convoy',
 ];
+
+// ---------------------------------------------------------------------------
+// Guild colors. White text and emblems sit on the guild color, so a custom
+// color must give white at least 3:1 contrast. Mirrors guild_color_readable()
+// in migration 202610020009.
+// ---------------------------------------------------------------------------
+
+export function isHexColor(value: string) {
+  return /^#[0-9A-Fa-f]{6}$/.test(value);
+}
+
+export function isReadableOnWhite(hex: string) {
+  if (!isHexColor(hex)) return false;
+  const luminance = [1, 3, 5].reduce((sum, start, index) => {
+    const c = parseInt(hex.slice(start, start + 2), 16) / 255;
+    const linear = c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    return sum + [0.2126, 0.7152, 0.0722][index] * linear;
+  }, 0);
+  return 1.05 / (luminance + 0.05) >= 3;
+}
+
+// h 0-360, s and l 0-100.
+export function hslToHex(h: number, s: number, l: number) {
+  const sat = s / 100;
+  const light = l / 100;
+  const a = sat * Math.min(light, 1 - light);
+  const channel = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const value = light - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    return Math.round(value * 255).toString(16).padStart(2, '0');
+  };
+  return `#${channel(0)}${channel(8)}${channel(4)}`.toUpperCase();
+}
+
+export function hexToHsl(hex: string) {
+  const [r, g, b] = [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16) / 255);
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h = (h * 60 + 360) % 360;
+  }
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
+}

@@ -33,9 +33,9 @@ export default function TabLayout() {
 
   const activeTintColor = isDark ? '#93C5FD' : '#1E40AF';
   const inactiveTintColor = isDark ? '#64748B' : '#94A3B8';
-  const tabBarBackgroundColor = isDark ? '#0F172A' : '#FFFFFF';
+  const tabBarBackgroundColor = isDark ? '#111B2E' : '#FFFFFF';
   const sceneBackgroundColor = isDark ? '#0B1220' : '#F8FAFC';
-  const borderColor = isDark ? '#1E293B' : '#E2E8F0';
+  const borderColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)';
   const pillColor = isDark ? 'rgba(59,130,246,0.22)' : 'rgba(30,64,175,0.10)';
 
   return (
@@ -51,28 +51,38 @@ export default function TabLayout() {
           backgroundColor: sceneBackgroundColor,
         },
         tabBarButton: HapticTab,
+        // Floating pill bar, inset from the screen edges and lifted above the
+        // home indicator. It stays in layout flow (not absolute) so screens
+        // don't need extra bottom padding to clear it.
         tabBarStyle: {
           backgroundColor: tabBarBackgroundColor,
-          borderTopWidth: 1,
-          borderTopColor: borderColor,
-          elevation: 0,
-          shadowOpacity: 0,
-          height: 58 + Math.max(insets.bottom, 8),
-          paddingBottom: Math.max(insets.bottom, 8),
-          paddingTop: 2,
-          paddingHorizontal: 12,
+          borderTopWidth: 0,
+          borderWidth: 1,
+          borderColor,
+          borderRadius: 26,
+          marginHorizontal: 14,
+          marginBottom: Math.max(insets.bottom, 12),
+          height: 64,
+          paddingTop: 6,
+          paddingBottom: 6,
+          paddingHorizontal: 4,
+          elevation: 10,
+          shadowColor: '#0F172A',
+          shadowOpacity: isDark ? 0.4 : 0.1,
+          shadowRadius: 18,
+          shadowOffset: { width: 0, height: 6 },
         },
         tabBarItemStyle: {
           alignItems: 'center',
           justifyContent: 'center',
           paddingTop: 0,
-          paddingBottom: 12,
+          paddingBottom: 0,
         },
         tabBarLabel: ({ focused, children }) => (
           <Text
             numberOfLines={1}
             style={{
-              fontSize: 10,
+              fontSize: 10.5,
               fontWeight: focused ? '700' : '500',
               lineHeight: 13,
               marginTop: 3,

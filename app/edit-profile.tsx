@@ -7,9 +7,10 @@ import { formatResidence } from '@/lib/bulacan';
 import { INTEREST_OPTIONS } from '@/lib/interests';
 import { feedback } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
+import { GENDER_OPTIONS, getMyPlan, saveGenderPrefs, type Gender } from '@/lib/travelPlans';
 import { useRouter } from 'expo-router';
 import { Check, Lock } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -52,9 +53,24 @@ export default function EditProfileScreen() {
   // Just the digits after +63.
   const [phone, setPhone] = useState(toLocalDigits(profile?.phone ?? ''));
   const [interests, setInterests] = useState<string[]>(profile?.interests ?? []);
+  const [gender, setGender] = useState<Gender | null>(null);
+  const [preferredGender, setPreferredGender] = useState<Gender[]>([]);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { style: shakeStyle, shake } = useShake();
+
+  useEffect(() => {
+    if (!profile) return;
+    void getMyPlan(profile.id).then(({ data }) => {
+      if (!data) return;
+      setGender(data.gender);
+      setPreferredGender(data.preferred_gender);
+    });
+  }, [profile]);
+
+  function togglePreferredGender(value: Gender) {
+    setPreferredGender((current) => (current.includes(value) ? current.filter((item) => item !== value) : [...current, value]));
+  }
 
   function toggleInterest(interest: string) {
     setInterests((current) => (current.includes(interest) ? current.filter((item) => item !== interest) : [...current, interest]));
@@ -85,9 +101,11 @@ export default function EditProfileScreen() {
       .update({ bio: trimmedBio || null, phone: normalizedPhone, interests })
       .eq('id', profile.id);
 
-    if (error) {
+    const prefsResult = error ? null : await saveGenderPrefs(profile.id, gender, preferredGender);
+    const saveError = error ?? prefsResult?.error;
+    if (saveError) {
       setSaving(false);
-      setErrorMessage(error.message);
+      setErrorMessage(saveError.message);
       feedback.error();
       shake();
       return;
@@ -166,6 +184,40 @@ export default function EditProfileScreen() {
         </Card>
 
         <Card index={2}>
+          <Text className={`text-[16px] font-bold ${primary}`}>Match Preferences</Text>
+          <Text className={`mt-1 text-[13px] ${secondary}`}>Used by Discover to score how well you match other travelers.</Text>
+          <Text className={`mb-2 mt-4 text-[13px] font-bold uppercase tracking-wide ${secondary}`}>I am</Text>
+          <View className="flex-row gap-2">
+            {GENDER_OPTIONS.map((option) => (
+              <TouchableOpacity
+                  key={option.value}
+                  onPress={() => setGender(gender === option.value ? null : option.value)}
+                  className={`h-[48px] flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border ${
+                    gender === option.value ? 'border-[#2445B8] bg-[#E9EEFF]' : isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#E2E5E9] bg-[#F4F5F6]'
+                  }`}>
+                  <Text className={`text-[14px] font-medium ${gender === option.value ? 'text-[#2445B8]' : primary}`}>{option.label}</Text>
+                  {gender === option.value ? <Check size={13} color="#2445B8" /> : null}
+                </TouchableOpacity>
+            ))}
+          </View>
+          <Text className={`mb-2 mt-4 text-[13px] font-bold uppercase tracking-wide ${secondary}`}>Preferred travel buddy</Text>
+          <View className="flex-row gap-2">
+            {GENDER_OPTIONS.map((option) => (
+              <TouchableOpacity
+                  key={option.value}
+                  onPress={() => togglePreferredGender(option.value)}
+                  className={`h-[48px] flex-1 flex-row items-center justify-center gap-1.5 rounded-xl border ${
+                    preferredGender.includes(option.value) ? 'border-[#2445B8] bg-[#E9EEFF]' : isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#E2E5E9] bg-[#F4F5F6]'
+                  }`}>
+                  <Text className={`text-[14px] font-medium ${preferredGender.includes(option.value) ? 'text-[#2445B8]' : primary}`}>{option.label}</Text>
+                  {preferredGender.includes(option.value) ? <Check size={13} color="#2445B8" /> : null}
+                </TouchableOpacity>
+            ))}
+          </View>
+          <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>Pick one or both. Leave both off if you&apos;re open to anyone.</Text>
+        </Card>
+
+        <Card index={3}>
           <View className="flex-row items-center gap-2">
             <Lock size={16} color={isDark ? '#94A3B8' : '#6C7A95'} />
             <Text className={`text-[16px] font-bold ${primary}`}>Verified Details</Text>

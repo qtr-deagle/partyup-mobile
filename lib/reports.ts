@@ -3,10 +3,12 @@ import { withRequestTimeout } from '@/lib/social';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { toByteArray } from 'base64-js';
 
+// Reasons offered when reporting a user. 'payment' is filed separately from
+// the trip screen's payment section, so it isn't one of the chips.
 export const REPORT_TYPES = ['safety', 'behavior', 'other'] as const;
-export type ReportType = (typeof REPORT_TYPES)[number];
+export type ReportType = (typeof REPORT_TYPES)[number] | 'payment';
 
-export const REPORT_TYPE_LABELS: Record<ReportType, string> = {
+export const REPORT_TYPE_LABELS: Record<(typeof REPORT_TYPES)[number], string> = {
   safety: 'Safety concern',
   behavior: 'Inappropriate behavior',
   other: 'Other',
@@ -18,7 +20,8 @@ export const MAX_REPORT_EVIDENCE_PHOTOS = 5;
 // real JPEG here (rather than trusting the source format/extension) and
 // reading bytes back via the manipulator's own base64 output avoids the
 // binary corruption issues that affected fetch(localUri).arrayBuffer().
-async function uploadReportEvidenceImage(userId: string, index: number, uri: string) {
+// Uploads to report-evidence at `path` and returns it.
+export async function uploadReportEvidence(path: string, uri: string) {
   const normalized = await ImageManipulator.manipulateAsync(uri, [], {
     compress: 0.8,
     format: ImageManipulator.SaveFormat.JPEG,
@@ -29,7 +32,6 @@ async function uploadReportEvidenceImage(userId: string, index: number, uri: str
     throw new Error('Failed to process a photo.');
   }
 
-  const path = `${userId}/${Date.now()}-${index}.jpg`;
   const bytes = toByteArray(normalized.base64);
 
   const { error } = await supabase.storage.from('report-evidence').upload(path, bytes, {
@@ -59,7 +61,7 @@ export async function submitReport(params: {
 
   try {
     const evidencePaths = params.evidenceUris?.length
-      ? await Promise.all(params.evidenceUris.map((uri, index) => uploadReportEvidenceImage(userId, index, uri)))
+      ? await Promise.all(params.evidenceUris.map((uri, index) => uploadReportEvidence(`${userId}/${Date.now()}-${index}.jpg`, uri)))
       : [];
 
     return await withRequestTimeout(

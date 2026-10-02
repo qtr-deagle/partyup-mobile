@@ -60,7 +60,7 @@ export function Card({ index = 0, className = '', style, children }: CardProps) 
     <Animated.View
       entering={enterFromBelow(index)}
       style={style}
-      className={`rounded-[22px] border p-4 shadow-sm ${isDark ? 'border-[#22324B] bg-[#111B2E] shadow-black/20' : 'border-[#E9EDF5] bg-white shadow-black/5'} ${className}`}>
+      className={`rounded-3xl border p-4 shadow-sm ${isDark ? 'border-white/5 bg-[#111B2E] shadow-black/20' : 'border-[#EDF0F5] bg-white shadow-black/5'} ${className}`}>
       {children}
     </Animated.View>
   );

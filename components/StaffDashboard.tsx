@@ -1,7 +1,7 @@
 import { GuildSummaryCard } from '@/components/GuildSummaryCard';
 import { riseIn } from '@/components/ui/motion';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { parseTimestamp } from '@/lib/datetime';
+import { formatTimeAgo } from '@/lib/datetime';
 import type { StaffOverview, StaffSosAlert } from '@/lib/homeDashboard';
 import { getTheme, typography } from '@/lib/theme';
 import { useRouter } from 'expo-router';
@@ -24,15 +24,6 @@ import {
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Alert, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
-
-function timeAgo(value: string) {
-  const minutes = Math.max(0, Math.round((Date.now() - parseTimestamp(value).getTime()) / 60000));
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.round(hours / 24)}d ago`;
-}
 
 type Props = {
   isDark: boolean;
@@ -108,7 +99,7 @@ export default function StaffDashboard({ isDark, overview, isAdmin }: Props) {
                 <View className="flex-1">
                   <Text className={`text-base font-bold ${primaryText}`}>{alert.display_name}</Text>
                   <Text className={`mt-0.5 text-xs ${mutedText}`}>
-                    {alert.trigger_reason === 'auto_escalation' ? 'Warning Mode escalated' : 'Manual SOS'} · {timeAgo(alert.created_at)}
+                    {alert.trigger_reason === 'auto_escalation' ? 'Warning Mode escalated' : 'Manual SOS'} · {formatTimeAgo(alert.created_at)}
                   </Text>
                 </View>
                 <Text className="text-sm font-bold" style={{ color: destructiveColor }}>

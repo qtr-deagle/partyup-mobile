@@ -50,6 +50,11 @@ export default function RootLayout() {
   );
 }
 
+// Navigation theme backgrounds match the tab scenes, so the gutter around
+// the floating tab bar blends into the screen instead of showing grey.
+const APP_LIGHT_THEME = { ...DefaultTheme, colors: { ...DefaultTheme.colors, background: '#F8FAFC' } };
+const APP_DARK_THEME = { ...DarkTheme, colors: { ...DarkTheme.colors, background: '#0B1220' } };
+
 function RootLayoutContent() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -81,7 +86,7 @@ function RootLayoutContent() {
   }
 
   return (
-    <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={isDark ? APP_DARK_THEME : APP_LIGHT_THEME}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false, header: () => null, title: '' }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -98,6 +103,9 @@ function RootLayoutContent() {
         <Stack.Screen name="guild/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="guild/chat" options={{ headerShown: false }} />
         <Stack.Screen name="rewards" options={{ headerShown: false }} />
+        <Stack.Screen name="support/index" options={{ headerShown: false }} />
+        <Stack.Screen name="support/new" options={{ headerShown: false }} />
+        <Stack.Screen name="support/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
         <Stack.Screen name="id-review" options={{ headerShown: false }} />
         <Stack.Screen name="vehicle-review" options={{ headerShown: false }} />

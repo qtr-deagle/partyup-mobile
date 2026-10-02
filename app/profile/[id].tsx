@@ -1,3 +1,5 @@
+import { AvatarFrame } from '@/components/cosmetics/AvatarFrame';
+import { ProfileBanner } from '@/components/cosmetics/ProfileBanner';
 import { PlayerRankCard } from '@/components/guild/PlayerRankCard';
 import { useAuth } from '@/hooks/auth-provider';
 import { ProfileTrophies } from '@/components/guild/ProfileTrophies';
@@ -9,6 +11,7 @@ import { formatResidence } from '@/lib/bulacan';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { blockUser, unblockUser } from '@/lib/blocking';
+import { getLoadout, type Loadout } from '@/lib/cosmetics';
 import { cancelGuildInvite, getGuildInviteStatus, inviteToGuild, type GuildInviteStatus } from '@/lib/guilds';
 import { createOrGetDirectThread, getFriendRequestStatuses, getProfileById, removeFriend, respondToFriendRequest, sendFriendRequest, type SearchProfile } from '@/lib/social';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -42,9 +45,10 @@ export default function PublicProfileScreen() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [blockBusy, setBlockBusy] = useState(false);
-  // Set only when the viewer leads or officers a guild.
+  // Set only when the viewer leads a guild.
   const [inviteStatus, setInviteStatus] = useState<GuildInviteStatus | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
+  const [loadout, setLoadout] = useState<Loadout>({ banner: null, frame: null });
   const displayName = fullProfile?.display_name ?? params.displayName ?? 'PartyUp traveler';
   const interests = useMemo(() => {
     if (fullProfile) return fullProfile.interests;
@@ -75,6 +79,7 @@ export default function PublicProfileScreen() {
         setProfileLoading(false);
       }),
       getGuildInviteStatus(params.id).then((result) => setInviteStatus(result.data)),
+      getLoadout(params.id).then(setLoadout),
     ]);
   }, [params.id]);
   const { refreshing, refreshControl } = usePullToRefresh(loadProfile);
@@ -234,9 +239,7 @@ export default function PublicProfileScreen() {
       className={`flex-1 ${background}`}
       contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
       refreshControl={refreshControl}>
-      <View className="overflow-hidden bg-[#2747C7]" style={{ height: insets.top + 130 }}>
-        <View className="absolute -right-10 -top-12 h-48 w-48 rounded-full bg-white/10" />
-        <View className="absolute -left-14 top-16 h-40 w-40 rounded-full bg-white/5" />
+      <ProfileBanner bannerKey={loadout.banner} height={insets.top + 130}>
         <AnimatedPressable
           onPress={() => router.back()}
           scaleTo={0.9}
@@ -245,18 +248,20 @@ export default function PublicProfileScreen() {
           accessibilityLabel="Go back">
           <ArrowLeft size={21} color="#FFFFFF" />
         </AnimatedPressable>
-      </View>
+      </ProfileBanner>
 
       <View className="-mt-16 gap-4 px-4">
         <Card index={0} className="items-center px-5 pb-5 pt-0">
-          <Animated.View
-            entering={riseIn(80)}
-            className={`-mt-12 h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 bg-[#B7C4EC] ${isDark ? 'border-[#111B2E]' : 'border-white'}`}>
-            {avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} className="h-full w-full" />
-            ) : (
-              <Text className="text-[34px] font-bold text-[#24314A]">{displayName.charAt(0).toUpperCase()}</Text>
-            )}
+          <Animated.View entering={riseIn(80)} className="-mt-12 h-24 w-24">
+            <AvatarFrame frameKey={loadout.frame} size={96}>
+              <View className={`h-24 w-24 items-center justify-center overflow-hidden rounded-full border-4 bg-[#B7C4EC] ${isDark ? 'border-[#111B2E]' : 'border-white'}`}>
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} className="h-full w-full" />
+                ) : (
+                  <Text className="text-[34px] font-bold text-[#24314A]">{displayName.charAt(0).toUpperCase()}</Text>
+                )}
+              </View>
+            </AvatarFrame>
           </Animated.View>
 
           <View className="mt-3 max-w-full flex-row items-center gap-1.5 px-2">

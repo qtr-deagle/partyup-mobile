@@ -2,13 +2,14 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { riseIn, SkeletonRow, SuccessOverlay } from '@/components/ui/motion';
 import { Card } from '@/components/ui/screen-header';
 import { invalidateRankInfo } from '@/hooks/use-rank-info';
+import { getMyGuildLevel, guildMissionBonus, withMissionBonus } from '@/lib/guilds';
 import { useAuth } from '@/hooks/auth-provider';
+import { listCosmetics, type Cosmetic } from '@/lib/cosmetics';
 import { claimableCount, claimMission, collapseChains, getMyMissions, missionState, timeLeft, type Mission, type MissionCategory } from '@/lib/missions';
 import { getTheme } from '@/lib/theme';
 import { useFocusEffect } from 'expo-router';
 import {
   BadgeCheck,
-  CalendarDays,
   Camera,
   Car,
   Check,
@@ -22,7 +23,7 @@ import {
   Lock,
   Map,
   MessageCircle,
-  Mountain,
+  Palette,
   Route,
   Shield,
   Sparkles,
@@ -30,6 +31,7 @@ import {
   Swords,
   Target,
   Trophy,
+  User,
   UserPlus,
   Users,
   type LucideIcon,
@@ -58,11 +60,12 @@ const ICONS: Record<string, LucideIcon> = {
   camera: Camera,
 };
 
+// Monthly missions were retired (202610030001); the board is Individual,
+// Guild and Milestones.
 const SECTIONS: { id: MissionCategory; title: string; color: string; icon: LucideIcon; blurb: string }[] = [
-  { id: 'weekly', title: 'Weekly Missions', color: '#284BD6', icon: CalendarDays, blurb: 'Fresh goals every Monday' },
-  { id: 'guild', title: 'Guild Co-op', color: '#7C3AED', icon: Swords, blurb: 'Your whole guild works together; everyone claims' },
-  { id: 'monthly', title: 'Monthly Missions', color: '#0891B2', icon: Mountain, blurb: 'Bigger goals, bigger rewards' },
-  { id: 'milestone', title: 'Milestones', color: '#CA8A04', icon: Trophy, blurb: 'Lifetime achievements, step by step' },
+  { id: 'weekly', title: 'Individual', color: '#284BD6', icon: User, blurb: 'Your own goals and what you add to your guild · resets Monday' },
+  { id: 'guild', title: 'Guild Contribution', color: '#7C3AED', icon: Swords, blurb: 'Shared goals for the whole guild; everyone claims' },
+  { id: 'milestone', title: 'Milestones', color: '#CA8A04', icon: Trophy, blurb: 'Lifetime goals; top steps unlock banners and frames' },
 ];
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
@@ -75,7 +78,7 @@ type Props = {
   onChanged?: () => void;
 };
 
-// The Mission Board: weekly, guild co-op, monthly and milestone missions with
+// The Mission Board: individual, guild contribution and milestone missions with
 // live progress and claimable rewards. Progress and payouts are server-side.
 export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
   const insets = useSafeAreaInsets();
@@ -83,18 +86,25 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
   const { primaryColor, primaryText, mutedText } = getTheme(isDark);
 
   const [missions, setMissions] = useState<Mission[]>([]);
+  const [missionBonus, setMissionBonus] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [claimingKey, setClaimingKey] = useState<string | null>(null);
-  const [reward, setReward] = useState<{ points: number; title: string } | null>(null);
+  const [reward, setReward] = useState<{ points: number; title: string; unlocked?: string } | null>(null);
+  // Mission key -> the banner/frame claiming it unlocks.
+  const [unlocks, setUnlocks] = useState<Record<string, Cosmetic>>({});
   const [now, setNow] = useState(() => Date.now());
   const clearReward = useCallback(() => setReward(null), []);
 
   const load = useCallback(async () => {
-    const { data, error } = await getMyMissions();
-    setErrorMessage(error?.message ?? null);
-    setMissions(data);
+    const [{ data, error }, levelResult, cosmeticsResult] = await Promise.all([getMyMissions(), getMyGuildLevel(), listCosmetics()]);
+    setUnlocks(Object.fromEntries(cosmeticsResult.data.filter((item) => item.unlock_mission).map((item) => [item.unlock_mission as string, item])));
+    setErrorMessage(error?.message ?? levelResult.error?.message ?? null);
+    // Show rewards with the guild-level perk already added, matching what
+    // claim_mission() pays out (202610020007).
+    setMissionBonus(guildMissionBonus(levelResult.data));
+    setMissions(data.map((mission) => ({ ...mission, reward: withMissionBonus(mission.reward, levelResult.data) })));
     setLoading(false);
   }, []);
 
@@ -127,7 +137,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
     }
     setMissions((current) => current.map((row) => (row.key === mission.key ? { ...row, claimed: true } : row)));
     if (profile?.id) invalidateRankInfo(profile.id);
-    setReward({ points: data, title: mission.title });
+    setReward({ points: data, title: mission.title, unlocked: unlocks[mission.key]?.name });
     onChanged?.();
   }
 
@@ -148,7 +158,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
 
   const ready = claimableCount(missions);
   const readyPoints = missions.filter((mission) => missionState(mission) === 'claimable').reduce((sum, mission) => sum + mission.reward, 0);
-  const weekly = missions.filter((mission) => mission.category === 'weekly');
+  const weekly = missions.filter((mission) => (mission.category === 'weekly' || mission.category === 'guild') && !mission.locked);
   const weeklyDone = weekly.filter((mission) => mission.claimed).length;
   const weeklyReset = timeLeft(weekly[0]?.resets_at ?? missions.find((mission) => mission.resets_at)?.resets_at ?? null, now);
   const openPoints = missions.filter((mission) => !mission.claimed && !mission.locked).reduce((sum, mission) => sum + mission.reward, 0);
@@ -177,6 +187,9 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
         <Text className="mt-0.5 text-sm text-white/75">
           {weeklyReset ? `Weekly missions reset in ${weeklyReset}` : 'Complete missions to earn bonus points'}
         </Text>
+        {missionBonus > 0 ? (
+          <Text className="mt-1 text-xs font-bold text-[#FDE68A]">Guild perk: +{missionBonus}% on every mission (included below)</Text>
+        ) : null}
 
         <View className="mt-4 flex-row gap-2">
           <HeroStat label="This week" value={`${weeklyDone}/${weekly.length}`} />
@@ -211,7 +224,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
             );
             if (rows.length === 0) return null;
             const allLocked = rows.every((row) => row.mission.locked);
-            const reset = section.id === 'weekly' || section.id === 'guild' || section.id === 'monthly' ? timeLeft(rows[0].mission.resets_at, now) : null;
+            const reset = section.id === 'weekly' || section.id === 'guild' ? timeLeft(rows[0].mission.resets_at, now) : null;
             const SectionIcon = section.icon;
             return (
               <View key={section.id} className="gap-2.5">
@@ -239,7 +252,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
                     style={{ borderColor: `${section.color}66` }}>
                     <Lock size={20} color={section.color} />
                     <View className="flex-1">
-                      <Text className={`text-sm font-black ${primaryText}`}>Join a guild to unlock co-op missions</Text>
+                      <Text className={`text-sm font-black ${primaryText}`}>Join a guild to unlock {section.title.toLowerCase()} missions</Text>
                       <Text className={`text-xs ${mutedText}`}>
                         {rows.length} shared goals worth +{rows.reduce((sum, row) => sum + row.mission.reward, 0)} pts each week
                       </Text>
@@ -252,6 +265,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
                       mission={row.mission}
                       steps={row.steps}
                       color={section.color}
+                      unlock={unlocks[row.mission.key] ?? null}
                       isDark={isDark}
                       index={sectionIndex * 3 + index}
                       claiming={claimingKey === row.mission.key || claimingKey === 'all'}
@@ -265,7 +279,12 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
         </View>
       )}
 
-      <SuccessOverlay visible={reward !== null} title={`+${reward?.points ?? 0} pts!`} message={`${reward?.title ?? 'Mission'} complete`} onDone={clearReward} />
+      <SuccessOverlay
+        visible={reward !== null}
+        title={`+${reward?.points ?? 0} pts!`}
+        message={reward?.unlocked ? `${reward.title} complete · ${reward.unlocked} unlocked! Wear it from Rewards.` : `${reward?.title ?? 'Mission'} complete`}
+        onDone={clearReward}
+      />
     </ScrollView>
   );
 }
@@ -291,13 +310,15 @@ type CardProps = {
   mission: Mission;
   steps: Mission[];
   color: string;
+  // Cosmetic this mission unlocks, if any.
+  unlock: Cosmetic | null;
   isDark: boolean;
   index: number;
   claiming: boolean;
   onClaim: () => void;
 };
 
-function MissionCard({ mission, steps, color, isDark, index, claiming, onClaim }: CardProps) {
+function MissionCard({ mission, steps, color, unlock, isDark, index, claiming, onClaim }: CardProps) {
   const state = missionState(mission);
   const Icon = ICONS[mission.icon] ?? Flag;
   const shown = Math.min(mission.progress, mission.target);
@@ -307,89 +328,100 @@ function MissionCard({ mission, steps, color, isDark, index, claiming, onClaim }
   const isChain = steps.length > 1;
 
   return (
-    <Animated.View
-      entering={riseIn(Math.min(index, 8) * 50, 380)}
-      className={`overflow-hidden rounded-[20px] border-2 p-3.5 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}
-      style={{
-        borderColor: state === 'claimable' ? color : isDark ? '#22324B' : '#E9EDF5',
-        opacity: state === 'claimed' ? 0.6 : 1,
-      }}>
-      {state === 'claimable' ? <ReadyGlow color={color} /> : null}
+    // The entrance fades opacity, so the "claimed" dimming lives on an inner view —
+    // a static opacity next to a layout animation gets overwritten (and Reanimated warns).
+    <Animated.View entering={riseIn(Math.min(index, 8) * 50, 380)}>
+      <View
+        className={`overflow-hidden rounded-[20px] border-2 p-3.5 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}
+        style={{
+          borderColor: state === 'claimable' ? color : isDark ? '#22324B' : '#E9EDF5',
+          opacity: state === 'claimed' ? 0.6 : 1,
+        }}>
+        {state === 'claimable' ? <ReadyGlow color={color} /> : null}
 
-      <View className="flex-row items-start gap-3">
-        <View
-          className="h-12 w-12 items-center justify-center rounded-2xl"
-          style={{ backgroundColor: state === 'claimed' ? '#10B981' : state === 'locked' ? (isDark ? '#334155' : '#CBD5E1') : color }}>
-          {state === 'claimed' ? <Check size={22} color="#FFFFFF" strokeWidth={3} /> : <Icon size={22} color="#FFFFFF" />}
-        </View>
-
-        <View className="flex-1">
-          <View className="flex-row items-start justify-between gap-2">
-            <Text className={`flex-1 text-[15px] font-black ${primaryText}`} numberOfLines={1}>
-              {mission.title}
-            </Text>
-            <View className="flex-row items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: isDark ? '#3A2E0B' : '#FEF3C7' }}>
-              <Coins size={12} color="#CA8A04" />
-              <Text className="text-xs font-black text-[#B45309]">+{mission.reward}</Text>
-            </View>
+        <View className="flex-row items-start gap-3">
+          <View
+            className="h-12 w-12 items-center justify-center rounded-2xl"
+            style={{ backgroundColor: state === 'claimed' ? '#10B981' : state === 'locked' ? (isDark ? '#334155' : '#CBD5E1') : color }}>
+            {state === 'claimed' ? <Check size={22} color="#FFFFFF" strokeWidth={3} /> : <Icon size={22} color="#FFFFFF" />}
           </View>
-          <Text className={`mt-0.5 text-xs ${mutedText}`}>{mission.description}</Text>
 
-          {isChain ? (
-            <View className="mt-2 flex-row gap-1.5">
-              {steps.map((step, stepIndex) => {
-                const done = step.claimed;
-                const current = step.key === mission.key && !done;
-                return (
-                  <View
-                    key={step.key}
-                    className="h-5 min-w-[26px] items-center justify-center rounded-md px-1"
-                    style={{
-                      backgroundColor: done ? color : current ? `${color}22` : isDark ? '#1E293B' : '#F1F5F9',
-                      borderWidth: current ? 1.5 : 0,
-                      borderColor: color,
-                    }}>
-                    <Text className="text-[10px] font-black" style={{ color: done ? '#FFFFFF' : current ? color : isDark ? '#64748B' : '#94A3B8' }}>
-                      {ROMAN[stepIndex] ?? stepIndex + 1}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
-
-          {state !== 'locked' ? (
-            <View className="mt-2.5 flex-row items-center gap-2">
-              <ProgressBar pct={state === 'claimed' ? 1 : pct} color={state === 'claimed' ? '#10B981' : color} isDark={isDark} />
-              <Text className={`min-w-[44px] text-right text-xs font-black ${state === 'claimable' ? '' : mutedText}`} style={state === 'claimable' ? { color } : undefined}>
-                {shown}/{mission.target}
+          <View className="flex-1">
+            <View className="flex-row items-start justify-between gap-2">
+              <Text className={`flex-1 text-[15px] font-black ${primaryText}`} numberOfLines={1}>
+                {mission.title}
               </Text>
+              <View className="flex-row items-center gap-1 rounded-full px-2 py-0.5" style={{ backgroundColor: isDark ? '#3A2E0B' : '#FEF3C7' }}>
+                <Coins size={12} color="#CA8A04" />
+                <Text className="text-xs font-black text-[#B45309]">+{mission.reward}</Text>
+              </View>
             </View>
-          ) : (
-            <View className="mt-2 flex-row items-center gap-1">
-              <Lock size={12} color={isDark ? '#94A3B8' : '#67748D'} />
-              <Text className={`text-xs ${mutedText}`}>Join a guild to unlock</Text>
-            </View>
-          )}
-        </View>
-      </View>
+            <Text className={`mt-0.5 text-xs ${mutedText}`}>{mission.description}</Text>
+            {unlock && state !== 'claimed' ? (
+              <View className="mt-1.5 flex-row items-center gap-1 self-start rounded-full px-2 py-0.5" style={{ backgroundColor: isDark ? '#2E1065' : '#F3E8FF' }}>
+                <Palette size={11} color="#7C3AED" />
+                <Text className="text-[11px] font-bold text-[#7C3AED]">
+                  Unlocks {unlock.kind === 'banner' ? 'banner' : 'frame'}: {unlock.name}
+                </Text>
+              </View>
+            ) : null}
 
-      {state === 'claimable' ? (
-        <AnimatedPressable
-          key="claim"
-          onPress={onClaim}
-          disabled={claiming}
-          className="mt-3 flex-row items-center justify-center gap-2 rounded-2xl py-3"
-          style={{ backgroundColor: color }}>
-          {claiming ? <ActivityIndicator color="#FFFFFF" /> : <Sparkles size={16} color="#FFFFFF" />}
-          <Text className="text-[15px] font-black text-white">Claim +{mission.reward} pts</Text>
-        </AnimatedPressable>
-      ) : null}
-      {state === 'claimed' ? (
-        <Text key="claimed" className="mt-2 text-right text-[11px] font-bold text-[#10B981]">
-          {mission.category === 'milestone' ? 'Achieved' : 'Claimed · back next reset'}
-        </Text>
-      ) : null}
+            {isChain ? (
+              <View className="mt-2 flex-row gap-1.5">
+                {steps.map((step, stepIndex) => {
+                  const done = step.claimed;
+                  const current = step.key === mission.key && !done;
+                  return (
+                    <View
+                      key={step.key}
+                      className="h-5 min-w-[26px] items-center justify-center rounded-md px-1"
+                      style={{
+                        backgroundColor: done ? color : current ? `${color}22` : isDark ? '#1E293B' : '#F1F5F9',
+                        borderWidth: current ? 1.5 : 0,
+                        borderColor: color,
+                      }}>
+                      <Text className="text-[10px] font-black" style={{ color: done ? '#FFFFFF' : current ? color : isDark ? '#64748B' : '#94A3B8' }}>
+                        {ROMAN[stepIndex] ?? stepIndex + 1}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : null}
+
+            {state !== 'locked' ? (
+              <View className="mt-2.5 flex-row items-center gap-2">
+                <ProgressBar pct={state === 'claimed' ? 1 : pct} color={state === 'claimed' ? '#10B981' : color} isDark={isDark} />
+                <Text className={`min-w-[44px] text-right text-xs font-black ${state === 'claimable' ? '' : mutedText}`} style={state === 'claimable' ? { color } : undefined}>
+                  {shown}/{mission.target}
+                </Text>
+              </View>
+            ) : (
+              <View className="mt-2 flex-row items-center gap-1">
+                <Lock size={12} color={isDark ? '#94A3B8' : '#67748D'} />
+                <Text className={`text-xs ${mutedText}`}>Join a guild to unlock</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {state === 'claimable' ? (
+          <AnimatedPressable
+            key="claim"
+            onPress={onClaim}
+            disabled={claiming}
+            className="mt-3 flex-row items-center justify-center gap-2 rounded-2xl py-3"
+            style={{ backgroundColor: color }}>
+            {claiming ? <ActivityIndicator color="#FFFFFF" /> : <Sparkles size={16} color="#FFFFFF" />}
+            <Text className="text-[15px] font-black text-white">Claim +{mission.reward} pts</Text>
+          </AnimatedPressable>
+        ) : null}
+        {state === 'claimed' ? (
+          <Text key="claimed" className="mt-2 text-right text-[11px] font-bold text-[#10B981]">
+            {mission.category === 'milestone' ? 'Achieved' : 'Claimed · back next reset'}
+          </Text>
+        ) : null}
+      </View>
     </Animated.View>
   );
 }

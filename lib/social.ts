@@ -281,8 +281,13 @@ export async function ensureAcceptedDirectThreads() {
 }
 
 export async function listDirectConversations() {
-  const { data, error } = await withRequestTimeout(supabase.rpc('list_direct_conversations'), 'Loading conversations');
-  return { data: (data ?? []) as Conversation[], error };
+  try {
+    const { data, error } = await withRequestTimeout(supabase.rpc('list_direct_conversations'), 'Loading conversations');
+    return { data: (data ?? []) as Conversation[], error };
+  } catch (error) {
+    // Timeouts come back as an error result so focus refreshes can't go unhandled.
+    return { data: [] as Conversation[], error: error as Error };
+  }
 }
 
 // `since` hides messages from before a "Delete chat".
@@ -359,8 +364,12 @@ export type GroupConversation = {
 };
 
 export async function listGroupConversations() {
-  const { data, error } = await withRequestTimeout(supabase.rpc('list_group_conversations'), 'Loading group chats');
-  return { data: (data ?? []) as GroupConversation[], error };
+  try {
+    const { data, error } = await withRequestTimeout(supabase.rpc('list_group_conversations'), 'Loading group chats');
+    return { data: (data ?? []) as GroupConversation[], error };
+  } catch (error) {
+    return { data: [] as GroupConversation[], error: error as Error };
+  }
 }
 
 export async function getTripChatThread(tripId: string) {

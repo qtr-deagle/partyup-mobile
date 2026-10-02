@@ -1,5 +1,5 @@
 import type { GuildEmblem as Emblem } from '@/lib/guilds';
-import { Compass, Crown, Flame, Leaf, Mountain, Shield, Star, Waves } from 'lucide-react-native';
+import { Anchor, Bike, Camera, Car, Compass, Crown, Flame, Heart, Leaf, Mountain, Plane, Shield, Star, Sun, Tent, TreePalm, Trees, Utensils, Waves, Zap } from 'lucide-react-native';
 import { View } from 'react-native';
 
 const ICONS = {
@@ -11,6 +11,18 @@ const ICONS = {
   wave: Waves,
   leaf: Leaf,
   crown: Crown,
+  car: Car,
+  bike: Bike,
+  tent: Tent,
+  trees: Trees,
+  sun: Sun,
+  palm: TreePalm,
+  anchor: Anchor,
+  plane: Plane,
+  camera: Camera,
+  utensils: Utensils,
+  heart: Heart,
+  bolt: Zap,
 } as const;
 
 // Round guild crest: the guild's color as the background, its emblem in white.

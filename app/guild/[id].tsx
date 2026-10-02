@@ -1,5 +1,10 @@
 import { GuildEmblem } from "@/components/GuildEmblem";
+import {
+  GuildFormModal,
+  type GuildFormValues,
+} from "@/components/GuildFormModal";
 import { GuildAnnouncement } from "@/components/guild/GuildAnnouncement";
+import { GuildPerksModal } from "@/components/guild/GuildPerksModal";
 import { RankMedal } from "@/components/guild/RankMedal";
 import {
   MEDALS,
@@ -19,6 +24,7 @@ import {
   getGuildLeaderboard,
   getGuildMemberBoard,
   getGuildSeasonAwards,
+  activeGuildPerks,
   getPointsSummary,
   GUILD_FOCUS_OPTIONS,
   formatGuildAreas,
@@ -26,10 +32,13 @@ import {
   GUILD_MAX_MEMBERS,
   guildLevel,
   guildMemberCap,
+  nextCapLevel,
+  nextGuildPerk,
   inGuildAreas,
   meetsMinRank,
   seasonLabel,
   titleFor,
+  updateGuild,
   type Guild,
   type GuildMemberStanding,
   type GuildStanding,
@@ -42,12 +51,14 @@ import {
   ArrowLeft,
   ChevronRight,
   Clock,
+  Gift,
   Crown,
   DoorOpen,
   Info,
   Lock,
   MapPin,
   MessageCircle,
+  Pencil,
   Swords,
   Trophy,
   Users,
@@ -70,6 +81,10 @@ export default function GuildHallScreen() {
     getTheme(isDark);
 
   const [period, setPeriod] = useState<LeaderboardPeriod>("week");
+  const [perksVisible, setPerksVisible] = useState(false);
+  const [editVisible, setEditVisible] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [guild, setGuild] = useState<Guild | null>(null);
   const [standing, setStanding] = useState<GuildStanding | null>(null);
   const [place, setPlace] = useState<number | null>(null);
@@ -144,18 +159,13 @@ export default function GuildHallScreen() {
   const periodTotal = members.reduce((sum, member) => sum + member.points, 0);
   const mvp = members[0] && members[0].points > 0 ? members[0].user_id : null;
   const isMine = myGuildId === id;
-  const canManage =
-    !!guild &&
-    (guild.leader_id === profile?.id ||
-      members.some(
-        (member) =>
-          member.user_id === profile?.id && member.member_role === "officer",
-      ));
+  const canManage = !!guild && guild.leader_id === profile?.id;
   const canJoin = isTraveler && !myGuildId && !!guild;
   const requested = join.myRequest?.guild_id === id;
   const memberCount = standing?.member_count ?? members.length;
   const cap = guildMemberCap(lifetime);
-  const nextCap = guildMemberCap(lifetime + GUILD_LEVEL_STEP);
+  const unlockLevel = nextCapLevel(level);
+  const nextCap = guildMemberCap((unlockLevel - 1) * GUILD_LEVEL_STEP);
   const isFull = memberCount >= cap;
   const rankTooLow = !!guild && !meetsMinRank(myPoints, guild.min_rank);
   const outsideAreas = !!guild && !inGuildAreas(profile?.city, guild.areas);
@@ -163,6 +173,25 @@ export default function GuildHallScreen() {
     (item) =>
       GUILD_FOCUS_OPTIONS.find((option) => option.id === item)?.label ?? item,
   );
+
+  function openEdit() {
+    setEditError(null);
+    setEditVisible(true);
+  }
+
+  async function submitEdit(values: GuildFormValues) {
+    if (!guild) return;
+    setEditBusy(true);
+    setEditError(null);
+    const { error } = await updateGuild(guild.id, values);
+    setEditBusy(false);
+    if (error) {
+      setEditError(error.message);
+      return;
+    }
+    setEditVisible(false);
+    await load(period);
+  }
 
   function openPlayer(member: GuildMemberStanding) {
     router.push({
@@ -185,14 +214,26 @@ export default function GuildHallScreen() {
         >
           <View className="absolute -right-16 -top-10 h-56 w-56 rounded-full bg-white/10" />
           <View className="absolute -left-20 top-24 h-48 w-48 rounded-full bg-black/10" />
-          <AnimatedPressable
-            onPress={() => router.back()}
-            scaleTo={0.9}
-            className="ml-4 h-10 w-10 items-center justify-center rounded-full bg-white/20"
-            accessibilityLabel="Go back"
-          >
-            <ArrowLeft size={21} color="#FFFFFF" />
-          </AnimatedPressable>
+          <View className="flex-row items-center justify-between px-4">
+            <AnimatedPressable
+              onPress={() => router.back()}
+              scaleTo={0.9}
+              className="h-10 w-10 items-center justify-center rounded-full bg-white/20"
+              accessibilityLabel="Go back"
+            >
+              <ArrowLeft size={21} color="#FFFFFF" />
+            </AnimatedPressable>
+            {canManage ? (
+              <AnimatedPressable
+                onPress={openEdit}
+                scaleTo={0.9}
+                className="h-10 w-10 items-center justify-center rounded-full bg-white/20"
+                accessibilityLabel="Edit guild"
+              >
+                <Pencil size={18} color="#FFFFFF" />
+              </AnimatedPressable>
+            ) : null}
+          </View>
 
           {guild ? (
             <Animated.View
@@ -348,6 +389,32 @@ export default function GuildHallScreen() {
                   {GUILD_LEVEL_STEP - (lifetime % GUILD_LEVEL_STEP)} XP to Level{" "}
                   {level + 1}
                 </Text>
+
+                <AnimatedPressable
+                  onPress={() => setPerksVisible(true)}
+                  scaleTo={0.98}
+                  className={`mt-3 rounded-2xl px-3 py-2.5 ${isDark ? "bg-[#18253C]" : "bg-[#F3F4F8]"}`}
+                  accessibilityLabel="View guild perks"
+                >
+                  <View className="flex-row items-center gap-2">
+                    <Gift size={15} color={color} />
+                    <Text className={`flex-1 text-sm font-bold ${primaryText}`}>
+                      Guild Perks
+                    </Text>
+                    <ChevronRight size={16} color={isDark ? "#94A3B8" : "#64748B"} />
+                  </View>
+                  <Text className={`mt-1 text-xs ${mutedText}`}>
+                    {activeGuildPerks(level)
+                      .map((perk) => perk.label)
+                      .join(" · ")}
+                  </Text>
+                  {nextGuildPerk(level) ? (
+                    <Text className="mt-0.5 text-xs font-bold" style={{ color }}>
+                      Next: Level {nextGuildPerk(level)?.level} ·{" "}
+                      {nextGuildPerk(level)?.label}
+                    </Text>
+                  ) : null}
+                </AnimatedPressable>
 
                 <View className="mt-4 flex-row gap-2">
                   <StatTile
@@ -519,7 +586,7 @@ export default function GuildHallScreen() {
                     <Text className={`text-sm ${primaryText}`}>
                       {memberCount} / {cap} members{isFull ? " (full)" : ""}
                       {cap < GUILD_MAX_MEMBERS
-                        ? ` · Level ${level + 1} unlocks ${nextCap}`
+                        ? ` · Level ${unlockLevel} unlocks ${nextCap}`
                         : ""}
                     </Text>
                   </View>
@@ -641,19 +708,6 @@ export default function GuildHallScreen() {
                               {member.is_leader ? (
                                 <Crown size={14} color={color} />
                               ) : null}
-                              {member.member_role === "officer" ? (
-                                <View
-                                  className="rounded px-1.5 py-0.5"
-                                  style={{ backgroundColor: `${color}22` }}
-                                >
-                                  <Text
-                                    className="text-[9px] font-black"
-                                    style={{ color }}
-                                  >
-                                    OFFICER
-                                  </Text>
-                                </View>
-                              ) : null}
                               {isMvp ? (
                                 <View
                                   className="rounded-full px-1.5 py-0.5"
@@ -717,6 +771,22 @@ export default function GuildHallScreen() {
       </ScrollView>
 
       {join.overlay}
+      <GuildPerksModal
+        visible={perksVisible}
+        isDark={isDark}
+        level={level}
+        onClose={() => setPerksVisible(false)}
+      />
+
+      <GuildFormModal
+        visible={editVisible}
+        isDark={isDark}
+        guild={guild}
+        busy={editBusy}
+        errorMessage={editError}
+        onClose={() => setEditVisible(false)}
+        onSubmit={(values) => void submitEdit(values)}
+      />
     </View>
   );
 }

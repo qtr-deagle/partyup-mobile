@@ -12,7 +12,7 @@ import { feedback } from '@/lib/sounds';
 import { submitIdVerification, type DocumentType } from '@/lib/verification';
 import { Redirect, useRouter } from 'expo-router';
 import { Camera, CheckCircle2, IdCard, MapPin, Upload } from 'lucide-react-native';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -24,10 +24,36 @@ const documentOptions: { label: string; value: DocumentType; needsBack: boolean 
 ];
 
 function UploadTile({ label, uri, onPress, icon }: { label: string; uri: string | null; onPress: () => void; icon: React.ReactNode }) {
+  // Preview at the photo's own aspect ratio so the whole ID/selfie is visible
+  // for checking (a fixed-height `cover` box cropped the edges). Tall photos
+  // are capped and letterboxed by `contain` instead of stretching the form.
+  const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+
+  useEffect(() => {
+    setAspectRatio(null);
+    if (!uri) return;
+    let cancelled = false;
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (!cancelled && width > 0 && height > 0) setAspectRatio(width / height);
+      },
+      () => {}
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [uri]);
+
   return (
     <TouchableOpacity onPress={onPress} className="items-center gap-2 rounded-[20px] border border-dashed border-[#B9C4DA] bg-[#F7F8FC] p-4">
       {uri ? (
-        <Image source={{ uri }} className="h-32 w-full rounded-2xl" resizeMode="cover" />
+        <Image
+          source={{ uri }}
+          className="w-full rounded-2xl"
+          style={{ aspectRatio: aspectRatio ?? 4 / 3, maxHeight: 360 }}
+          resizeMode="contain"
+        />
       ) : (
         <View className="h-32 w-full items-center justify-center gap-2">
           {icon}

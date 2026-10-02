@@ -376,7 +376,7 @@ export default function TrustedCircleScreen() {
               </View>
               <View className="flex-1">
                 <Text className={`text-[15px] font-bold ${primary}`}>Emergency Alert</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Tap Emergency SOS on Home to instantly alert all enabled contacts</Text>
+                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Tap Warning Mode or SOS on Home to instantly alert all enabled contacts</Text>
               </View>
             </View>
             <View className="flex-row items-start gap-3">

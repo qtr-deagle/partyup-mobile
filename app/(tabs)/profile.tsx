@@ -1,19 +1,23 @@
 import LogoutConfirmModal from '@/components/LogoutConfirmModal';
+import { AvatarFrame } from '@/components/cosmetics/AvatarFrame';
+import { ProfileBanner } from '@/components/cosmetics/ProfileBanner';
 import { UserRankTag } from '@/components/guild/UserRankTag';
 import { enterFromBelow } from '@/components/ui/motion';
 import { useAuth } from '@/hooks/auth-provider';
 import { formatResidence } from '@/lib/bulacan';
 import { uploadAvatar } from '@/lib/avatar';
+import { getLoadout, type Loadout } from '@/lib/cosmetics';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { feedback } from '@/lib/sounds';
 import { getTheme, typography } from '@/lib/theme';
 import { getProfileStats, listUserReviews, type ProfileStats, type UserReview } from '@/lib/ratings';
+import { countUnreadTickets } from '@/lib/support';
 import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
 import { getMyVerification, type IdVerification } from '@/lib/verification';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LogOut, Pencil, Shield, ShieldAlert, ShieldCheck, Star, Trophy, Users } from 'lucide-react-native';
+import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LifeBuoy, LogOut, Palette, Pencil, Shield, ShieldAlert, ShieldCheck, Star, Trophy, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -65,6 +69,8 @@ export default function ProfileScreen() {
   const [verification, setVerification] = useState<IdVerification | null>(null);
   const [stats, setStats] = useState<ProfileStats | null>(null);
   const [reviews, setReviews] = useState<UserReview[]>([]);
+  const [loadout, setLoadout] = useState<Loadout>({ banner: null, frame: null });
+  const [unreadTickets, setUnreadTickets] = useState(0);
   const isDark = useColorScheme() === 'dark';
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]';
   const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white';
@@ -128,6 +134,8 @@ export default function ProfileScreen() {
               }
             })
           : null,
+        userId ? getLoadout(userId).then(setLoadout) : null,
+        countUnreadTickets().then(setUnreadTickets),
         userId
           ? listUserReviews(userId, 5).then((result) => {
               if (!result.error) {
@@ -160,15 +168,27 @@ export default function ProfileScreen() {
 
       <View className="px-4 pt-4 gap-5">
         <SectionCard index={0}>
-          <View className="items-center">
+          <ProfileBanner bannerKey={loadout.banner} height={88} className="-mx-4 -mt-4 rounded-t-[22px] items-end p-3">
+            <TouchableOpacity
+              onPress={() => router.push('/rewards')}
+              activeOpacity={0.8}
+              className="flex-row items-center gap-1 rounded-full bg-black/25 px-2.5 py-1"
+              accessibilityLabel="Change your profile banner and frame">
+              <Palette size={13} color="#FFFFFF" />
+              <Text className="text-xs font-bold text-white">Style</Text>
+            </TouchableOpacity>
+          </ProfileBanner>
+          <View className="-mt-10 items-center">
             <TouchableOpacity onPress={handleChangeAvatar} disabled={avatarUploading} activeOpacity={0.8}>
-              {profile?.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} className="h-20 w-20 rounded-full" />
-              ) : (
-                <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#D5E4EE]'}`}>
-                  <Text className={`text-[32px] font-bold ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{profile?.display_name?.trim().charAt(0).toUpperCase() ?? ''}</Text>
-                </View>
-              )}
+              <AvatarFrame frameKey={loadout.frame} size={80}>
+                {profile?.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} className={`h-20 w-20 rounded-full border-4 ${isDark ? 'border-[#111B2E]' : 'border-white'}`} />
+                ) : (
+                  <View className={`h-20 w-20 items-center justify-center rounded-full border-4 ${isDark ? 'border-[#111B2E] bg-[#18253C]' : 'border-white bg-[#D5E4EE]'}`}>
+                    <Text className={`text-[32px] font-bold ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{profile?.display_name?.trim().charAt(0).toUpperCase() ?? ''}</Text>
+                  </View>
+                )}
+              </AvatarFrame>
               {avatarUploading ? (
                 <View className="absolute inset-0 items-center justify-center rounded-full bg-black/50">
                   <ActivityIndicator color="#FFFFFF" />
@@ -372,6 +392,19 @@ export default function ProfileScreen() {
         <TouchableOpacity onPress={() => router.push('/vehicles')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
           <Car size={20} color="#2647B8" />
           <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>My Vehicles</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push('/support')}
+          accessibilityLabel={unreadTickets > 0 ? `Help and Reports, ${unreadTickets} new replies` : 'Help and Reports'}
+          className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
+          <LifeBuoy size={20} color="#2647B8" />
+          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Help & Reports</Text>
+          {unreadTickets > 0 ? (
+            <View className="min-w-[20px] items-center rounded-full bg-[#DC2626] px-1.5 py-0.5">
+              <Text className="text-[11px] font-black text-white">{unreadTickets}</Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
 
         <TouchableOpacity

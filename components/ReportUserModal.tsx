@@ -12,10 +12,14 @@ type Props = {
   reportedUserId?: string;
   tripId?: string;
   targetDisplayName: string;
+  // 'payment' files a payment issue for tripId: fixed report type, no reason
+  // chips, and receipt-oriented copy.
+  variant?: 'user' | 'payment';
 };
 
-export function ReportUserModal({ visible, onClose, isDark, reportedUserId, tripId, targetDisplayName }: Props) {
+export function ReportUserModal({ visible, onClose, isDark, reportedUserId, tripId, targetDisplayName, variant = 'user' }: Props) {
   const insets = useSafeAreaInsets();
+  const isPayment = variant === 'payment';
   const [reportType, setReportType] = useState<ReportType>('behavior');
   const [details, setDetails] = useState('');
   const [evidenceUris, setEvidenceUris] = useState<string[]>([]);
@@ -73,13 +77,13 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
     }
     setSubmitting(true);
     setErrorMessage(null);
-    const { error } = await submitReport({ reportedUserId, tripId, reportType, details, evidenceUris });
+    const { error } = await submitReport({ reportedUserId, tripId, reportType: isPayment ? 'payment' : reportType, details, evidenceUris });
     setSubmitting(false);
     if (error) {
       setErrorMessage(error.message);
       return;
     }
-    Alert.alert('Report submitted', 'Thanks for letting us know. Our team will review this.');
+    Alert.alert('Report submitted', "Thanks for letting us know. Our team will review it, and you can follow along in Profile > Help & Reports.");
     handleClose();
   }
 
@@ -90,7 +94,7 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
         <View style={{ backgroundColor: sheetBackground, paddingBottom: insets.bottom + 36 }} className="rounded-t-[32px] px-5 pt-5 shadow-2xl">
           <View className="flex-row items-center justify-between">
             <Text className="text-headline-24 font-bold" style={{ color: primaryText }}>
-              Report {targetDisplayName}
+              {isPayment ? 'Report a payment issue' : `Report ${targetDisplayName}`}
             </Text>
             <TouchableOpacity onPress={handleClose} accessibilityLabel="Close" className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: closeButtonBg }}>
               <X size={18} color={mutedText} />
@@ -103,26 +107,34 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
             </View>
           ) : null}
 
-          <Text className="mt-5 text-[13px] font-bold" style={{ color: mutedText }}>
-            REASON
-          </Text>
-          <View className="mt-2 flex-row flex-wrap gap-2">
-            {REPORT_TYPES.map((type) => {
-              const selected = reportType === type;
-              return (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => setReportType(type)}
-                  className="rounded-full border px-4 py-2"
-                  style={{ borderColor: selected ? '#2A55D4' : border, backgroundColor: selected ? '#2A55D4' : inputBg }}
-                >
-                  <Text className="text-sm font-bold" style={{ color: selected ? '#FFFFFF' : primaryText }}>
-                    {REPORT_TYPE_LABELS[type]}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          {isPayment ? (
+            <Text className="mt-3 text-sm" style={{ color: mutedText }}>
+              {targetDisplayName}
+            </Text>
+          ) : (
+            <>
+              <Text className="mt-5 text-[13px] font-bold" style={{ color: mutedText }}>
+                REASON
+              </Text>
+              <View className="mt-2 flex-row flex-wrap gap-2">
+                {REPORT_TYPES.map((type) => {
+                  const selected = reportType === type;
+                  return (
+                    <TouchableOpacity
+                      key={type}
+                      onPress={() => setReportType(type)}
+                      className="rounded-full border px-4 py-2"
+                      style={{ borderColor: selected ? '#2A55D4' : border, backgroundColor: selected ? '#2A55D4' : inputBg }}
+                    >
+                      <Text className="text-sm font-bold" style={{ color: selected ? '#FFFFFF' : primaryText }}>
+                        {REPORT_TYPE_LABELS[type]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
 
           <Text className="mt-5 text-[13px] font-bold" style={{ color: mutedText }}>
             WHAT HAPPENED
@@ -130,7 +142,7 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
           <TextInput
             className="mt-2 min-h-[96px] rounded-2xl border px-4 py-3.5 text-base"
             style={{ borderColor: border, backgroundColor: inputBg, color: primaryText }}
-            placeholder="Describe the issue..."
+            placeholder={isPayment ? 'e.g. I was charged but it still shows Unpaid, or I was charged twice...' : 'Describe the issue...'}
             placeholderTextColor={mutedText}
             multiline
             value={details}
@@ -139,7 +151,7 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
 
           <View className="mt-5 flex-row items-center justify-between">
             <Text className="text-[13px] font-bold" style={{ color: mutedText }}>
-              ADD PHOTOS (OPTIONAL)
+              {isPayment ? 'RECEIPT SCREENSHOTS (OPTIONAL)' : 'ADD PHOTOS (OPTIONAL)'}
             </Text>
             <Text className="text-xs" style={{ color: mutedText }}>
               {evidenceUris.length}/{MAX_REPORT_EVIDENCE_PHOTOS}

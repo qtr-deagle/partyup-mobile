@@ -13,7 +13,7 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { Clock, MapPin, Shield, ShieldAlert, Siren, X } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 
 // The server enforces the same 30 s – 30 min range (start_safety_session).
 const TIMER_PRESETS = [
@@ -251,20 +251,21 @@ export default function WarningModeModal({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={phase === 'sending' ? undefined : phase === 'monitoring' ? handleHide : onClose}>
       <View className="flex-1 items-center justify-center bg-black/45 px-4">
-        <View className={`w-full max-w-[440px] rounded-[28px] px-5 py-6 shadow-lg shadow-black/25 ${card}`}>
+        <View className={`w-full max-w-[440px] overflow-hidden rounded-[28px] shadow-lg shadow-black/25 ${card}`} style={{ maxHeight: '92%' }}>
+          <ScrollView bounces={false} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, paddingVertical: 20 }}>
           {phase !== 'monitoring' && phase !== 'sending' && (
-            <TouchableOpacity onPress={onClose} className={`absolute right-4 top-4 h-9 w-9 items-center justify-center rounded-full ${mutedFill}`}>
+            <TouchableOpacity onPress={onClose} className={`absolute right-4 top-4 z-10 h-9 w-9 items-center justify-center rounded-full ${mutedFill}`}>
               <X size={18} color={isDark ? '#CBD5E1' : '#6B7590'} />
             </TouchableOpacity>
           )}
 
           {(phase === 'idle' || phase === 'activating' || phase === 'error') && (
             <>
-              <View className="items-center">
-                <View className={`h-14 w-14 items-center justify-center rounded-full ${isDark ? 'bg-[#3A1B29]' : 'bg-[#FFE1DC]'}`}>
-                  <ShieldAlert size={28} color="#E32727" />
+              <View className="flex-row items-center gap-3 pr-10">
+                <View className={`h-10 w-10 items-center justify-center rounded-full ${isDark ? 'bg-[#3A1B29]' : 'bg-[#FFE1DC]'}`}>
+                  <ShieldAlert size={20} color="#E32727" />
                 </View>
-                <Text className={`mt-4 text-center text-headline-24 font-bold ${primary}`}>Activate Warning Mode?</Text>
+                <Text className={`flex-1 text-headline-18 font-bold ${primary}`}>Activate Warning Mode?</Text>
               </View>
 
               {!warningAlertsEnabled ? (
@@ -283,32 +284,32 @@ export default function WarningModeModal({
                 </View>
               ) : (
                 <>
-                  <View className="mt-5 gap-3">
-                    <View className={`flex-row items-start gap-3 rounded-2xl px-4 py-3 ${mutedFill}`}>
-                      <MapPin size={20} color="#284BD6" />
+                  <View className="mt-4 gap-2">
+                    <View className={`flex-row items-start gap-3 rounded-2xl px-3 py-2.5 ${mutedFill}`}>
+                      <MapPin size={18} color="#284BD6" />
                       <View className="flex-1">
-                        <Text className={`text-[15px] font-bold ${primary}`}>Share Your Location</Text>
-                        <Text className={`mt-0.5 text-[13px] leading-5 ${secondary}`}>Live location sent to trusted contacts</Text>
+                        <Text className={`text-[14px] font-bold ${primary}`}>Share Your Location</Text>
+                        <Text className={`text-[12px] leading-4 ${secondary}`}>Live location sent to trusted contacts</Text>
                       </View>
                     </View>
-                    <View className={`flex-row items-start gap-3 rounded-2xl px-4 py-3 ${mutedFill}`}>
-                      <Shield size={20} color="#00A56A" />
+                    <View className={`flex-row items-start gap-3 rounded-2xl px-3 py-2.5 ${mutedFill}`}>
+                      <Shield size={18} color="#00A56A" />
                       <View className="flex-1">
-                        <Text className={`text-[15px] font-bold ${primary}`}>Start Safety Monitoring</Text>
-                        <Text className={`mt-0.5 text-[13px] leading-5 ${secondary}`}>Background tracking and monitoring enabled</Text>
+                        <Text className={`text-[14px] font-bold ${primary}`}>Start Safety Monitoring</Text>
+                        <Text className={`text-[12px] leading-4 ${secondary}`}>Background tracking and monitoring enabled</Text>
                       </View>
                     </View>
-                    <View className={`rounded-2xl px-4 py-3 ${mutedFill}`}>
+                    <View className={`rounded-2xl px-3 py-2.5 ${mutedFill}`}>
                       <View className="flex-row items-start gap-3">
-                        <Clock size={20} color="#D88700" />
+                        <Clock size={18} color="#D88700" />
                         <View className="flex-1">
-                          <Text className={`text-[15px] font-bold ${primary}`}>Auto-Escalation Timer</Text>
-                          <Text className={`mt-0.5 text-[13px] leading-5 ${secondary}`}>
+                          <Text className={`text-[14px] font-bold ${primary}`}>Auto-Escalation Timer</Text>
+                          <Text className={`text-[12px] leading-4 ${secondary}`}>
                             Automatically triggers full SOS in {formatDuration(durationSeconds)} if not canceled
                           </Text>
                         </View>
                       </View>
-                      <View className="mt-3 flex-row flex-wrap gap-2">
+                      <View className="mt-2 flex-row flex-wrap gap-1.5">
                         {TIMER_PRESETS.map((preset) => {
                           const selected = preset.seconds === durationSeconds;
                           return (
@@ -318,10 +319,10 @@ export default function WarningModeModal({
                               disabled={phase === 'activating'}
                               accessibilityRole="button"
                               accessibilityState={{ selected }}
-                              className={`rounded-full border px-3.5 py-1.5 ${
+                              className={`rounded-full border px-3 py-1 ${
                                 selected ? 'border-[#D88700] bg-[#D88700]' : isDark ? 'border-[#2A3A55]' : 'border-[#DCE1EA] bg-white'
                               }`}>
-                              <Text className={`text-[13px] font-bold ${selected ? 'text-white' : primary}`}>{preset.label}</Text>
+                              <Text className={`text-[12px] font-bold ${selected ? 'text-white' : primary}`}>{preset.label}</Text>
                             </TouchableOpacity>
                           );
                         })}
@@ -329,10 +330,9 @@ export default function WarningModeModal({
                     </View>
                   </View>
 
-                  <View className={`mt-4 rounded-xl border px-3 py-3 ${isDark ? 'border-[#3B341A] bg-[#241F0C]' : 'border-[#F5E1A8] bg-[#FDF6E1]'}`}>
-                    <Text className={`text-[13px] leading-5 ${isDark ? 'text-[#E9D9A8]' : 'text-[#8A5C0A]'}`}>
-                      Note: You can cancel any time before the timer ends. If your app closes or your phone dies, the SOS is still sent
-                      automatically within about a minute of the timer ending.
+                  <View className={`mt-3 rounded-xl border px-3 py-2 ${isDark ? 'border-[#3B341A] bg-[#241F0C]' : 'border-[#F5E1A8] bg-[#FDF6E1]'}`}>
+                    <Text className={`text-[12px] leading-4 ${isDark ? 'text-[#E9D9A8]' : 'text-[#8A5C0A]'}`}>
+                      Cancel any time before the timer ends. If your app closes or your phone dies, the SOS is still sent automatically.
                     </Text>
                   </View>
 
@@ -341,7 +341,7 @@ export default function WarningModeModal({
                   <TouchableOpacity
                     onPress={() => void handleActivate()}
                     disabled={phase === 'activating'}
-                    className="mt-5 items-center rounded-2xl bg-[#E32727] py-4">
+                    className="mt-4 items-center rounded-2xl bg-[#E32727] py-3.5">
                     {phase === 'activating' ? (
                       <ActivityIndicator color="#FFFFFF" />
                     ) : (
@@ -353,12 +353,12 @@ export default function WarningModeModal({
                   <TouchableOpacity
                     onPress={() => void handleSendNow()}
                     disabled={phase === 'activating'}
-                    className="mt-3 flex-row items-center justify-center gap-2 rounded-2xl border-2 border-[#E32727] py-4"
+                    className="mt-2 flex-row items-center justify-center gap-2 rounded-2xl border-2 border-[#E32727] py-3"
                     accessibilityLabel="Send SOS now">
                     <Siren size={18} color="#E32727" />
                     <Text className="font-black text-[#E32727]">Urgent? Send SOS Now</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={onClose} className={`mt-3 items-center rounded-2xl py-4 ${mutedFill}`}>
+                  <TouchableOpacity onPress={onClose} className={`mt-2 items-center rounded-2xl py-3 ${mutedFill}`}>
                     <Text className={`font-bold ${primary}`}>Cancel</Text>
                   </TouchableOpacity>
                 </>
@@ -424,6 +424,7 @@ export default function WarningModeModal({
               </TouchableOpacity>
             </View>
           )}
+          </ScrollView>
         </View>
       </View>
     </Modal>

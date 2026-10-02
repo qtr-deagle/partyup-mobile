@@ -1,5 +1,6 @@
 import { UserRankTag } from '@/components/guild/UserRankTag';
 import { RateUserModal } from '@/components/RateUserModal';
+import { TripReviewsModal, type ReviewTarget } from '@/components/TripReviewsModal';
 import { SuccessOverlay } from '@/components/ui/motion';
 import { ReportUserModal } from '@/components/ReportUserModal';
 import TripMeetupCard from '@/components/TripMeetupCard';
@@ -30,10 +31,11 @@ import { feedback } from '@/lib/sounds';
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import { getTourDetail, joinPublicTrip, listTripItinerary, type ItineraryDay, type TourDetail } from '@/lib/tours';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { ArrowLeft, BadgeCheck, Calendar, Check, Flag, MapPin, MessageCircle, Share2, Sparkles, Star, Users, Wallet, X } from 'lucide-react-native';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -96,7 +98,12 @@ export default function TripDetailScreen() {
   }, [router]);
   const [givenRatings, setGivenRatings] = useState<Map<string, GivenRating>>(new Map());
   const [reportTarget, setReportTarget] = useState<{ userId: string; displayName: string } | null>(null);
+  const [paymentReportOpen, setPaymentReportOpen] = useState(false);
   const [rateTarget, setRateTarget] = useState<{ userId: string; displayName: string } | null>(null);
+  // Companions to walk through in the post-trip review prompt. Snapshotted
+  // when it opens so rating someone doesn't reshuffle the steps.
+  const [reviewTargets, setReviewTargets] = useState<ReviewTarget[] | null>(null);
+  const reviewPromptChecked = useRef(false);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -186,6 +193,34 @@ export default function TripDetailScreen() {
       void load();
     }, [load])
   );
+
+  // Once a trip is completed, pop the review prompt a single time per trip
+  // (per phone). Waits for ratings to load and for any celebration to finish
+  // so the driver sees "Trip complete!" first.
+  useEffect(() => {
+    if (!id || loading || celebration || reviewPromptChecked.current || detail?.status !== 'completed') {
+      return;
+    }
+    const unrated = members
+      .filter((member) => member.status === 'accepted' && member.user_id !== session?.user.id && !givenRatings.has(member.user_id))
+      .map((member) => ({ userId: member.user_id, displayName: member.display_name, avatarUrl: member.avatar_url }));
+    reviewPromptChecked.current = true;
+    if (!unrated.length) {
+      return;
+    }
+    const key = `partyup.trip-review-prompted.${id}`;
+    void (async () => {
+      try {
+        if (await AsyncStorage.getItem(key)) {
+          return;
+        }
+        await AsyncStorage.setItem(key, '1');
+      } catch {
+        return;
+      }
+      setReviewTargets(unrated);
+    })();
+  }, [id, loading, celebration, detail?.status, members, givenRatings, session?.user.id]);
 
   async function handleShareInvite() {
     if (!id || !session?.user.id) {
@@ -675,6 +710,13 @@ export default function TripDetailScreen() {
               </View>
             ) : null}
 
+            {acceptedRiders.length ? (
+              <TouchableOpacity onPress={() => setPaymentReportOpen(true)} className="flex-row items-center justify-center gap-1.5 py-1">
+                <Flag size={14} color={isDark ? '#94A3B8' : '#6C7A95'} />
+                <Text className={`text-sm font-bold ${secondary}`}>Having a payment problem? Report it</Text>
+              </TouchableOpacity>
+            ) : null}
+
             {detail.status === 'open' || detail.status === 'full' ? (
               <TouchableOpacity onPress={() => void handleStart()} disabled={busyId === 'start'} className="flex-row items-center justify-center gap-2 rounded-2xl bg-[#2A55D4] py-3.5">
                 {busyId === 'start' ? <ActivityIndicator color="#FFFFFF" /> : <Check size={18} color="#FFFFFF" />}
@@ -743,6 +785,11 @@ export default function TripDetailScreen() {
               </View>
             ) : null}
 
+            <TouchableOpacity onPress={() => setPaymentReportOpen(true)} className="flex-row items-center justify-center gap-1.5 py-1">
+              <Flag size={14} color={isDark ? '#94A3B8' : '#6C7A95'} />
+              <Text className={`text-sm font-bold ${secondary}`}>Having a payment problem? Report it</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity onPress={confirmLeave} disabled={busyId === 'leave'} className="items-center rounded-2xl border border-[#E32727] py-3.5">
               <Text className="font-bold text-[#E32727]">Leave Trip</Text>
             </TouchableOpacity>
@@ -757,6 +804,15 @@ export default function TripDetailScreen() {
         reportedUserId={reportTarget?.userId}
         tripId={id}
         targetDisplayName={reportTarget?.displayName ?? ''}
+      />
+
+      <ReportUserModal
+        visible={paymentReportOpen}
+        onClose={() => setPaymentReportOpen(false)}
+        isDark={isDark}
+        tripId={id}
+        targetDisplayName={detail.title}
+        variant="payment"
       />
 
       {rateTarget ? (
@@ -774,6 +830,18 @@ export default function TripDetailScreen() {
           }}
         />
       ) : null}
+
+      <TripReviewsModal
+        visible={!!reviewTargets}
+        onClose={() => setReviewTargets(null)}
+        isDark={isDark}
+        tripId={id}
+        tripTitle={detail.title}
+        members={reviewTargets ?? []}
+        onRated={(userId, rating, comment) => {
+          setGivenRatings((current) => new Map(current).set(userId, { target_user_id: userId, rating, comment }));
+        }}
+      />
 
       <SuccessOverlay visible={!!celebration} title={celebration?.title ?? ''} message={celebration?.message} onDone={endCelebration} />
     </View>

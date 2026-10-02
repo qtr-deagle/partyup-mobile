@@ -1,12 +1,17 @@
+import { CosmeticsShop } from '@/components/guild/CosmeticsShop';
 import { RankMedal } from '@/components/guild/RankMedal';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState, SkeletonRow } from '@/components/ui/motion';
 import { Card } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { listCosmetics, listOwnedCosmetics, type Cosmetic, type OwnedCosmetic } from '@/lib/cosmetics';
 import { parseTimestamp } from '@/lib/datetime';
 import {
+  getMyGuildLevel,
   getPointsSummary,
+  guildPerkDiscount,
+  MAX_TOTAL_DISCOUNT,
   listMyRedemptions,
   listRewards,
   rankDiscount,
@@ -14,6 +19,7 @@ import {
   rankIndexOf,
   redeemReward,
   rewardPrice,
+  totalDiscount,
   type GuildReward,
   type RewardRedemption,
 } from '@/lib/guilds';
@@ -40,24 +46,38 @@ export function RewardsPanel() {
 
   const [coins, setCoins] = useState(0);
   const [lifetime, setLifetime] = useState(0);
+  const [guildLevel, setGuildLevel] = useState(0);
   const [rewards, setRewards] = useState<GuildReward[]>([]);
   const [redemptions, setRedemptions] = useState<RewardRedemption[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [cosmetics, setCosmetics] = useState<Cosmetic[]>([]);
+  const [ownedCosmetics, setOwnedCosmetics] = useState<OwnedCosmetic[]>([]);
+  const userId = profile?.id;
 
   const load = useCallback(async () => {
     setErrorMessage(null);
-    const [summaryResult, rewardsResult, redemptionsResult] = await Promise.all([getPointsSummary(), listRewards(), listMyRedemptions()]);
-    const firstError = summaryResult.error ?? rewardsResult.error ?? redemptionsResult.error;
+    const [summaryResult, rewardsResult, redemptionsResult, levelResult, cosmeticsResult, ownedResult] = await Promise.all([
+      getPointsSummary(),
+      listRewards(),
+      listMyRedemptions(),
+      getMyGuildLevel(),
+      listCosmetics(),
+      userId ? listOwnedCosmetics(userId) : Promise.resolve({ data: [] as OwnedCosmetic[], error: null }),
+    ]);
+    const firstError = summaryResult.error ?? rewardsResult.error ?? redemptionsResult.error ?? levelResult.error ?? cosmeticsResult.error ?? ownedResult.error;
     if (firstError) setErrorMessage(firstError.message);
     setCoins(summaryResult.data?.coins ?? 0);
     setLifetime(summaryResult.data?.lifetime_points ?? 0);
+    setGuildLevel(levelResult.data);
     setRewards(rewardsResult.data);
     setRedemptions(redemptionsResult.data);
+    setCosmetics(cosmeticsResult.data);
+    setOwnedCosmetics(ownedResult.data);
     setLoading(false);
-  }, []);
+  }, [userId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -72,7 +92,7 @@ export function RewardsPanel() {
   }
 
   function confirmRedeem(reward: GuildReward) {
-    Alert.alert(`Redeem ${reward.title}?`, `This spends ${rewardPrice(reward.cost, lifetime)} coins. An admin will fulfill it, and you'll be refunded if it's declined.`, [
+    Alert.alert(`Redeem ${reward.title}?`, `This spends ${rewardPrice(reward.cost, lifetime, guildLevel)} coins. An admin will fulfill it, and you'll be refunded if it's declined.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Redeem',
@@ -95,6 +115,7 @@ export function RewardsPanel() {
   const available = rewards.filter((reward) => reward.audience === 'everyone' || reward.audience === profile?.role);
   const { rank: myRank, index: myRankIndex } = rankFor(lifetime);
   const discount = rankDiscount(lifetime);
+  const guildDiscount = guildPerkDiscount(guildLevel);
 
   return (
     <ScrollView
@@ -126,7 +147,32 @@ export function RewardsPanel() {
             </Text>
           </View>
         ) : null}
+        {guildDiscount > 0 ? (
+          <View className={`mt-2 flex-row items-center gap-2 rounded-xl px-3 py-2 ${mutedPanel}`}>
+            <Percent size={14} color="#179B67" />
+            <Text className={`flex-1 text-xs font-bold ${primaryText}`}>
+              Guild Level {guildLevel} perk: {guildDiscount}% off every reward
+            </Text>
+          </View>
+        ) : null}
+        {discount > 0 && guildDiscount > 0 && totalDiscount(lifetime, guildLevel) === MAX_TOTAL_DISCOUNT ? (
+          <Text className={`mt-1.5 text-[11px] ${mutedText}`}>Max discount reached ({MAX_TOTAL_DISCOUNT}% total)</Text>
+        ) : null}
       </Card>
+
+      {!loading && cosmetics.length > 0 ? (
+        <CosmeticsShop
+          key="cosmetics"
+          isDark={isDark}
+          index={1}
+          catalog={cosmetics}
+          owned={ownedCosmetics}
+          coins={coins}
+          lifetime={lifetime}
+          guildLevel={guildLevel}
+          onChanged={load}
+        />
+      ) : null}
 
       {loading ? (
         <Card key="loading">
@@ -140,7 +186,7 @@ export function RewardsPanel() {
         <View key="catalog" className="gap-3">
           {available.map((reward, index) => {
             const outOfStock = reward.stock !== null && reward.stock <= 0;
-            const price = rewardPrice(reward.cost, lifetime);
+            const price = rewardPrice(reward.cost, lifetime, guildLevel);
             const rankLocked = reward.min_rank !== null && myRankIndex < rankIndexOf(reward.min_rank);
             const affordable = coins >= price;
             const disabled = outOfStock || rankLocked || !affordable || busyId === reward.id;

@@ -1,7 +1,11 @@
 import { GuildEmblem } from '@/components/GuildEmblem';
 import { GuildFormModal, type GuildFormValues } from '@/components/GuildFormModal';
+import { BadgeDetailModal } from '@/components/guild/BadgeDetailModal';
 import { BecomeLeaderCard } from '@/components/guild/BecomeLeaderCard';
 import { GuildAnnouncement } from '@/components/guild/GuildAnnouncement';
+import { GuildAuditLogModal } from '@/components/guild/GuildAuditLogModal';
+import { GuildReportModal } from '@/components/guild/GuildReportModal';
+import { GuildReportsInbox } from '@/components/guild/GuildReportsInbox';
 import { Segmented } from '@/components/guild/LeaderboardPanel';
 import { MedalShareCard, shareMedalCard } from '@/components/guild/MedalShareCard';
 import { RankMedal } from '@/components/guild/RankMedal';
@@ -15,6 +19,7 @@ import { Card } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useRankUp } from '@/hooks/use-rank-up';
 import { parseTimestamp } from '@/lib/datetime';
+import { listGuildReports } from '@/lib/guildReports';
 import {
   badgesFor,
   createGuild,
@@ -27,7 +32,6 @@ import {
   getMyJoinRequest,
   respondGuildInvite,
   respondJoinRequest,
-  setGuildOfficer,
   type GuildJoinRequest,
   type MyGuildInvite,
   type MyJoinRequest,
@@ -60,7 +64,7 @@ import {
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Award, Check, ChevronRight, Coins, Crown, DoorOpen, Lock, Mail, MessageCircle, MoreVertical, Pencil, Search, Share2, Shield, Trophy, UserMinus, UserPlus, Users, X } from 'lucide-react-native';
+import { Award, Check, ChevronRight, Coins, Crown, DoorOpen, Flag, LifeBuoy, Lock, Mail, MessageCircle, MoreVertical, Pencil, ScrollText, Search, Share2, Shield, Trophy, UserMinus, UserPlus, Users, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -95,6 +99,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
   const isTraveler = profile?.role === 'traveler';
 
   const [summary, setSummary] = useState<PointsSummary | null>(null);
+  const [openBadge, setOpenBadge] = useState<Badge | null>(null);
   const [guild, setGuild] = useState<Guild | null>(null);
   const [members, setMembers] = useState<GuildMemberStanding[]>([]);
   const [standings, setStandings] = useState<GuildStanding[]>([]);
@@ -112,6 +117,12 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
   const [joinRequests, setJoinRequests] = useState<GuildJoinRequest[]>([]);
   const [myRequest, setMyRequest] = useState<MyJoinRequest | null>(null);
   const [myInvites, setMyInvites] = useState<MyGuildInvite[]>([]);
+  // Guild reports: the form (any member), the inbox and audit log (leader).
+  const [reportVisible, setReportVisible] = useState(false);
+  const [reportMemberId, setReportMemberId] = useState<string | null>(null);
+  const [inboxVisible, setInboxVisible] = useState(false);
+  const [auditVisible, setAuditVisible] = useState(false);
+  const [openReports, setOpenReports] = useState(0);
   const shareCardRef = useRef<View>(null);
   const seasonsChecked = useRef(false);
 
@@ -166,10 +177,29 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
     }, [load, period])
   );
 
-  async function refresh() {
-    setRefreshing(true);
-    await load(period);
-    setRefreshing(false);
+  function openReport(memberId: string | null) {
+    setReportMemberId(memberId);
+    setReportVisible(true);
+  }
+
+  // Members can report someone from their row.
+  // Reporting the leader goes to PartyUp support instead, since the leader
+  // is the one who handles guild reports.
+  function memberMenu(member: GuildMemberStanding) {
+    Alert.alert(member.display_name, member.is_leader ? 'Guild Leader' : undefined, [
+      member.is_leader
+        ? {
+            text: 'Report to PartyUp',
+            style: 'destructive',
+            onPress: () =>
+              router.push({
+                pathname: '/support/new',
+                params: { category: 'guild_leader', userId: member.user_id, userName: member.display_name, guildId: guild?.id ?? '', guildName: guild?.name ?? '' },
+              }),
+          }
+        : { text: `Report ${member.display_name}`, style: 'destructive', onPress: () => openReport(member.user_id) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   }
 
   function confirmLeave() {
@@ -214,23 +244,9 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
     ]);
   }
 
-  // Leader actions on a member: officer on/off, or remove.
+  // Leader actions on a member: hand over leadership, or remove.
   function manageMember(member: GuildMemberStanding) {
-    const officer = member.member_role === 'officer';
-    Alert.alert(member.display_name, officer ? 'Officer · can answer join requests and post announcements' : 'Member', [
-      {
-        text: officer ? 'Remove officer role' : 'Make officer',
-        onPress: async () => {
-          setBusyId(member.user_id);
-          const { error } = await setGuildOfficer(member.user_id, !officer);
-          setBusyId(null);
-          if (error) {
-            Alert.alert('Could not update', error.message);
-            return;
-          }
-          setMembers((current) => current.map((row) => (row.user_id === member.user_id ? { ...row, member_role: officer ? 'member' : 'officer' } : row)));
-        },
-      },
+    Alert.alert(member.display_name, 'Member', [
       { text: 'Make leader', onPress: () => confirmHandOver(member) },
       { text: 'Remove from guild', style: 'destructive', onPress: () => confirmRemove(member) },
       { text: 'Cancel', style: 'cancel' },
@@ -274,7 +290,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
     if (!guild) return;
     Alert.alert(
       'Step down as leader?',
-      `Your top officer takes over ${guild.name}, and you stay on as a member (traveler). To pick someone else, tap their name and choose "Make leader".`,
+      `Your top member by points takes over ${guild.name}, and you stay on as a member (traveler). To pick someone else, tap their name and choose "Make leader".`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -288,7 +304,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
               Alert.alert('Could not step down', error.message);
               return;
             }
-            await afterHandOver(data ?? 'Your officer');
+            await afterHandOver(data ?? 'Your top member');
           },
         },
       ]
@@ -397,19 +413,13 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
   const badgeFillers = (3 - (badges.length % 3)) % 3;
   const { celebration, dismiss } = useRankUp(profile?.id, summary ? lifetime : null);
 
-  function showBadge(badge: Badge) {
-    const tiers = badge.thresholds.length > 1 ? `\n\nTiers: ${badge.thresholds.join(' / ')} · you have ${badge.count}` : '';
-    const status = badge.earned ? (badge.thresholds.length > 1 ? `${['Bronze', 'Silver', 'Gold'][badge.tier - 1]} earned.` : 'Earned!') : 'Locked.';
-    Alert.alert(badge.name, `${status} ${badge.tier < badge.thresholds.length ? `Next: ${badge.description}` : ''}${tiers}`);
-  }
   // Leaders travel too, so they see the traveler lines as well as their own.
   const guide = EARNING_GUIDE.filter(
     (item) => profile?.role === 'admin' || item.role === profile?.role || (isLeader && item.role === 'traveler' && !item.once)
   );
-  const myMembership = members.find((member) => member.user_id === profile?.id);
-  const canManage = !!guild && (guild.leader_id === profile?.id || myMembership?.member_role === 'officer');
+  const canManage = !!guild && guild.leader_id === profile?.id;
 
-  // Join requests show up (and disappear when another officer answers) live.
+  // Join requests show up live.
   const managedGuildId = canManage ? guild?.id : undefined;
   useEffect(() => {
     if (!managedGuildId) return;
@@ -423,6 +433,27 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
       void supabase.removeChannel(channel);
     };
   }, [managedGuildId]);
+
+  const loadOpenReports = useCallback(async () => {
+    if (!managedGuildId) {
+      setOpenReports(0);
+      return;
+    }
+    const { data, error } = await listGuildReports(managedGuildId);
+    if (!error) setOpenReports(data.filter((report) => report.status === 'open').length);
+  }, [managedGuildId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadOpenReports();
+    }, [loadOpenReports])
+  );
+
+  async function refresh() {
+    setRefreshing(true);
+    await Promise.all([load(period), loadOpenReports()]);
+    setRefreshing(false);
+  }
   const periodLabel = PERIODS.find((p) => p.id === period)?.label.toLowerCase() ?? '';
 
   return (
@@ -511,7 +542,26 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
                     {busyId === 'step-down' ? <ActivityIndicator color={isDark ? '#94A3B8' : '#67748D'} /> : <Crown size={14} color={isDark ? '#94A3B8' : '#67748D'} />}
                     <Text className={`text-sm font-semibold ${mutedText}`}>Step down as leader</Text>
                   </AnimatedPressable>
-                ) : null}
+                ) : (
+                  <View key="report-links" className="mt-3 flex-row items-center justify-center gap-6">
+                    <AnimatedPressable
+                      onPress={() => openReport(null)}
+                      scaleTo={0.97}
+                      className="flex-row items-center gap-1.5 py-1"
+                      accessibilityLabel="Report a problem in this guild">
+                      <Flag size={14} color={isDark ? '#94A3B8' : '#67748D'} />
+                      <Text className={`text-sm font-semibold ${mutedText}`}>Report a problem</Text>
+                    </AnimatedPressable>
+                    <AnimatedPressable
+                      onPress={() => router.push('/support')}
+                      scaleTo={0.97}
+                      className="flex-row items-center gap-1.5 py-1"
+                      accessibilityLabel="Help and Reports">
+                      <LifeBuoy size={14} color={isDark ? '#94A3B8' : '#67748D'} />
+                      <Text className={`text-sm font-semibold ${mutedText}`}>Help & Reports</Text>
+                    </AnimatedPressable>
+                  </View>
+                )}
               </Card>
             ) : isLeader ? (
               <Card key="found-guild" index={0}>
@@ -574,7 +624,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
               </Card>
             ) : null}
 
-            {/* Invites from leaders/officers, for travelers without a guild */}
+            {/* Invites from Guild Leaders, for travelers without a guild */}
             {!guild && isTraveler && myInvites.length > 0 ? (
               <Card key="guild-invites" index={0}>
                 <View className="flex-row items-center gap-2">
@@ -626,7 +676,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
             {/* Pinned announcement */}
             {guild ? <GuildAnnouncement key="announcement" guild={guild} isDark={isDark} canEdit={canManage} onSaved={() => void load(period)} /> : null}
 
-            {/* Join requests waiting for the leader or an officer */}
+            {/* Join requests waiting for the leader */}
             {joinRequests.length > 0 ? (
               <Card key="join-requests" index={0}>
                 <View className="flex-row items-center gap-2">
@@ -675,6 +725,36 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
                       )}
                     </AnimatedPressable>
                   ))}
+                </View>
+              </Card>
+            ) : null}
+
+            {/* Leader tools: reports inbox and audit log */}
+            {canManage ? (
+              <Card key="guild-tools" index={0}>
+                <View className="flex-row gap-3">
+                  <AnimatedPressable
+                    onPress={() => setInboxVisible(true)}
+                    className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${softBorder}`}
+                    accessibilityLabel={openReports > 0 ? `Reports, ${openReports} open` : 'Reports'}>
+                    <Flag size={16} color={openReports > 0 ? '#DC2626' : primaryColor} />
+                    <Text className="font-bold" style={{ color: primaryColor }}>
+                      Reports
+                    </Text>
+                    {openReports > 0 ? (
+                      <View className="min-w-[20px] items-center rounded-full bg-[#DC2626] px-1.5 py-0.5">
+                        <Text className="text-[11px] font-black text-white">{openReports}</Text>
+                      </View>
+                    ) : null}
+                  </AnimatedPressable>
+                  <AnimatedPressable
+                    onPress={() => setAuditVisible(true)}
+                    className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${softBorder}`}>
+                    <ScrollText size={16} color={primaryColor} />
+                    <Text className="font-bold" style={{ color: primaryColor }}>
+                      Audit log
+                    </Text>
+                  </AnimatedPressable>
                 </View>
               </Card>
             ) : null}
@@ -767,7 +847,6 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
                               {member.display_name}
                             </Text>
                             {member.is_leader ? <Crown size={13} color={guild.color} /> : null}
-                            {member.member_role === 'officer' ? <OfficerChip color={guild.color} /> : null}
                           </View>
                           <Text className={`text-xs ${mutedText}`}>{titleFor(member.lifetime_points, member.is_leader ? 'guild_leader' : 'traveler')}</Text>
                         </View>
@@ -779,6 +858,13 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
                             className="h-8 w-8 items-center justify-center"
                             accessibilityLabel={`Manage ${member.display_name}`}>
                             {busyId === member.user_id ? <ActivityIndicator color={primaryColor} /> : <MoreVertical size={18} color={isDark ? '#94A3B8' : '#64748B'} />}
+                          </AnimatedPressable>
+                        ) : guild.leader_id !== profile?.id && member.user_id !== profile?.id ? (
+                          <AnimatedPressable
+                            onPress={() => memberMenu(member)}
+                            className="h-8 w-8 items-center justify-center"
+                            accessibilityLabel={`More options for ${member.display_name}`}>
+                            <MoreVertical size={18} color={isDark ? '#94A3B8' : '#64748B'} />
                           </AnimatedPressable>
                         ) : null}
                       </AnimatedPressable>
@@ -826,7 +912,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
                 {badges.map((badge) => (
                   <AnimatedPressable
                     key={badge.id}
-                    onPress={() => showBadge(badge)}
+                    onPress={() => setOpenBadge(badge)}
                     className={`w-[31%] items-center rounded-2xl p-3 ${mutedPanel}`}
                     style={{ opacity: badge.earned ? 1 : 0.6 }}>
                     <BadgeMedal icon={badge.icon} tier={badge.tier} maxTier={badge.thresholds.length} size={46} />
@@ -894,6 +980,34 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
         onSubmit={(values) => void submitGuildForm(values)}
       />
 
+      {guild ? (
+        <>
+          <GuildReportModal
+            visible={reportVisible}
+            onClose={() => setReportVisible(false)}
+            isDark={isDark}
+            guildId={guild.id}
+            guildName={guild.name}
+            myUserId={profile?.id}
+            members={members}
+            initialMemberId={reportMemberId}
+          />
+          {canManage ? (
+            <>
+              <GuildReportsInbox
+                visible={inboxVisible}
+                onClose={() => setInboxVisible(false)}
+                isDark={isDark}
+                guildId={guild.id}
+                onChanged={setOpenReports}
+              />
+              <GuildAuditLogModal visible={auditVisible} onClose={() => setAuditVisible(false)} isDark={isDark} guildId={guild.id} />
+            </>
+          ) : null}
+        </>
+      ) : null}
+
+      <BadgeDetailModal badge={openBadge} isDark={isDark} onClose={() => setOpenBadge(null)} />
       <RankMedalsModal visible={medalsVisible} isDark={isDark} lifetimePoints={lifetime} role={profile?.role} onClose={() => setMedalsVisible(false)} />
 
       <RankUpCelebration celebration={celebration} role={profile?.role} displayName={profile?.display_name ?? ''} guildName={guild?.name} onClose={dismiss} />
@@ -903,16 +1017,6 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
         <MedalShareCard ref={shareCardRef} points={lifetime} role={profile?.role} displayName={profile?.display_name ?? ''} guildName={guild?.name} />
       </View>
     </>
-  );
-}
-
-function OfficerChip({ color }: { color: string }) {
-  return (
-    <View className="rounded px-1.5 py-0.5" style={{ backgroundColor: `${color}22` }}>
-      <Text className="text-[9px] font-black" style={{ color }}>
-        OFFICER
-      </Text>
-    </View>
   );
 }
 

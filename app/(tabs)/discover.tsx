@@ -1,26 +1,35 @@
 import { DEFAULT_FILTERS, FiltersModal, countActiveFilters, type FiltersValue } from '@/components/discover/FiltersModal';
-import { MyTripModal } from '@/components/discover/MyTripModal';
+import { CreatePlanModal } from '@/components/discover/CreatePlanModal';
 import { SwipeCard } from '@/components/discover/SwipeCard';
 import { UserRankTag } from '@/components/guild/UserRankTag';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
-import { computeCompatibility, EMPTY_MY_TRIP, loadMyTrip, saveMyTrip, type MyTrip } from '@/lib/compatibility';
+import { riseIn } from '@/components/ui/motion';
 import { getMockTripData } from '@/lib/discover-mock';
 import { createOrGetDirectThread, removeFriend, respondToFriendRequest, searchProfiles, sendFriendRequest, type SearchProfile } from '@/lib/social';
-import { getTheme, typography } from '@/lib/theme';
+import { getTheme } from '@/lib/theme';
+import { computePlanCompatibility, getPlans, hasCompletePlan, saveMyPlan, type PlanPicks, type TravelPlan } from '@/lib/travelPlans';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { ChevronDown, ChevronLeft, ChevronRight, Check, MapPin, Search, SlidersHorizontal, Sparkles, UserPlus, X } from 'lucide-react-native';
+import { ArrowUpDown, Check, ClipboardList, RefreshCw, Search, SlidersHorizontal, Sparkles, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import Animated from 'react-native-reanimated';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
-type SortOption = 'compatibility' | 'distance' | 'dateOverlap' | 'destinationPriority' | 'recentActivity';
+type ConnectOutcome = 'sent' | 'friends' | 'alreadySent' | 'alreadyFriends';
+
+const CONNECT_POPUP_TEXT: Record<ConnectOutcome, { title: string; body: (name: string) => string }> = {
+  sent: { title: 'Request sent!', body: (name) => `We'll let you know when ${name} accepts.` },
+  friends: { title: "You're now friends!", body: (name) => `Say hi to ${name} in Chats.` },
+  alreadySent: { title: 'Already requested', body: (name) => `You're still waiting on ${name}.` },
+  alreadyFriends: { title: 'Already friends', body: (name) => `You and ${name} are already connected.` },
+};
+
+type SortOption = 'compatibility' | 'distance' | 'recentActivity';
 
 const SORT_LABELS: Record<SortOption, string> = {
   compatibility: 'Highest compatibility',
   distance: 'Nearest',
-  dateOverlap: 'Date overlap',
-  destinationPriority: 'Destination priority',
   recentActivity: 'Recent activity',
 };
 
@@ -32,7 +41,6 @@ export default function DiscoverScreen() {
 
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const cardBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
-  const inputBackground = isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D8E0EE] bg-white';
   const textPrimary = isDark ? 'text-white' : 'text-[#1B2340]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
   const { titleColor } = getTheme(isDark);
@@ -144,18 +152,36 @@ export default function DiscoverScreen() {
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [sortOption, setSortOption] = useState<SortOption>('compatibility');
   const [sortMenuVisible, setSortMenuVisible] = useState(false);
-  const [myTrip, setMyTrip] = useState<MyTrip>(EMPTY_MY_TRIP);
-  const [myTripModalVisible, setMyTripModalVisible] = useState(false);
-  const myInterests = useMemo(() => myProfile?.interests ?? [], [myProfile]);
+  const [plans, setPlans] = useState<Map<string, TravelPlan>>(new Map());
+  const [planModalVisible, setPlanModalVisible] = useState(false);
+  const [planSaving, setPlanSaving] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const myId = myProfile?.id ?? null;
+  const myPlan = myId ? plans.get(myId) ?? null : null;
+  const myPlanComplete = hasCompletePlan(myPlan);
 
-  useEffect(() => {
-    void loadMyTrip().then(setMyTrip);
-  }, []);
+  async function handleSavePlan(picks: PlanPicks) {
+    if (!myId) return;
+    setPlanSaving(true);
+    setPlanError(null);
+    const { error } = await saveMyPlan(myId, picks);
+    setPlanSaving(false);
+    if (error) {
+      setPlanError(error.message);
+      return;
+    }
+    setPlans((current) => {
+      const next = new Map(current);
+      const existing = current.get(myId);
+      next.set(myId, { user_id: myId, gender: existing?.gender ?? null, preferred_gender: existing?.preferred_gender ?? [], ...picks, description: picks.description?.trim() || null });
+      return next;
+    });
+    setPlanModalVisible(false);
+  }
 
-  function handleSaveMyTrip(next: MyTrip) {
-    setMyTrip(next);
-    setMyTripModalVisible(false);
-    void saveMyTrip(next);
+  function openPlanModal() {
+    setPlanError(null);
+    setPlanModalVisible(true);
   }
 
   const loadSwipeProfiles = useCallback(async () => {
@@ -168,6 +194,10 @@ export default function DiscoverScreen() {
         setSwipeProfiles([]);
       } else {
         setSwipeProfiles(result.data);
+        const ids = result.data.map((profile) => profile.id);
+        const planResult = await getPlans(myId ? [...ids, myId] : ids);
+        if (planResult.error) setSwipeError(planResult.error.message);
+        setPlans(planResult.data);
       }
     } catch (error) {
       setSwipeError(error instanceof Error ? error.message : 'Unable to load travelers.');
@@ -175,8 +205,7 @@ export default function DiscoverScreen() {
     } finally {
       setSwipeLoading(false);
     }
-  }, []);
-  const { refreshing: swipeRefreshing, refreshControl: swipeRefreshControl } = usePullToRefresh(loadSwipeProfiles);
+  }, [myId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -187,10 +216,11 @@ export default function DiscoverScreen() {
   const scoredDeck = useMemo(() => {
     return swipeProfiles.map((profile) => {
       const trip = getMockTripData(profile);
-      const score = computeCompatibility(profile, myInterests, myTrip, trip);
-      return { profile, trip, score };
+      const plan = plans.get(profile.id) ?? null;
+      const score = myPlanComplete && hasCompletePlan(plan) ? computePlanCompatibility(myPlan, plan) : null;
+      return { profile, trip, plan, score };
     });
-  }, [swipeProfiles, myInterests, myTrip]);
+  }, [swipeProfiles, plans, myPlan, myPlanComplete]);
 
   const deck = useMemo(() => {
     const filtered = scoredDeck.filter(({ profile, trip, score }) => {
@@ -199,29 +229,22 @@ export default function DiscoverScreen() {
       if (filters.dateEnd && trip.dates.start > filters.dateEnd) return false;
       if (filters.budget && trip.budgetTier !== filters.budget) return false;
       if (filters.purposes.length > 0 && !filters.purposes.includes(trip.purpose)) return false;
-      if (score.overall < filters.minCompatibility) return false;
+      if ((score?.overall ?? 0) < filters.minCompatibility) return false;
       if (filters.hasVehicleOnly && !profile.has_vehicle) return false;
       return true;
     });
 
     return [...filtered].sort((a, b) => {
       if (sortOption === 'distance') return a.trip.distanceKm - b.trip.distanceKm;
-      if (sortOption === 'dateOverlap') return b.score.dateAlignment - a.score.dateAlignment;
       if (sortOption === 'recentActivity') return new Date(b.profile.updated_at ?? 0).getTime() - new Date(a.profile.updated_at ?? 0).getTime();
-      if (sortOption === 'destinationPriority') {
-        const destination = myTrip.destination.trim().toLowerCase();
-        const aMatches = destination !== '' && a.trip.route.destination.toLowerCase() === destination;
-        const bMatches = destination !== '' && b.trip.route.destination.toLowerCase() === destination;
-        if (aMatches !== bMatches) return aMatches ? -1 : 1;
-        return b.score.overall - a.score.overall;
-      }
-      return b.score.overall - a.score.overall;
+      // Travelers without a plan (no score) go last.
+      return (b.score?.overall ?? -1) - (a.score?.overall ?? -1);
     });
-  }, [scoredDeck, filters, sortOption, myTrip.destination]);
+  }, [scoredDeck, filters, sortOption]);
 
   useEffect(() => {
     setCurrentIndex(0);
-  }, [filters, sortOption, swipeProfiles.length, myTrip]);
+  }, [filters, sortOption, swipeProfiles.length, myPlan]);
 
   const currentEntry = deck[currentIndex];
 
@@ -241,44 +264,65 @@ export default function DiscoverScreen() {
     }
     if (error) {
       setSwipeError(error.message);
-    } else if (profile.request_status !== 'accepted' && profile.request_status !== 'outgoing_pending') {
-      setSwipeProfiles((current) => current.map((item) => item.id === profile.id ? { ...item, request_status: item.request_status === 'incoming_pending' ? 'accepted' : 'outgoing_pending' } : item));
+    } else {
+      setConnectPopup({
+        profile,
+        kind: profile.request_status === 'incoming_pending' ? 'friends'
+          : profile.request_status === 'accepted' ? 'alreadyFriends'
+          : profile.request_status === 'outgoing_pending' ? 'alreadySent'
+          : 'sent',
+      });
+      if (profile.request_status !== 'accepted' && profile.request_status !== 'outgoing_pending') {
+        setSwipeProfiles((current) => current.map((item) => item.id === profile.id ? { ...item, request_status: item.request_status === 'incoming_pending' ? 'accepted' : 'outgoing_pending' } : item));
+      }
     }
     setCurrentIndex((index) => index + 1);
   }
+
+  // Confirmation after a right swipe / Connect; hides itself after a moment.
+  const [connectPopup, setConnectPopup] = useState<{ profile: SearchProfile; kind: ConnectOutcome } | null>(null);
+  useEffect(() => {
+    if (!connectPopup) return;
+    const timeoutId = setTimeout(() => setConnectPopup(null), 2600);
+    return () => clearTimeout(timeoutId);
+  }, [connectPopup]);
 
   function passProfile() {
     setCurrentIndex((index) => index + 1);
   }
 
+  const segmentTrack = isDark ? 'bg-white/5' : 'bg-[#E9EDF5]';
+  const segmentActive = isDark ? 'bg-[#22324B]' : 'bg-white shadow-sm shadow-black/10';
+  const chip = isDark ? 'bg-white/5' : 'bg-white shadow-sm shadow-black/5';
+  const iconMuted = isDark ? '#94A3B8' : '#6C7A95';
+  const iconStrong = isDark ? '#E2E8F0' : '#182847';
+  const activeFilterCount = countActiveFilters(filters);
+
   return (
     <View className={`flex-1 ${screenBackground}`}>
-      <View className="px-4 pb-3 pt-5">
-        <View className="flex-row items-center justify-between">
-          <Text className={`${typography.pageTitle} ${titleColor}`}>Discover</Text>
-        </View>
-        <View className={`mt-4 flex-row rounded-full border p-1 ${inputBackground}`}>
-          <TouchableOpacity onPress={() => setMode('swipe')} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-full py-2 ${mode === 'swipe' ? 'bg-[#284BD6]' : ''}`}>
-            <Sparkles size={15} color={mode === 'swipe' ? '#FFFFFF' : '#7A859D'} />
-            <Text className={`text-sm font-bold ${mode === 'swipe' ? 'text-white' : textSecondary}`}>Swipe</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setMode('search')} className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-full py-2 ${mode === 'search' ? 'bg-[#284BD6]' : ''}`}>
-            <Search size={15} color={mode === 'search' ? '#FFFFFF' : '#7A859D'} />
-            <Text className={`text-sm font-bold ${mode === 'search' ? 'text-white' : textSecondary}`}>Search</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <View className="z-10 flex-row items-center gap-2 px-4 pb-3 pt-3">
+        <Text className={`flex-1 text-[24px] font-black tracking-tight ${titleColor}`}>Discover</Text>
 
-      {mode === 'swipe' ? (
-        <View className="flex-1">
-          <View className="z-10 flex-row items-center justify-between px-4 pb-3">
+        <View className={`flex-row rounded-full p-0.5 ${segmentTrack}`}>
+          {(['swipe', 'search'] as const).map((option) => {
+            const active = mode === option;
+            const Icon = option === 'swipe' ? Sparkles : Search;
+            return (
+              <TouchableOpacity key={option} onPress={() => setMode(option)} accessibilityLabel={option === 'swipe' ? 'For you' : 'Search'} className={`h-8 w-9 items-center justify-center rounded-full ${active ? segmentActive : ''}`}>
+                <Icon size={16} color={active ? (isDark ? '#FFFFFF' : '#284BD6') : iconMuted} />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
+        {mode === 'swipe' ? (
+          <>
             <View className="relative">
-              <TouchableOpacity onPress={() => setSortMenuVisible((visible) => !visible)} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-2 ${cardBackground}`}>
-                <Text className={`text-sm font-semibold ${textPrimary}`}>{SORT_LABELS[sortOption]}</Text>
-                <ChevronDown size={15} color={isDark ? '#94A3B8' : '#6C7A95'} />
+              <TouchableOpacity onPress={() => setSortMenuVisible((visible) => !visible)} accessibilityLabel={`Sort: ${SORT_LABELS[sortOption]}`} className={`h-9 w-9 items-center justify-center rounded-full ${chip}`}>
+                <ArrowUpDown size={16} color={iconStrong} />
               </TouchableOpacity>
               {sortMenuVisible ? (
-                <View className={`absolute left-0 top-11 w-56 rounded-2xl border p-1.5 shadow-lg ${cardBackground}`}>
+                <View className={`absolute right-0 top-11 w-56 rounded-2xl border p-1.5 shadow-lg ${cardBackground}`}>
                   {(Object.keys(SORT_LABELS) as SortOption[]).map((option) => (
                     <TouchableOpacity key={option} onPress={() => { setSortOption(option); setSortMenuVisible(false); }} className="flex-row items-center justify-between rounded-xl px-3 py-2.5">
                       <Text className={`text-sm ${sortOption === option ? 'font-bold text-[#284BD6]' : textPrimary}`}>{SORT_LABELS[option]}</Text>
@@ -288,98 +332,141 @@ export default function DiscoverScreen() {
                 </View>
               ) : null}
             </View>
-            <TouchableOpacity onPress={() => setFiltersVisible(true)} className={`flex-row items-center gap-1.5 rounded-full border px-3 py-2 ${cardBackground}`}>
-              <SlidersHorizontal size={15} color={isDark ? '#94A3B8' : '#6C7A95'} />
-              <Text className={`text-sm font-semibold ${textPrimary}`}>Filter</Text>
-              {countActiveFilters(filters) > 0 ? (
-                <View className="h-4 w-4 items-center justify-center rounded-full bg-[#284BD6]"><Text className="text-[10px] font-bold text-white">{countActiveFilters(filters)}</Text></View>
+            <TouchableOpacity onPress={() => setFiltersVisible(true)} accessibilityLabel={activeFilterCount > 0 ? `Filters, ${activeFilterCount} on` : 'Filters'} className={`h-9 w-9 items-center justify-center rounded-full ${chip}`}>
+              <SlidersHorizontal size={16} color={iconStrong} />
+              {activeFilterCount > 0 ? (
+                <View className="absolute -right-1 -top-1 h-4 min-w-4 items-center justify-center rounded-full bg-[#284BD6] px-1"><Text className="text-[10px] font-bold text-white">{activeFilterCount}</Text></View>
               ) : null}
             </TouchableOpacity>
-          </View>
+            <TouchableOpacity onPress={openPlanModal} accessibilityLabel={myPlanComplete ? 'Edit your plan' : 'Create your plan'} className={`h-9 w-9 items-center justify-center rounded-full ${chip}`}>
+              <ClipboardList size={16} color={iconStrong} />
+              {!myPlanComplete ? <View className="absolute right-0 top-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-[#284BD6]" /> : null}
+            </TouchableOpacity>
+          </>
+        ) : null}
 
-          {sortMenuVisible ? <Pressable className="absolute inset-0" onPress={() => setSortMenuVisible(false)} /> : null}
+        <TouchableOpacity onPress={() => router.push('/profile')} accessibilityLabel="Open your profile" className="h-9 w-9 items-center justify-center rounded-full bg-[#B7C4EC]">
+          {myProfile?.avatar_url ? (
+            <Image source={{ uri: myProfile.avatar_url }} className="h-9 w-9 rounded-full" />
+          ) : (
+            <Text className="text-sm font-bold text-[#24314A]">{(myProfile?.display_name ?? '?').charAt(0).toUpperCase()}</Text>
+          )}
+        </TouchableOpacity>
+      </View>
 
-          <TouchableOpacity onPress={() => setMyTripModalVisible(true)} className={`mx-4 mb-3 flex-row items-center gap-2 rounded-2xl border px-4 py-2.5 ${cardBackground}`}>
-            <MapPin size={15} color="#284BD6" />
-            <Text className={`flex-1 text-sm ${textSecondary}`}>
-              {myTrip.destination.trim() ? <Text className={`font-bold ${textPrimary}`}>{myTrip.origin.trim() || 'Anywhere'} → {myTrip.destination}</Text> : 'Set your trip to sharpen your matches'}
-            </Text>
-            <Text className="text-xs font-bold text-[#284BD6]">Edit</Text>
-          </TouchableOpacity>
+      {sortMenuVisible ? <Pressable className="absolute inset-0" onPress={() => setSortMenuVisible(false)} /> : null}
 
-          {swipeError ? <Text className="mx-4 mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{swipeError}</Text> : null}
+      {mode === 'swipe' ? (
+        <View className="flex-1 px-4 pb-3">
+          {swipeError ? <Text className="mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{swipeError}</Text> : null}
 
-          <View className="flex-1">
-            {swipeLoading && !swipeRefreshing ? (
-              <ActivityIndicator className="mt-10" color="#284BD6" />
-            ) : currentEntry ? (
-              <ScrollView className="flex-1" contentContainerClassName="px-4 pb-28" showsVerticalScrollIndicator={false} refreshControl={swipeRefreshControl}>
-                <SwipeCard profile={currentEntry.profile} trip={currentEntry.trip} score={currentEntry.score} isDark={isDark} onConnect={(profile) => void connectWithProfile(profile)} onPass={passProfile} />
-
-                <View className="mt-4 flex-row items-center justify-center gap-6">
-                  <TouchableOpacity onPress={() => setCurrentIndex((index) => Math.max(0, index - 1))} disabled={currentIndex === 0} className={`h-11 w-11 items-center justify-center rounded-full border ${cardBackground} ${currentIndex === 0 ? 'opacity-40' : ''}`}>
-                    <ChevronLeft size={20} color={isDark ? '#E2E8F0' : '#182847'} />
-                  </TouchableOpacity>
-                  <View className="flex-row items-center gap-1.5">
-                    {deck.slice(0, 8).map((entry, index) => (
-                      <View key={entry.profile.id} className={`h-2 rounded-full ${index === currentIndex ? 'w-5 bg-[#284BD6]' : 'w-2 bg-[#C6CEDD]'}`} />
-                    ))}
-                  </View>
-                  <TouchableOpacity onPress={passProfile} className={`h-11 w-11 items-center justify-center rounded-full border ${cardBackground}`}>
-                    <ChevronRight size={20} color={isDark ? '#E2E8F0' : '#182847'} />
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            ) : (
-              <View className="flex-1 items-center justify-center px-8">
-                <Sparkles size={40} color="#94A3B8" />
-                <Text className={`mt-4 text-center text-lg font-bold ${textPrimary}`}>You&apos;re all caught up</Text>
-                <Text className={`mt-1 text-center text-base ${textSecondary}`}>Check back later or adjust your filters to see more travelers.</Text>
-                {countActiveFilters(filters) > 0 ? (
-                  <TouchableOpacity onPress={() => setFilters(DEFAULT_FILTERS)} className="mt-5 rounded-2xl bg-[#284BD6] px-6 py-3">
+          {swipeLoading && !swipeProfiles.length ? (
+            <ActivityIndicator key="swipe-loading" className="mt-10" color="#284BD6" />
+          ) : currentEntry ? (
+            <View key={`card-${currentEntry.profile.id}`} className="flex-1">
+              <SwipeCard
+                profile={currentEntry.profile}
+                distanceKm={currentEntry.trip.distanceKm}
+                plan={currentEntry.plan}
+                score={currentEntry.score}
+                viewerHasPlan={myPlanComplete}
+                canGoBack={currentIndex > 0}
+                isDark={isDark}
+                onConnect={(profile) => void connectWithProfile(profile)}
+                onPass={passProfile}
+                onPrevious={() => setCurrentIndex((index) => Math.max(0, index - 1))}
+                onCreatePlan={openPlanModal}
+              />
+            </View>
+          ) : (
+            <View key="swipe-empty" className="flex-1 items-center justify-center px-8">
+              <View className={`h-20 w-20 items-center justify-center rounded-full ${isDark ? 'bg-[#284BD6]/25' : 'bg-[#284BD6]/10'}`}>
+                <Sparkles size={34} color="#284BD6" />
+              </View>
+              <Text className={`mt-5 text-center text-xl font-black ${textPrimary}`}>You&apos;re all caught up</Text>
+              <Text className={`mt-1.5 text-center text-[15px] leading-[22px] ${textSecondary}`}>Check back later or adjust your filters to see more travelers.</Text>
+              <View className="mt-6 flex-row gap-3">
+                <TouchableOpacity onPress={() => void loadSwipeProfiles()} className={`flex-row items-center gap-2 rounded-full px-5 py-3 ${chip}`}>
+                  <RefreshCw size={16} color={iconStrong} />
+                  <Text className={`font-bold ${textPrimary}`}>Refresh</Text>
+                </TouchableOpacity>
+                {activeFilterCount > 0 ? (
+                  <TouchableOpacity onPress={() => setFilters(DEFAULT_FILTERS)} className="rounded-full bg-[#284BD6] px-5 py-3">
                     <Text className="font-bold text-white">Reset filters</Text>
                   </TouchableOpacity>
                 ) : null}
               </View>
-            )}
-          </View>
+            </View>
+          )}
         </View>
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="pb-28" refreshControl={searchRefreshControl}>
-          <View className="px-4 pb-5">
-            <Text className={`mt-1 text-base ${textSecondary}`}>Search active PartyUp travelers and connect.</Text>
-            <Pressable onPress={() => searchInputRef.current?.focus()} className={`mt-5 flex-row items-center gap-3 rounded-2xl border px-4 py-3 ${inputBackground}`}>
-              <Search size={20} color="#7A859D" />
-              <TextInput ref={searchInputRef} value={query} onChangeText={setQuery} editable autoCapitalize="none" autoCorrect={false} returnKeyType="search" placeholder="Search by name or interest" placeholderTextColor="#72809B" className={`flex-1 text-[16px] ${textPrimary}`} />
+        <ScrollView className="flex-1" contentContainerClassName="pb-28" keyboardShouldPersistTaps="handled" refreshControl={searchRefreshControl}>
+          <View className="px-5 pb-4">
+            <Pressable onPress={() => searchInputRef.current?.focus()} className={`flex-row items-center gap-3 rounded-2xl px-4 py-3.5 ${chip}`}>
+              <Search size={19} color={iconMuted} />
+              <TextInput ref={searchInputRef} value={query} onChangeText={setQuery} editable autoCapitalize="none" autoCorrect={false} returnKeyType="search" placeholder="Search by name or interest" placeholderTextColor="#8A96AD" className={`flex-1 text-[16px] ${textPrimary}`} />
+              {query ? (
+                <TouchableOpacity onPress={() => setQuery('')} accessibilityLabel="Clear search" className={`h-6 w-6 items-center justify-center rounded-full ${isDark ? 'bg-white/10' : 'bg-[#E9EDF5]'}`}>
+                  <X size={13} color={iconMuted} />
+                </TouchableOpacity>
+              ) : null}
             </Pressable>
           </View>
 
-          {errorMessage ? <Text className="mx-4 mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
+          {errorMessage ? <Text className="mx-5 mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
           {loading && !searchRefreshing ? <ActivityIndicator className="mt-6" color="#284BD6" /> : null}
-          {!loading && !profiles.length ? <Text className={`px-4 pt-8 text-center text-base ${textSecondary}`}>{query ? 'No users found.' : 'No other active users yet.'}</Text> : null}
+          {!loading && !profiles.length ? <Text className={`px-5 pt-8 text-center text-base ${textSecondary}`}>{query ? 'No users found.' : 'No other active users yet.'}</Text> : null}
 
-          <View className="gap-3 px-4">
-            {profiles.map((profile) => (
-              <View key={profile.id} className={`rounded-[24px] border p-4 ${cardBackground}`}>
-                <TouchableOpacity
-                  onPress={() => router.push({ pathname: '/profile/[id]', params: { id: profile.id, displayName: profile.display_name, interests: JSON.stringify(profile.interests), avatarUrl: profile.avatar_url ?? '', requestStatus: profile.request_status ?? '', requestId: profile.request_id ?? '' } })}
-                  className="flex-row items-center gap-3"
-                  accessibilityLabel={`View ${profile.display_name}'s profile`}
-                >
-                  <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{profile.display_name.charAt(0).toUpperCase()}</Text><UserRankTag userId={profile.id} isDark={isDark} variant="overlay" size={24} /></View>
-                  <View className="flex-1"><Text className={`text-headline-20 font-bold ${textPrimary}`}>{profile.display_name}</Text><Text className={`mt-1 text-sm ${textSecondary}`}>{profile.interests.length ? profile.interests.join('  •  ') : 'No interests selected'}</Text></View>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => void handleRequest(profile.id)} disabled={requestingId === profile.id} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl py-3 ${profile.request_status === 'accepted' || profile.request_status === 'outgoing_pending' ? 'bg-[#9EAFE9]' : 'bg-[#284BD6]'}`}>
-                  {requestingId === profile.id ? <ActivityIndicator color="#FFFFFF" /> : <>{profile.request_status === 'accepted' || profile.request_status === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : profile.request_status === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{profile.request_status === 'accepted' ? 'Friends' : profile.request_status === 'outgoing_pending' ? 'Cancel request' : profile.request_status === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
-                </TouchableOpacity>
-              </View>
-            ))}
+          <View className="gap-2.5 px-5">
+            {profiles.map((profile) => {
+              const friendly = profile.request_status === 'accepted' || profile.request_status === 'outgoing_pending';
+              return (
+                <View key={profile.id} className={`flex-row items-center gap-3 rounded-3xl border p-3 ${cardBackground}`}>
+                  <TouchableOpacity
+                    onPress={() => router.push({ pathname: '/profile/[id]', params: { id: profile.id, displayName: profile.display_name, interests: JSON.stringify(profile.interests), avatarUrl: profile.avatar_url ?? '', requestStatus: profile.request_status ?? '', requestId: profile.request_id ?? '' } })}
+                    className="flex-1 flex-row items-center gap-3.5"
+                    accessibilityLabel={`View ${profile.display_name}'s profile`}
+                  >
+                    <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]">{profile.avatar_url ? <Image source={{ uri: profile.avatar_url }} className="h-14 w-14 rounded-full" /> : <Text className="text-xl font-bold text-[#24314A]">{profile.display_name.charAt(0).toUpperCase()}</Text>}<UserRankTag userId={profile.id} isDark={isDark} variant="overlay" size={22} /></View>
+                    <View className="flex-1">
+                      <Text numberOfLines={1} className={`text-base font-bold ${textPrimary}`}>{profile.display_name}</Text>
+                      <Text numberOfLines={1} className={`mt-0.5 text-[13px] ${textSecondary}`}>{profile.interests.length ? profile.interests.join(' · ') : 'No interests selected'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => void handleRequest(profile.id)} disabled={requestingId === profile.id} className={`h-10 min-w-[96px] flex-row items-center justify-center gap-1.5 rounded-full px-3.5 ${friendly ? (isDark ? 'bg-white/10' : 'bg-[#E9EDF5]') : 'bg-[#284BD6]'}`}>
+                    {requestingId === profile.id ? <ActivityIndicator size="small" color={friendly ? '#284BD6' : '#FFFFFF'} /> : <>{profile.request_status === 'accepted' || profile.request_status === 'incoming_pending' ? <Check size={15} color={friendly ? '#284BD6' : '#FFFFFF'} /> : profile.request_status === 'outgoing_pending' ? <X size={15} color="#284BD6" /> : <UserPlus size={15} color="#FFFFFF" />}<Text className={`text-[13px] font-bold ${friendly ? (isDark ? 'text-white' : 'text-[#284BD6]') : 'text-white'}`}>{profile.request_status === 'accepted' ? 'Friends' : profile.request_status === 'outgoing_pending' ? 'Cancel' : profile.request_status === 'incoming_pending' ? 'Confirm' : 'Add'}</Text></>}
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
           </View>
         </ScrollView>
       )}
 
+      {connectPopup ? (
+        <Pressable key="connect-popup" onPress={() => setConnectPopup(null)} className="absolute inset-0 items-center justify-center bg-black/40 px-10">
+          <Animated.View key={`connect-popup-${connectPopup.profile.id}`} entering={riseIn(0, 300)} className={`w-full items-center rounded-[28px] px-6 pb-6 pt-7 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
+            <View className="h-20 w-20 items-center justify-center rounded-full bg-[#B7C4EC]">
+              {connectPopup.profile.avatar_url ? (
+                <Image source={{ uri: connectPopup.profile.avatar_url }} className="h-20 w-20 rounded-full" />
+              ) : (
+                <Text className="text-2xl font-black text-[#24314A]">{connectPopup.profile.display_name.charAt(0).toUpperCase()}</Text>
+              )}
+              <View className="absolute -bottom-1 -right-1 h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-[#22C55E]">
+                <Check size={16} color="#FFFFFF" strokeWidth={3} />
+              </View>
+            </View>
+            <Text className={`mt-4 text-center text-xl font-black ${textPrimary}`}>{CONNECT_POPUP_TEXT[connectPopup.kind].title}</Text>
+            <Text className={`mt-1 text-center text-[15px] leading-[22px] ${textSecondary}`}>{CONNECT_POPUP_TEXT[connectPopup.kind].body(connectPopup.profile.display_name)}</Text>
+            <TouchableOpacity onPress={() => setConnectPopup(null)} className="mt-5 w-full items-center rounded-full bg-[#284BD6] py-3">
+              <Text className="font-bold text-white">Keep swiping</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </Pressable>
+      ) : null}
+
       <FiltersModal visible={filtersVisible} value={filters} isDark={isDark} onApply={(next) => { setFilters(next); setFiltersVisible(false); }} onClose={() => setFiltersVisible(false)} />
-      <MyTripModal visible={myTripModalVisible} value={myTrip} isDark={isDark} onSave={handleSaveMyTrip} onClose={() => setMyTripModalVisible(false)} />
+      <CreatePlanModal visible={planModalVisible} value={myPlan} isDark={isDark} saving={planSaving} errorMessage={planError} onSave={(picks) => void handleSavePlan(picks)} onClose={() => setPlanModalVisible(false)} />
     </View>
   );
 }

@@ -1,6 +1,6 @@
 import { riseIn } from '@/components/ui/motion';
 import { REACTION_EMOJIS, type ReactionEmoji } from '@/lib/social';
-import { Reply, Trash2, Undo2 } from 'lucide-react-native';
+import { Flag, Reply, Trash2, Undo2 } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -16,12 +16,14 @@ type Props = {
   onReact: (emoji: ReactionEmoji | null) => void;
   onReply: () => void;
   onUnsend: () => void;
-  // Guild leaders/officers can remove other people's messages.
+  // Guild leaders can remove other people's messages.
   onRemove?: () => void;
+  // Guild chat: report someone else's message to the Guild Leader.
+  onReport?: () => void;
 };
 
 // Long-press menu for a message: a reaction row plus Reply / Unsend.
-export function MessageActionsSheet({ visible, isDark, preview, mine, myReaction, onClose, onReact, onReply, onUnsend, onRemove }: Props) {
+export function MessageActionsSheet({ visible, isDark, preview, mine, myReaction, onClose, onReact, onReply, onUnsend, onRemove, onReport }: Props) {
   const insets = useSafeAreaInsets();
   const group = isDark ? 'bg-[#18253C]' : 'bg-[#F3F5FA]';
   const primary = isDark ? 'text-white' : 'text-[#182847]';
@@ -54,8 +56,9 @@ export function MessageActionsSheet({ visible, isDark, preview, mine, myReaction
               </View>
 
               <View className={`mt-3 overflow-hidden rounded-2xl ${group}`}>
-                <ActionRow icon={<Reply size={18} color={iconColor} />} label="Reply" textClass={primary} divider={divider} onPress={onReply} last={!mine && !onRemove} />
+                <ActionRow icon={<Reply size={18} color={iconColor} />} label="Reply" textClass={primary} divider={divider} onPress={onReply} last={!mine && !onRemove && !onReport} />
                 {mine ? <ActionRow icon={<Undo2 size={18} color="#DC2626" />} label="Unsend" textClass="text-[#DC2626]" divider={divider} onPress={onUnsend} last /> : null}
+                {!mine && onReport ? <ActionRow icon={<Flag size={18} color="#DC2626" />} label="Report message" textClass="text-[#DC2626]" divider={divider} onPress={onReport} last={!onRemove} /> : null}
                 {!mine && onRemove ? <ActionRow icon={<Trash2 size={18} color="#DC2626" />} label="Remove for everyone" textClass="text-[#DC2626]" divider={divider} onPress={onRemove} last /> : null}
               </View>
             </Pressable>

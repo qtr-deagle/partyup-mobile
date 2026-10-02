@@ -37,8 +37,10 @@ type Props = {
   blockedIds?: Set<string>;
   renderAvatarBadge?: (userId: string) => ReactNode;
   renderNameTag?: (userId: string) => ReactNode;
-  // Guild leaders/officers: remove someone else's message for everyone.
+  // Guild leaders: remove someone else's message for everyone.
   onModerateRemove?: (messageId: string) => PromiseLike<{ error: { message: string } | null }>;
+  // Guild chat: report someone else's message.
+  onReportMessage?: (message: ScreenMessage) => void;
   placeholder: string;
   empty: { icon: ReactNode; title: string; message: string };
   pinnable?: boolean;
@@ -47,7 +49,7 @@ type Props = {
 
 // A guild or trip group conversation: sender names and avatars, photos,
 // replies, reactions, unsend, mute/pin. Messages live in useThreadMessages.
-export function GroupChatView({ threadId, loading, blocker, title, subtitle, avatar, color, onPressTitle, members, blockedIds, renderAvatarBadge, renderNameTag, onModerateRemove, placeholder, empty, pinnable = false, infoLink }: Props) {
+export function GroupChatView({ threadId, loading, blocker, title, subtitle, avatar, color, onPressTitle, members, blockedIds, renderAvatarBadge, renderNameTag, onModerateRemove, onReportMessage, placeholder, empty, pinnable = false, infoLink }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
@@ -292,6 +294,15 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
         }}
         onUnsend={() => actionTarget && confirmRemove(actionTarget, true)}
         onRemove={onModerateRemove ? () => actionTarget && confirmRemove(actionTarget, false) : undefined}
+        onReport={
+          onReportMessage
+            ? () => {
+                if (!actionTarget) return;
+                setActionTarget(null);
+                onReportMessage(actionTarget);
+              }
+            : undefined
+        }
       />
       <GroupInfoSheet
         visible={infoVisible}
