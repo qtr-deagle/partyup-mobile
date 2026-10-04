@@ -44,7 +44,7 @@ export default function ActiveSosBanner() {
       alertIdRef.current = null;
       setAlert(null);
       if (next.resolved_by && next.resolved_by !== userId) {
-        Alert.alert('SOS resolved', 'PartyUp Guild Leaders marked your emergency alert as resolved. Live location sharing has stopped.');
+        Alert.alert('SOS resolved', 'A PartyUp admin marked your emergency alert as resolved. Live location sharing has stopped.');
       }
     };
 

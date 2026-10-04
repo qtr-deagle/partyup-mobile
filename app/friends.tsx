@@ -18,9 +18,9 @@ import {
   type TrustedContact,
 } from '@/lib/trustedCircle';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, Bell, BellOff, Check, Clock, MessageCircle, Plus, Shield, UserMinus, UserPlus, X, XCircle } from 'lucide-react-native';
+import { AlertTriangle, Bell, BellOff, Check, Clock, MessageCircle, Plus, Search, Shield, Trash2, UserMinus, UserPlus, X, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Tab = 'friends' | 'trusted';
@@ -29,13 +29,12 @@ export default function FriendsScreen() {
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
-  const background = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
-  const primary = isDark ? 'text-white' : 'text-[#1B2340]';
-  const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
-  const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
-  const mutedFill = isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F8]';
+  const c = isDark
+    ? { screen: '#0B1220', card: '#111B2E', border: '#22324B', primary: '#FFFFFF', secondary: '#94A3B8', muted: '#64748B', fill: '#18253C', divider: '#1E2A40', segmentActive: '#22324B', countBg: '#22324B', countText: '#CBD5E1', accent: '#8FA8FF', accentSoft: '#1A2850', dangerSoft: '#2A1215', avatarBg: '#22324B', avatarText: '#CBD5E1', warnBg: '#241F0C', warnTitle: '#F0CE7E', warnText: '#E9D9A8' }
+    : { screen: '#F4F6FB', card: '#FFFFFF', border: '#E9EDF5', primary: '#1B2340', secondary: '#6C7A95', muted: '#94A3B8', fill: '#EEF1F7', divider: '#EEF1F7', segmentActive: '#FFFFFF', countBg: '#E3E8F2', countText: '#4A5875', accent: '#284BD6', accentSoft: '#EAF0FF', dangerSoft: '#FFEDED', avatarBg: '#DCE5FF', avatarText: '#284BD6', warnBg: '#FDF6E1', warnTitle: '#B4650B', warnText: '#8A5C0A' };
 
   const [tab, setTab] = useState<Tab>('friends');
+  const [query, setQuery] = useState('');
 
   const [connections, setConnections] = useState<FriendConnection[]>([]);
   const [connectionsLoading, setConnectionsLoading] = useState(true);
@@ -222,105 +221,174 @@ export default function FriendsScreen() {
     setBusyRequestId(null);
   }
 
-  function renderConnection(connection: FriendConnection, index = 0) {
+  function renderAvatar(name: string, avatarUrl: string | null, size: number, rankUserId?: string) {
+    return (
+      <View style={{ width: size, height: size }}>
+        {avatarUrl ? (
+          <Image source={{ uri: avatarUrl }} style={{ width: size, height: size, borderRadius: size / 2 }} />
+        ) : (
+          <View className="items-center justify-center" style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.avatarBg }}>
+            <Text className="font-black" style={{ color: c.avatarText, fontSize: size * 0.4 }}>{name.trim().charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
+        {rankUserId ? <UserRankTag userId={rankUserId} isDark={isDark} variant="overlay" size={Math.round(size * 0.42)} /> : null}
+      </View>
+    );
+  }
+
+  function renderSectionLabel(label: string, count: number, right?: React.ReactNode) {
+    return (
+      <View className="flex-row items-center justify-between px-1">
+        <View className="flex-row items-center gap-2">
+          <Text className="text-[13px] font-extrabold uppercase tracking-[1.2px]" style={{ color: c.secondary }}>{label}</Text>
+          <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: c.countBg }}>
+            <Text className="text-[11px] font-black" style={{ color: c.countText }}>{count}</Text>
+          </View>
+        </View>
+        {right}
+      </View>
+    );
+  }
+
+  function renderStatusPill(label: string, tint: string, Icon: typeof Bell) {
+    return (
+      <View className="flex-row items-center gap-1 rounded-full px-2.5 py-1" style={{ backgroundColor: `${tint}1F` }}>
+        <Icon size={12} color={tint} />
+        <Text className="text-[11.5px] font-bold" style={{ color: tint }}>{label}</Text>
+      </View>
+    );
+  }
+
+  function renderFriendRow(connection: FriendConnection, index: number, last: boolean) {
     const busy = busyUserId === connection.user_id;
-    const incoming = connection.relationship_status === 'incoming_pending';
+    return (
+      <View key={connection.user_id}>
+        <View className="flex-row items-center gap-3 py-3">
+          <TouchableOpacity onPress={() => openProfile(connection)} activeOpacity={0.7} className="flex-1 flex-row items-center gap-3" accessibilityLabel={`View ${connection.display_name}'s profile`}>
+            {renderAvatar(connection.display_name, connection.avatar_url, 50, connection.user_id)}
+            <View className="flex-1">
+              <Text numberOfLines={1} className="text-[16px] font-bold" style={{ color: c.primary }}>{connection.display_name}</Text>
+              <Text numberOfLines={1} className="mt-0.5 text-[13px]" style={{ color: c.secondary }}>
+                {connection.interests.length ? connection.interests.join(' · ') : 'No interests selected'}
+              </Text>
+            </View>
+          </TouchableOpacity>
+          {busy ? (
+            <ActivityIndicator color="#284BD6" />
+          ) : (
+            <View className="flex-row gap-2">
+              <AnimatedPressable onPress={() => void messageFriend(connection)} scaleTo={0.9} className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: c.accentSoft }} accessibilityLabel={`Message ${connection.display_name}`}>
+                <MessageCircle size={18} color={c.accent} />
+              </AnimatedPressable>
+              <AnimatedPressable onPress={() => confirmUnfriend(connection)} scaleTo={0.9} className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: c.fill }} accessibilityLabel={`Unfriend ${connection.display_name}`}>
+                <UserMinus size={17} color={c.muted} />
+              </AnimatedPressable>
+            </View>
+          )}
+        </View>
+        {last ? null : <View className="ml-[62px] h-px" style={{ backgroundColor: c.divider }} />}
+      </View>
+    );
+  }
+
+  function renderIncomingRequest(connection: FriendConnection, index = 0) {
+    const busy = busyUserId === connection.user_id;
     return (
       <Card key={connection.user_id} index={index}>
-        <TouchableOpacity onPress={() => openProfile(connection)} className="flex-row items-center gap-3" accessibilityLabel={`View ${connection.display_name}'s profile`}>
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text><UserRankTag userId={connection.user_id} isDark={isDark} variant="overlay" size={24} /></View>
-          <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text numberOfLines={1} className={`mt-1 text-sm ${secondary}`}>{connection.interests.length ? connection.interests.join('  •  ') : 'No interests selected'}</Text></View>
+        <TouchableOpacity onPress={() => openProfile(connection)} activeOpacity={0.7} className="flex-row items-center gap-3" accessibilityLabel={`View ${connection.display_name}'s profile`}>
+          {renderAvatar(connection.display_name, connection.avatar_url, 52, connection.user_id)}
+          <View className="flex-1">
+            <Text numberOfLines={1} className="text-[16px] font-bold" style={{ color: c.primary }}>{connection.display_name}</Text>
+            <Text numberOfLines={1} className="mt-0.5 text-[13px]" style={{ color: c.secondary }}>Wants to be your friend</Text>
+          </View>
+          {busy ? <ActivityIndicator color="#284BD6" /> : null}
         </TouchableOpacity>
-        <View className="mt-4 flex-row gap-2">
-          {incoming ? <>
-            <AnimatedPressable onPress={() => void updateRequest(connection, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3"><Check size={16} color="#FFFFFF" /><Text className="font-bold text-white">Accept</Text></AnimatedPressable>
-            <AnimatedPressable onPress={() => void updateRequest(connection, 'rejected')} disabled={busy} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}><X size={16} color="#B91C1C" /><Text className="font-bold text-[#B91C1C]">Decline</Text></AnimatedPressable>
-          </> : <>
-            <AnimatedPressable onPress={() => void messageFriend(connection)} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3"><MessageCircle size={16} color="#FFFFFF" /><Text className="font-bold text-white">Message</Text></AnimatedPressable>
-            <TouchableOpacity onPress={() => confirmUnfriend(connection)} disabled={busy} className={`h-12 w-12 items-center justify-center rounded-2xl border ${border}`} accessibilityLabel={`Unfriend ${connection.display_name}`}><UserMinus size={17} color="#B91C1C" /></TouchableOpacity>
-          </>}
+        <View className="mt-3.5 flex-row gap-2">
+          <AnimatedPressable onPress={() => void updateRequest(connection, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-full bg-[#284BD6] py-2.5">
+            <Check size={16} color="#FFFFFF" /><Text className="text-[14px] font-bold text-white">Accept</Text>
+          </AnimatedPressable>
+          <AnimatedPressable onPress={() => void updateRequest(connection, 'rejected')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-full py-2.5" style={{ backgroundColor: c.fill }}>
+            <X size={16} color={c.primary} /><Text className="text-[14px] font-bold" style={{ color: c.primary }}>Decline</Text>
+          </AnimatedPressable>
         </View>
-        {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
       </Card>
     );
   }
 
-  function renderSentRequest(connection: FriendConnection, index = 0) {
+  function renderSentRow(connection: FriendConnection, last: boolean) {
     const busy = busyUserId === connection.user_id;
     return (
-      <Card key={connection.user_id} index={index}>
-        <View className="flex-row items-center gap-3">
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{connection.display_name.charAt(0).toUpperCase()}</Text><UserRankTag userId={connection.user_id} isDark={isDark} variant="overlay" size={24} /></View>
-          <View className="flex-1"><Text className={`text-headline-18 font-bold ${primary}`}>{connection.display_name}</Text><Text className={`mt-1 text-sm ${secondary}`}>Awaiting response</Text></View>
+      <View key={connection.user_id}>
+        <View className="flex-row items-center gap-3 py-3">
+          {renderAvatar(connection.display_name, connection.avatar_url, 44)}
+          <View className="flex-1">
+            <Text numberOfLines={1} className="text-[15px] font-bold" style={{ color: c.primary }}>{connection.display_name}</Text>
+            <View className="mt-1 flex-row">{renderStatusPill('Awaiting response', '#D88700', Clock)}</View>
+          </View>
+          {busy ? (
+            <ActivityIndicator color="#284BD6" />
+          ) : (
+            <AnimatedPressable onPress={() => void updateRequest(connection, 'cancelled')} className="rounded-full px-3.5 py-2" style={{ backgroundColor: c.fill }}>
+              <Text className="text-[13px] font-bold" style={{ color: c.primary }}>Cancel</Text>
+            </AnimatedPressable>
+          )}
         </View>
-        <AnimatedPressable onPress={() => void updateRequest(connection, 'cancelled')} disabled={busy} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>
-          <X size={16} color="#64748B" /><Text className={`font-bold ${secondary}`}>Cancel request</Text>
-        </AnimatedPressable>
-        {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
-      </Card>
+        {last ? null : <View className="ml-[56px] h-px" style={{ backgroundColor: c.divider }} />}
+      </View>
     );
   }
 
   function renderTrustedContact(contact: TrustedContact, index = 0) {
     const busy = busyContactId === contact.id;
     const colors = relationshipColors(contact.relationship, isDark);
+    const status =
+      contact.status === 'pending'
+        ? renderStatusPill('Awaiting confirmation', '#D88700', Clock)
+        : contact.status === 'declined'
+          ? renderStatusPill('Declined', '#E32727', XCircle)
+          : contact.alerts_enabled
+            ? renderStatusPill('Alerts on', '#00A56A', Bell)
+            : renderStatusPill('Alerts off', '#64748B', BellOff);
     return (
       <Card key={contact.id} index={index}>
-        <View className="flex-row items-start justify-between gap-3">
-          <View className="flex-1 flex-row items-center gap-3">
-            <View className="h-12 w-12 items-center justify-center rounded-full bg-[#B7C4EC]">
-              <Text className="text-lg font-bold text-[#24314A]">{contact.display_name.charAt(0).toUpperCase()}</Text>
-            </View>
-            <View className="flex-1">
-              <Text className={`text-headline-18 font-bold ${primary}`}>{contact.display_name}</Text>
-              <View className={`mt-1.5 self-start rounded-full px-3 py-1 ${colors.bg}`}>
-                <Text className={`text-[12px] font-bold ${colors.text}`}>{contact.relationship}</Text>
+        <View className="flex-row items-center gap-3">
+          {renderAvatar(contact.display_name, contact.avatar_url, 50)}
+          <View className="flex-1">
+            <Text numberOfLines={1} className="text-[16px] font-bold" style={{ color: c.primary }}>{contact.display_name}</Text>
+            <View className="mt-1.5 flex-row flex-wrap items-center gap-1.5">
+              <View className={`rounded-full px-2.5 py-1 ${colors.bg}`}>
+                <Text className={`text-[11.5px] font-bold ${colors.text}`}>{contact.relationship}</Text>
               </View>
+              {status}
             </View>
           </View>
-          {contact.status === 'pending' ? (
-            <Clock size={19} color="#D88700" />
-          ) : contact.status === 'declined' ? (
-            <XCircle size={19} color="#E32727" />
-          ) : contact.alerts_enabled ? (
-            <Bell size={19} color="#00A56A" />
-          ) : (
-            <BellOff size={19} color={isDark ? '#64748B' : '#94A3B8'} />
-          )}
+          {busy ? <ActivityIndicator color="#284BD6" /> : null}
         </View>
 
-        <Text className={`mt-3 text-[13px] ${secondary}`}>
-          Added {formatAddedDate(contact.created_at)}
-          {contact.status === 'pending' ? ' • Awaiting confirmation' : contact.status === 'declined' ? ' • Declined' : contact.alerts_enabled ? ' • Alerts on' : ' • Alerts off'}
-        </Text>
-
-        <View className="mt-3 flex-row gap-2">
+        <View className="mt-3.5 flex-row items-center gap-2">
+          <Text className="flex-1 text-[12px]" style={{ color: c.secondary }}>Added {formatAddedDate(contact.created_at)}</Text>
           {contact.status === 'pending' ? (
-            <TouchableOpacity onPress={() => confirmRemoveTrustedContact(contact)} disabled={busy} className="flex-1 items-center rounded-2xl border border-[#E32727] py-3">
-              <Text className="font-bold text-[#E32727]">Cancel Request</Text>
-            </TouchableOpacity>
-          ) : contact.status === 'declined' ? (
-            <>
-              <TouchableOpacity onPress={() => void resendTrustedRequest(contact)} disabled={busy} className={`flex-1 items-center rounded-2xl border py-3 ${border}`}>
-                <Text className={`font-bold ${primary}`}>Resend</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => confirmRemoveTrustedContact(contact)} disabled={busy} className="flex-1 items-center rounded-2xl border border-[#E32727] py-3">
-                <Text className="font-bold text-[#E32727]">Remove</Text>
-              </TouchableOpacity>
-            </>
+            <AnimatedPressable onPress={() => confirmRemoveTrustedContact(contact)} disabled={busy} className="rounded-full px-3.5 py-2" style={{ backgroundColor: c.dangerSoft }}>
+              <Text className="text-[13px] font-bold text-[#E32727]">Cancel request</Text>
+            </AnimatedPressable>
           ) : (
             <>
-              <TouchableOpacity onPress={() => void toggleAlerts(contact)} disabled={busy} className={`flex-1 items-center rounded-2xl border py-3 ${border}`}>
-                <Text className={`font-bold ${primary}`}>{contact.alerts_enabled ? 'Disable' : 'Enable'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => confirmRemoveTrustedContact(contact)} disabled={busy} className="flex-1 items-center rounded-2xl border border-[#E32727] py-3">
-                <Text className="font-bold text-[#E32727]">Remove</Text>
-              </TouchableOpacity>
+              {contact.status === 'declined' ? (
+                <AnimatedPressable onPress={() => void resendTrustedRequest(contact)} disabled={busy} className="rounded-full px-3.5 py-2" style={{ backgroundColor: c.accentSoft }}>
+                  <Text className="text-[13px] font-bold" style={{ color: c.accent }}>Resend</Text>
+                </AnimatedPressable>
+              ) : (
+                <AnimatedPressable onPress={() => void toggleAlerts(contact)} disabled={busy} className="flex-row items-center gap-1.5 rounded-full px-3.5 py-2" style={{ backgroundColor: c.fill }}>
+                  {contact.alerts_enabled ? <BellOff size={14} color={c.primary} /> : <Bell size={14} color={c.primary} />}
+                  <Text className="text-[13px] font-bold" style={{ color: c.primary }}>{contact.alerts_enabled ? 'Mute alerts' : 'Enable alerts'}</Text>
+                </AnimatedPressable>
+              )}
+              <AnimatedPressable onPress={() => confirmRemoveTrustedContact(contact)} disabled={busy} scaleTo={0.9} className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: c.dangerSoft }} accessibilityLabel={`Remove ${contact.display_name}`}>
+                <Trash2 size={15} color="#E32727" />
+              </AnimatedPressable>
             </>
           )}
         </View>
-
-        {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
       </Card>
     );
   }
@@ -331,33 +399,35 @@ export default function FriendsScreen() {
     return (
       <Card key={request.id} index={index}>
         <View className="flex-row items-center gap-3">
-          <View className="h-14 w-14 items-center justify-center rounded-full bg-[#B7C4EC]"><Text className="text-xl font-bold text-[#24314A]">{request.display_name.charAt(0).toUpperCase()}</Text></View>
+          {renderAvatar(request.display_name, request.avatar_url, 52)}
           <View className="flex-1">
-            <Text className={`text-headline-18 font-bold ${primary}`}>{request.display_name}</Text>
-            <Text className={`mt-1 text-sm ${secondary}`}>Wants to add you as their</Text>
-            <View className={`mt-1.5 self-start rounded-full px-3 py-1 ${colors.bg}`}>
-              <Text className={`text-[12px] font-bold ${colors.text}`}>{request.relationship}</Text>
+            <Text numberOfLines={1} className="text-[16px] font-bold" style={{ color: c.primary }}>{request.display_name}</Text>
+            <View className="mt-1 flex-row flex-wrap items-center gap-1.5">
+              <Text className="text-[13px]" style={{ color: c.secondary }}>Added you as their</Text>
+              <View className={`rounded-full px-2.5 py-0.5 ${colors.bg}`}>
+                <Text className={`text-[11.5px] font-bold ${colors.text}`}>{request.relationship}</Text>
+              </View>
             </View>
           </View>
+          {busy ? <ActivityIndicator color="#284BD6" /> : null}
         </View>
         {request.emergency_info ? (
-          <View className={`mt-3 rounded-xl border px-3 py-3 ${isDark ? 'border-[#3B341A] bg-[#241F0C]' : 'border-[#F5E1A8] bg-[#FDF6E1]'}`}>
+          <View className="mt-3 rounded-2xl px-3.5 py-3" style={{ backgroundColor: c.warnBg }}>
             <View className="flex-row items-center gap-1.5">
-              <AlertTriangle size={13} color={isDark ? '#F0CE7E' : '#B4650B'} />
-              <Text className={`text-[12px] font-bold ${isDark ? 'text-[#F0CE7E]' : 'text-[#B4650B]'}`}>Emergency Info</Text>
+              <AlertTriangle size={13} color={c.warnTitle} />
+              <Text className="text-[12px] font-bold" style={{ color: c.warnTitle }}>Emergency info</Text>
             </View>
-            <Text className={`mt-1 text-[13px] leading-5 ${isDark ? 'text-[#E9D9A8]' : 'text-[#8A5C0A]'}`}>{request.emergency_info}</Text>
+            <Text className="mt-1 text-[13px] leading-5" style={{ color: c.warnText }}>{request.emergency_info}</Text>
           </View>
         ) : null}
-        <View className="mt-4 flex-row gap-2">
-          <AnimatedPressable onPress={() => void respondTrustedRequest(request, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#284BD6] py-3">
-            <Check size={16} color="#FFFFFF" /><Text className="font-bold text-white">Confirm</Text>
+        <View className="mt-3.5 flex-row gap-2">
+          <AnimatedPressable onPress={() => void respondTrustedRequest(request, 'accepted')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-full bg-[#284BD6] py-2.5">
+            <Check size={16} color="#FFFFFF" /><Text className="text-[14px] font-bold text-white">Confirm</Text>
           </AnimatedPressable>
-          <AnimatedPressable onPress={() => void respondTrustedRequest(request, 'declined')} disabled={busy} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${border}`}>
-            <X size={16} color="#B91C1C" /><Text className="font-bold text-[#B91C1C]">Decline</Text>
+          <AnimatedPressable onPress={() => void respondTrustedRequest(request, 'declined')} disabled={busy} className="flex-1 flex-row items-center justify-center gap-1.5 rounded-full py-2.5" style={{ backgroundColor: c.fill }}>
+            <X size={16} color={c.primary} /><Text className="text-[14px] font-bold" style={{ color: c.primary }}>Decline</Text>
           </AnimatedPressable>
         </View>
-        {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
       </Card>
     );
   }
@@ -365,6 +435,10 @@ export default function FriendsScreen() {
   const incomingFriendRequests = connections.filter((connection) => connection.relationship_status === 'incoming_pending');
   const acceptedFriends = connections.filter((connection) => connection.relationship_status === 'accepted');
   const sentRequests = connections.filter((connection) => connection.relationship_status === 'outgoing_pending');
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleFriends = normalizedQuery
+    ? acceptedFriends.filter((friend) => friend.display_name.toLowerCase().includes(normalizedQuery) || friend.interests.some((interest) => interest.toLowerCase().includes(normalizedQuery)))
+    : acceptedFriends;
 
   const tabs: { key: Tab; label: string; count: number }[] = [
     { key: 'friends', label: 'Friends', count: acceptedFriends.length + incomingFriendRequests.length + sentRequests.length },
@@ -374,9 +448,9 @@ export default function FriendsScreen() {
   const loading = !refreshing && (tab === 'friends' ? connectionsLoading : trustedLoading || incomingTrustedLoading);
 
   return (
-    <View className={`flex-1 ${background}`}>
-      <ScreenHeader title="Friends">
-        <View className="mt-4 flex-row gap-2">
+    <View className="flex-1" style={{ backgroundColor: c.screen }}>
+      <ScreenHeader title="Friends" subtitle={`${acceptedFriends.length} ${acceptedFriends.length === 1 ? 'friend' : 'friends'} · ${trustedContacts.length} trusted`}>
+        <View className="mt-4 flex-row rounded-full p-1" style={{ backgroundColor: c.fill }}>
           {tabs.map((item) => {
             const active = tab === item.key;
             return (
@@ -384,12 +458,12 @@ export default function FriendsScreen() {
                 key={item.key}
                 scaleTo={0.97}
                 onPress={() => setTab(item.key)}
-                className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-2xl px-2 py-3 ${active ? 'bg-[#284BD6]' : mutedFill}`}
-              >
-                <Text numberOfLines={1} className={`text-[15px] font-bold ${active ? 'text-white' : primary}`}>{item.label}</Text>
+                className="flex-1 flex-row items-center justify-center gap-1.5 rounded-full px-2 py-2.5"
+                style={active ? { backgroundColor: c.segmentActive, shadowColor: '#0F1B3D', shadowOpacity: isDark ? 0 : 0.08, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: isDark ? 0 : 2 } : undefined}>
+                <Text numberOfLines={1} className="text-[14px] font-bold" style={{ color: active ? c.primary : c.secondary }}>{item.label}</Text>
                 {item.count ? (
-                  <View className={`rounded-full px-1.5 ${active ? 'bg-white/25' : isDark ? 'bg-[#22324B]' : 'bg-white'}`}>
-                    <Text className={`text-[12px] font-bold ${active ? 'text-white' : secondary}`}>{item.count}</Text>
+                  <View className="rounded-full px-1.5" style={{ backgroundColor: active ? '#284BD6' : c.countBg }}>
+                    <Text className="text-[11px] font-black" style={{ color: active ? '#FFFFFF' : c.countText }}>{item.count}</Text>
                   </View>
                 ) : null}
               </AnimatedPressable>
@@ -398,34 +472,67 @@ export default function FriendsScreen() {
         </View>
       </ScreenHeader>
 
-      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pt-4"
+      <ScrollView className="flex-1" contentContainerClassName="gap-5 px-4 pt-4" keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} refreshControl={refreshControl}>
-        {errorMessage ? <Text className="rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
+        {errorMessage ? <Text className="rounded-2xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
         {loading ? (
           <View className="gap-3">
-            {[0, 1, 2].map((index) => <SkeletonCard key={index} height={128} />)}
+            {[0, 1, 2].map((index) => <SkeletonCard key={index} height={96} />)}
           </View>
         ) : null}
 
         {!loading && tab === 'friends' ? (
           <>
+            {acceptedFriends.length > 4 ? (
+              <View className="flex-row items-center gap-2.5 rounded-full px-4" style={{ backgroundColor: c.card, borderWidth: 1, borderColor: c.border }}>
+                <Search size={17} color={c.muted} />
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="Search friends or interests"
+                  placeholderTextColor={c.muted}
+                  className="flex-1 py-3 text-[15px]"
+                  style={{ color: c.primary }}
+                  returnKeyType="search"
+                />
+                {query ? (
+                  <TouchableOpacity onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Clear search">
+                    <XCircle size={17} color={c.muted} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            ) : null}
+
             {incomingFriendRequests.length ? (
               <View className="gap-3">
-                <Text className={`text-headline-20 font-bold ${primary}`}>Friend requests <Text className={`text-base font-normal ${secondary}`}>({incomingFriendRequests.length})</Text></Text>
-                {incomingFriendRequests.map((connection, index) => renderConnection(connection, index))}
+                {renderSectionLabel('Requests', incomingFriendRequests.length)}
+                {incomingFriendRequests.map((connection, index) => renderIncomingRequest(connection, index))}
               </View>
             ) : null}
 
             <View className="gap-3">
-              <Text className={`text-headline-20 font-bold ${primary}`}>Friends <Text className={`text-base font-normal ${secondary}`}>({acceptedFriends.length})</Text></Text>
-              {acceptedFriends.length ? acceptedFriends.map((connection, index) => renderConnection(connection, incomingFriendRequests.length + index)) : (
+              {renderSectionLabel(
+                'Your friends',
+                acceptedFriends.length,
+                <AnimatedPressable onPress={() => router.push('/(tabs)/discover')} className="flex-row items-center gap-1 rounded-full px-3 py-1.5" style={{ backgroundColor: c.accentSoft }}>
+                  <UserPlus size={14} color={c.accent} />
+                  <Text className="text-[12.5px] font-bold" style={{ color: c.accent }}>Find people</Text>
+                </AnimatedPressable>
+              )}
+              {visibleFriends.length ? (
+                <Card key="friends-list" index={incomingFriendRequests.length} className="py-1">
+                  {visibleFriends.map((connection, index) => renderFriendRow(connection, index, index === visibleFriends.length - 1))}
+                </Card>
+              ) : acceptedFriends.length ? (
+                <Text key="friends-no-match" className="px-1 text-[14px]" style={{ color: c.secondary }}>No friends match “{query.trim()}”.</Text>
+              ) : (
                 <EmptyState
                   key="friends-empty"
                   icon={<UserPlus size={34} color="#284BD6" />}
                   title="No friends yet"
                   message="Find people in Discover to get started."
                   action={
-                    <AnimatedPressable onPress={() => router.push('/(tabs)/discover')} className="rounded-2xl bg-[#284BD6] px-5 py-3">
+                    <AnimatedPressable onPress={() => router.push('/(tabs)/discover')} className="rounded-full bg-[#284BD6] px-5 py-3">
                       <Text className="font-bold text-white">Go to Discover</Text>
                     </AnimatedPressable>
                   }
@@ -435,8 +542,10 @@ export default function FriendsScreen() {
 
             {sentRequests.length ? (
               <View className="gap-3">
-                <Text className={`text-headline-20 font-bold ${primary}`}>Sent requests <Text className={`text-base font-normal ${secondary}`}>({sentRequests.length})</Text></Text>
-                {sentRequests.map((connection, index) => renderSentRequest(connection, index))}
+                {renderSectionLabel('Sent requests', sentRequests.length)}
+                <Card index={incomingFriendRequests.length + 1} className="py-1">
+                  {sentRequests.map((connection, index) => renderSentRow(connection, index === sentRequests.length - 1))}
+                </Card>
               </View>
             ) : null}
           </>
@@ -444,20 +553,30 @@ export default function FriendsScreen() {
 
         {!loading && tab === 'trusted' ? (
           <>
+            <View className="flex-row items-center gap-3 rounded-3xl p-4" style={{ backgroundColor: c.accentSoft }}>
+              <View className="h-11 w-11 items-center justify-center rounded-2xl bg-[#284BD6]">
+                <Shield size={20} color="#FFFFFF" />
+              </View>
+              <Text className="flex-1 text-[13px] leading-5" style={{ color: c.primary }}>
+                Your trusted circle gets your live location when you trigger SOS.
+              </Text>
+            </View>
+
             {incomingTrustedRequests.length ? (
               <View className="gap-3">
-                <Text className={`text-headline-20 font-bold ${primary}`}>Pending confirmation <Text className={`text-base font-normal ${secondary}`}>({incomingTrustedRequests.length})</Text></Text>
+                {renderSectionLabel('Pending confirmation', incomingTrustedRequests.length)}
                 {incomingTrustedRequests.map((request, index) => renderIncomingTrustedRequest(request, index))}
               </View>
             ) : null}
 
             <View className="gap-3">
-              <View className="flex-row items-center justify-between">
-                <Text className={`text-headline-20 font-bold ${primary}`}>My trusted circle <Text className={`text-base font-normal ${secondary}`}>({trustedContacts.length})</Text></Text>
-                <AnimatedPressable onPress={() => router.push('/trusted-circle')} className="flex-row items-center gap-1.5 rounded-full bg-[#284BD6] px-3.5 py-2">
-                  <Plus size={15} color="#FFFFFF" /><Text className="text-[13px] font-bold text-white">Add</Text>
+              {renderSectionLabel(
+                'My trusted circle',
+                trustedContacts.length,
+                <AnimatedPressable onPress={() => router.push('/trusted-circle')} className="flex-row items-center gap-1 rounded-full bg-[#284BD6] px-3 py-1.5">
+                  <Plus size={14} color="#FFFFFF" /><Text className="text-[12.5px] font-bold text-white">Add</Text>
                 </AnimatedPressable>
-              </View>
+              )}
               {trustedContacts.length ? trustedContacts.map((contact, index) => renderTrustedContact(contact, incomingTrustedRequests.length + index)) : (
                 <EmptyState
                   key="trusted-empty"

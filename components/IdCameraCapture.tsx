@@ -1,5 +1,5 @@
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { X } from 'lucide-react-native';
+import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
+import { QrCode, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Modal, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,11 +19,19 @@ export default function IdCameraCapture({
   title,
   onClose,
   onCapture,
+  scanQr,
+  qrOnly = false,
 }: {
   visible: boolean;
   title: string;
   onClose: () => void;
-  onCapture: (uri: string) => void;
+  onCapture?: (uri: string) => void;
+  // Reads a QR (e.g. on the back of a driver's license) live from the camera
+  // while aiming; only the first read per opening is reported. Never read
+  // from a saved image, so a screenshot can't supply it.
+  scanQr?: (data: string) => void;
+  // QR only: no photo; the parent closes once scanQr fires.
+  qrOnly?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
@@ -32,6 +40,20 @@ export default function IdCameraCapture({
   const [retryMessage, setRetryMessage] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const qrReadRef = useRef(false);
+  const [qrRead, setQrRead] = useState(false);
+
+  const handleBarcodeScanned = useCallback(
+    ({ data }: BarcodeScanningResult) => {
+      if (qrReadRef.current || !data) {
+        return;
+      }
+      qrReadRef.current = true;
+      setQrRead(true);
+      scanQr?.(data);
+    },
+    [scanQr]
+  );
 
   useEffect(() => {
     if (visible && !permission?.granted) {
@@ -82,6 +104,8 @@ export default function IdCameraCapture({
       setPhase('aiming');
       setPreviewUri(null);
       setRetryMessage(null);
+      qrReadRef.current = false;
+      setQrRead(false);
     }
   }, [visible]);
 
@@ -92,7 +116,7 @@ export default function IdCameraCapture({
 
   function handleUsePhoto() {
     if (previewUri) {
-      onCapture(previewUri);
+      onCapture?.(previewUri);
     }
   }
 
@@ -128,7 +152,13 @@ export default function IdCameraCapture({
           </View>
         ) : (
           <View className="flex-1">
-            <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" />
+            <CameraView
+              ref={cameraRef}
+              style={{ flex: 1 }}
+              facing="back"
+              barcodeScannerSettings={scanQr ? { barcodeTypes: ['qr'] } : undefined}
+              onBarcodeScanned={scanQr ? handleBarcodeScanned : undefined}
+            />
             <View className="absolute inset-0 items-center justify-center px-8">
               <Text className="mb-6 text-center text-[17px] font-bold text-white" style={{ textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 6 }}>
                 {title}
@@ -139,13 +169,22 @@ export default function IdCameraCapture({
                 <View className="absolute -bottom-1 -left-1 h-8 w-8 rounded-bl-2xl border-b-4 border-l-4 border-white" />
                 <View className="absolute -bottom-1 -right-1 h-8 w-8 rounded-br-2xl border-b-4 border-r-4 border-white" />
               </View>
-              <Text className="mt-6 text-center text-[14px] text-white/80">
-                {retryMessage ?? 'Fit the document inside the frame, then tap to capture'}
+              {scanQr ? (
+                <View className={`mt-5 flex-row items-center gap-2 rounded-full px-4 py-2 ${qrRead ? 'bg-[#10B981]' : 'bg-black/50'}`}>
+                  <QrCode size={16} color="#FFFFFF" />
+                  <Text className="text-[13px] font-bold text-white">{qrRead ? 'QR code read ✓' : 'Looking for the QR code…'}</Text>
+                </View>
+              ) : null}
+              <Text className="mt-4 text-center text-[14px] text-white/80">
+                {retryMessage ??
+                  (qrOnly
+                    ? 'Point the camera at the QR code on the back of your license'
+                    : 'Fit the document inside the frame, then tap to capture')}
               </Text>
             </View>
 
             <View className="absolute left-0 right-0 items-center" style={{ bottom: insets.bottom + 40 }}>
-              {phase === 'capturing' ? (
+              {qrOnly ? null : phase === 'capturing' ? (
                 <ActivityIndicator color="#fff" />
               ) : (
                 <TouchableOpacity

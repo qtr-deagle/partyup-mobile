@@ -1,6 +1,6 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { EmptyState, riseIn, SkeletonCard, SuccessOverlay, useShake } from '@/components/ui/motion';
-import { Card, ScreenHeader } from '@/components/ui/screen-header';
+import { EmptyState, enterFromBelow, riseIn, SkeletonCard, SuccessOverlay, useShake } from '@/components/ui/motion';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
@@ -17,9 +17,10 @@ import {
   type TrustedContact,
 } from '@/lib/trustedCircle';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, Bell, BellOff, CheckCircle2, Clock, Info, MapPin, Plus, Shield, ShieldAlert, UserPlus, Users, X, XCircle } from 'lucide-react-native';
+import { Image } from 'expo-image';
+import { AlertTriangle, Bell, BellOff, CheckCircle2, Clock, Info, Mail, MapPin, Phone, Plus, RotateCcw, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View, type ViewStyle } from 'react-native';
 import Animated, { FadeIn, FadeInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -52,7 +53,17 @@ export default function TrustedCircleScreen() {
   const clearRequestSent = useCallback(() => setRequestSent(false), []);
 
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
-  const card = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E9EDF5] bg-white';
+  const cardStyle: ViewStyle = {
+    backgroundColor: isDark ? '#111B2E' : '#FFFFFF',
+    borderWidth: 1,
+    borderColor: isDark ? '#1E2B42' : '#E8EDF5',
+    shadowColor: '#0B1220',
+    shadowOpacity: isDark ? 0 : 0.06,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: isDark ? 0 : 2,
+  };
+  const divider = isDark ? 'border-[#1E2B42]' : 'border-[#EEF1F6]';
   const primary = isDark ? 'text-white' : 'text-[#182847]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
   const border = isDark ? 'border-[#22324B]' : 'border-[#D7DDE8]';
@@ -205,122 +216,137 @@ export default function TrustedCircleScreen() {
   function renderContact(contact: TrustedContact, index: number) {
     const busy = busyContactId === contact.id;
     const colors = relationshipColors(contact.relationship, isDark);
+    const status =
+      contact.status === 'pending'
+        ? { label: 'Awaiting confirmation', color: '#D88700', icon: Clock }
+        : contact.status === 'declined'
+          ? { label: 'Declined', color: '#E32727', icon: XCircle }
+          : contact.alerts_enabled
+            ? { label: 'Receiving alerts', color: '#00A56A', icon: Bell }
+            : { label: 'Alerts paused', color: isDark ? '#64748B' : '#94A3B8', icon: BellOff };
+    const StatusIcon = status.icon;
     return (
-      <Card key={contact.id} index={index + 1}>
-        <View className="flex-row items-start justify-between gap-3">
-          <View className="flex-1 flex-row items-center gap-3">
-            <View className="h-12 w-12 items-center justify-center rounded-full bg-[#B7C4EC]">
-              <Text className="text-lg font-bold text-[#24314A]">{contact.display_name.charAt(0).toUpperCase()}</Text>
+      <Animated.View key={contact.id} entering={enterFromBelow(index + 1)}>
+        <View style={[cardStyle, { borderRadius: 24, padding: 16 }]}>
+          <View className="flex-row items-center gap-3">
+            <View style={{ padding: 2.5, borderRadius: 30, borderWidth: 2, borderColor: status.color }}>
+              {contact.avatar_url ? (
+                <Image key="avatar" source={{ uri: contact.avatar_url }} style={{ width: 48, height: 48, borderRadius: 24 }} />
+              ) : (
+                <View key="initial" className="h-12 w-12 items-center justify-center rounded-full bg-[#DCE4FB]">
+                  <Text className="text-lg font-black text-[#284BD6]">{contact.display_name.charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
             </View>
             <View className="flex-1">
               <View className="flex-row items-center gap-1.5">
-                <Text className={`text-headline-20 font-bold ${primary}`}>{contact.display_name}</Text>
-                {contact.status === 'accepted' ? <CheckCircle2 size={17} color="#00A56A" /> : null}
+                <Text numberOfLines={1} className={`shrink text-[17px] font-bold ${primary}`}>
+                  {contact.display_name}
+                </Text>
+                {contact.status === 'accepted' ? <CheckCircle2 key="verified" size={16} color="#00A56A" /> : null}
               </View>
-              <View className={`mt-1.5 self-start rounded-full px-3 py-1 ${colors.bg}`}>
-                <Text className={`text-[13px] font-bold ${colors.text}`}>{contact.relationship}</Text>
+              <View className="mt-1 flex-row items-center gap-2">
+                <View className={`rounded-full px-2.5 py-0.5 ${colors.bg}`}>
+                  <Text className={`text-[12px] font-bold ${colors.text}`}>{contact.relationship}</Text>
+                </View>
+                <Text className={`text-[12px] ${secondary}`}>Added {formatAddedDate(contact.created_at)}</Text>
               </View>
             </View>
+            {busy ? (
+              <ActivityIndicator key="busy" color="#284BD6" />
+            ) : (
+              <TouchableOpacity
+                key="remove"
+                onPress={() => confirmRemove(contact)}
+                accessibilityLabel={`Remove ${contact.display_name}`}
+                className={`h-9 w-9 items-center justify-center rounded-full ${mutedFill}`}>
+                <Trash2 size={16} color={isDark ? '#94A3B8' : '#8A94A8'} />
+              </TouchableOpacity>
+            )}
           </View>
-          {contact.status === 'pending' ? (
-            <Clock size={20} color="#D88700" />
-          ) : contact.status === 'declined' ? (
-            <XCircle size={20} color="#E32727" />
-          ) : contact.alerts_enabled ? (
-            <Bell size={20} color="#00A56A" />
-          ) : (
-            <BellOff size={20} color={isDark ? '#64748B' : '#94A3B8'} />
-          )}
-        </View>
 
-        {contact.phone || contact.email ? (
-          <View className={`mt-3 gap-1 border-t pt-3 ${border}`}>
-            {contact.phone ? <Text className={`text-[15px] ${secondary}`}>{contact.phone}</Text> : null}
-            {contact.email ? <Text className={`text-[15px] ${secondary}`}>{contact.email}</Text> : null}
-          </View>
-        ) : null}
-
-        {contact.emergency_info ? (
-          <View className={`mt-3 rounded-xl border px-3 py-3 ${isDark ? 'border-[#3B341A] bg-[#241F0C]' : 'border-[#F5E1A8] bg-[#FDF6E1]'}`}>
-            <View className="flex-row items-center gap-1.5">
-              <AlertTriangle size={14} color={isDark ? '#F0CE7E' : '#B4650B'} />
-              <Text className={`text-[13px] font-bold ${isDark ? 'text-[#F0CE7E]' : 'text-[#B4650B]'}`}>Emergency Info</Text>
+          {contact.phone || contact.email ? (
+            <View key="contact-info" className={`mt-3.5 gap-2 rounded-2xl px-3.5 py-3 ${mutedFill}`}>
+              {contact.phone ? (
+                <View key="phone" className="flex-row items-center gap-2.5">
+                  <Phone size={14} color={isDark ? '#94A3B8' : '#67748D'} />
+                  <Text className={`text-[14px] ${primary}`}>{contact.phone}</Text>
+                </View>
+              ) : null}
+              {contact.email ? (
+                <View key="email" className="flex-row items-center gap-2.5">
+                  <Mail size={14} color={isDark ? '#94A3B8' : '#67748D'} />
+                  <Text numberOfLines={1} className={`flex-1 text-[14px] ${primary}`}>
+                    {contact.email}
+                  </Text>
+                </View>
+              ) : null}
             </View>
-            <Text className={`mt-1 text-[14px] leading-5 ${isDark ? 'text-[#E9D9A8]' : 'text-[#8A5C0A]'}`}>{contact.emergency_info}</Text>
+          ) : null}
+
+          {contact.emergency_info ? (
+            <View key="emergency" className={`mt-3 flex-row gap-2.5 rounded-2xl px-3.5 py-3 ${isDark ? 'bg-[#241F0C]' : 'bg-[#FDF6E1]'}`}>
+              <AlertTriangle size={15} color={isDark ? '#F0CE7E' : '#B4650B'} style={{ marginTop: 2 }} />
+              <View className="flex-1">
+                <Text className={`text-[12px] font-bold uppercase tracking-wider ${isDark ? 'text-[#F0CE7E]' : 'text-[#B4650B]'}`}>Emergency info</Text>
+                <Text className={`mt-0.5 text-[14px] leading-5 ${isDark ? 'text-[#E9D9A8]' : 'text-[#8A5C0A]'}`}>{contact.emergency_info}</Text>
+              </View>
+            </View>
+          ) : null}
+
+          <View className={`mt-3.5 flex-row items-center justify-between border-t pt-3 ${divider}`}>
+            <View className="flex-row items-center gap-2">
+              <View className="h-7 w-7 items-center justify-center rounded-full" style={{ backgroundColor: `${status.color}1F` }}>
+                <StatusIcon size={14} color={status.color} strokeWidth={2.4} />
+              </View>
+              <Text className="text-[13px] font-semibold" style={{ color: status.color }}>
+                {status.label}
+              </Text>
+            </View>
+            {contact.status === 'accepted' ? (
+              <Switch
+                key="alerts-switch"
+                value={contact.alerts_enabled}
+                onValueChange={() => void toggleAlerts(contact)}
+                disabled={busy}
+                trackColor={{ true: '#00A56A', false: isDark ? '#334155' : '#D7DDE8' }}
+                thumbColor="#FFFFFF"
+              />
+            ) : contact.status === 'declined' ? (
+              <TouchableOpacity key="resend" onPress={() => void resendRequest(contact)} disabled={busy} className="flex-row items-center gap-1.5 rounded-full bg-[#284BD6]/10 px-3.5 py-2">
+                <RotateCcw size={14} color="#284BD6" />
+                <Text className="text-[13px] font-bold text-[#284BD6]">Resend</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity key="cancel" onPress={() => confirmRemove(contact)} disabled={busy} className="rounded-full bg-[#E32727]/10 px-3.5 py-2">
+                <Text className="text-[13px] font-bold text-[#E32727]">Cancel request</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        ) : null}
-
-        <View className="mt-3 flex-row items-center justify-between">
-          <Text className={`text-[13px] ${secondary}`}>Added {formatAddedDate(contact.created_at)}</Text>
-          {contact.status === 'pending' ? (
-            <Text className="text-[13px] font-bold text-[#D88700]">Awaiting confirmation</Text>
-          ) : contact.status === 'declined' ? (
-            <Text className="text-[13px] font-bold text-[#E32727]">Declined</Text>
-          ) : (
-            <Text className={`text-[13px] font-bold ${contact.alerts_enabled ? 'text-[#00A56A]' : secondary}`}>
-              {contact.alerts_enabled ? 'Alerts On' : 'Alerts Off'}
-            </Text>
-          )}
         </View>
-
-        <View className="mt-3 flex-row gap-2">
-          {contact.status === 'pending' ? (
-            <AnimatedPressable
-              onPress={() => confirmRemove(contact)}
-              disabled={busy}
-              className="flex-1 items-center rounded-2xl border border-[#E32727] py-3"
-            >
-              <Text className="font-bold text-[#E32727]">Cancel Request</Text>
-            </AnimatedPressable>
-          ) : contact.status === 'declined' ? (
-            <>
-              <AnimatedPressable
-                onPress={() => void resendRequest(contact)}
-                disabled={busy}
-                className={`flex-1 items-center rounded-2xl border py-3 ${border}`}
-              >
-                <Text className={`font-bold ${primary}`}>Resend</Text>
-              </AnimatedPressable>
-              <AnimatedPressable
-                onPress={() => confirmRemove(contact)}
-                disabled={busy}
-                className="flex-1 items-center rounded-2xl border border-[#E32727] py-3"
-              >
-                <Text className="font-bold text-[#E32727]">Remove</Text>
-              </AnimatedPressable>
-            </>
-          ) : (
-            <>
-              <AnimatedPressable
-                onPress={() => void toggleAlerts(contact)}
-                disabled={busy}
-                className={`flex-1 items-center rounded-2xl border py-3 ${border}`}
-              >
-                <Text className={`font-bold ${primary}`}>{contact.alerts_enabled ? 'Disable' : 'Enable'}</Text>
-              </AnimatedPressable>
-              <AnimatedPressable
-                onPress={() => confirmRemove(contact)}
-                disabled={busy}
-                className="flex-1 items-center rounded-2xl border border-[#E32727] py-3"
-              >
-                <Text className="font-bold text-[#E32727]">Remove</Text>
-              </AnimatedPressable>
-            </>
-          )}
-        </View>
-
-        {busy ? <ActivityIndicator className="absolute right-4 top-4" color="#284BD6" /> : null}
-      </Card>
+      </Animated.View>
     );
   }
+
+  const protectedNow = alertsOnCount > 0;
+  const howItWorks = [
+    { icon: ShieldAlert, color: '#E32727', title: 'SOS alert', body: 'Tap SOS or Warning Mode on Home to alert every enabled contact.' },
+    { icon: Clock, color: '#D88700', title: 'Warning Mode', body: "A 60-second countdown alerts them if you don't cancel." },
+    { icon: MapPin, color: '#2647B8', title: 'Live location', body: 'Your location is sent along with every alert.' },
+    { icon: Shield, color: '#00A56A', title: 'Private', body: 'Shared only in emergencies, only with confirmed contacts.' },
+  ];
 
   return (
     <View className={`flex-1 ${screenBackground}`}>
       <ScreenHeader
         title="Trusted Circle"
-        subtitle={`${totalCount} contact${totalCount === 1 ? '' : 's'} • Manage emergency alerts`}
+        subtitle="People who get your emergency alerts"
         right={
-          <AnimatedPressable onPress={openAddModal} className="h-10 w-10 items-center justify-center rounded-full bg-[#284BD6] shadow-sm shadow-[#284BD6]/30" accessibilityLabel="Add emergency contact">
+          <AnimatedPressable
+            onPress={openAddModal}
+            className="h-10 w-10 items-center justify-center rounded-full bg-[#284BD6]"
+            style={{ shadowColor: '#284BD6', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 4 }}
+            accessibilityLabel="Add emergency contact">
             <Plus size={20} color="#FFFFFF" />
           </AnimatedPressable>
         }
@@ -328,24 +354,52 @@ export default function TrustedCircleScreen() {
 
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-4"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} refreshControl={refreshControl}>
-        <Animated.View entering={FadeIn.duration(350)} className="flex-row gap-3">
-          <View className={`flex-1 items-center rounded-2xl border px-3 py-4 shadow-sm ${card} ${isDark ? 'shadow-black/20' : 'shadow-black/5'}`}>
-            <Text className={`text-[26px] font-black ${primary}`}>{totalCount}</Text>
-            <Text className={`mt-1 text-[13px] ${secondary}`}>Total</Text>
-          </View>
-          <View className={`flex-1 items-center rounded-2xl border px-3 py-4 ${isDark ? 'border-[#1F3B3D] bg-[#0F1F24]' : 'border-[#BEEFCB] bg-[#EFFCF3]'}`}>
-            <Text className="text-[26px] font-black text-[#00A56A]">{alertsOnCount}</Text>
-            <Text className="mt-1 text-[13px] text-[#00A56A]">Alerts On</Text>
-          </View>
-          <View className={`flex-1 items-center rounded-2xl border px-3 py-4 ${isDark ? 'border-[#1F3B3D] bg-[#0F1F24]' : 'border-[#BEEFCB] bg-[#EFFCF3]'}`}>
-            <Text className="text-[26px] font-black text-[#00A56A]">{confirmedCount}</Text>
-            <Text className="mt-1 text-[13px] text-[#00A56A]">Confirmed</Text>
+        <Animated.View entering={FadeIn.duration(350)}>
+          <View
+            style={{
+              borderRadius: 28,
+              overflow: 'hidden',
+              padding: 20,
+              backgroundColor: protectedNow ? '#1F44C9' : isDark ? '#1E293B' : '#334155',
+              shadowColor: protectedNow ? '#1F44C9' : '#0B1220',
+              shadowOpacity: isDark ? 0 : 0.25,
+              shadowRadius: 18,
+              shadowOffset: { width: 0, height: 10 },
+              elevation: 6,
+            }}>
+            <View style={{ position: 'absolute', right: -40, top: -40, width: 170, height: 170, borderRadius: 85, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+            <View style={{ position: 'absolute', right: 30, bottom: -60, width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(255,255,255,0.06)' }} />
+            <View className="flex-row items-center gap-3">
+              <View className="h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+                {protectedNow ? <ShieldCheck key="on" size={26} color="#FFFFFF" /> : <ShieldAlert key="off" size={26} color="#FFFFFF" />}
+              </View>
+              <View className="flex-1">
+                <Text className="text-[19px] font-black text-white">{protectedNow ? "You're covered" : 'Not protected yet'}</Text>
+                <Text className="mt-0.5 text-[13px] leading-[18px] text-white/75">
+                  {protectedNow
+                    ? `${alertsOnCount} ${alertsOnCount === 1 ? 'person' : 'people'} will be alerted if you need help.`
+                    : 'Add a friend and turn on alerts so someone knows when you need help.'}
+                </Text>
+              </View>
+            </View>
+            <View className="mt-5 flex-row rounded-2xl bg-white/10 py-3">
+              {[
+                { value: totalCount, label: 'Contacts' },
+                { value: confirmedCount, label: 'Confirmed' },
+                { value: alertsOnCount, label: 'Alerts on' },
+              ].map((stat, i) => (
+                <View key={stat.label} className={`flex-1 items-center ${i > 0 ? 'border-l border-white/15' : ''}`}>
+                  <Text className="text-[22px] font-black text-white">{stat.value}</Text>
+                  <Text className="mt-0.5 text-[12px] font-medium text-white/70">{stat.label}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         </Animated.View>
 
-        {errorMessage ? <Text className="rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
+        {errorMessage ? <Text key="error" className="rounded-2xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
         {loading && !refreshing ? (
-          <View className="gap-4">
+          <View key="skeleton" className="gap-4">
             <SkeletonCard height={150} />
             <SkeletonCard height={150} />
           </View>
@@ -353,6 +407,7 @@ export default function TrustedCircleScreen() {
 
         {!loading && !contacts.length ? (
           <EmptyState
+            key="empty"
             icon={<Users size={34} color="#284BD6" />}
             title="No emergency contacts yet"
             message="Add a friend who should be alerted if you need help."
@@ -365,49 +420,35 @@ export default function TrustedCircleScreen() {
           />
         ) : null}
 
+        {contacts.length > 0 && (!loading || refreshing) ? (
+          <View key="contacts-heading" className="mt-1 flex-row items-center justify-between px-1">
+            <Text className={`text-[13px] font-bold uppercase tracking-widest ${secondary}`}>Your circle</Text>
+            <TouchableOpacity onPress={openAddModal} className="flex-row items-center gap-1">
+              <Plus size={15} color="#284BD6" />
+              <Text className="text-[13px] font-bold text-[#284BD6]">Add</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {!loading || refreshing ? contacts.map((contact, index) => renderContact(contact, index)) : null}
 
-        <Card index={contacts.length + 1}>
-          <Text className={`text-headline-18 font-bold ${primary}`}>How It Works</Text>
-          <View className="mt-3 gap-3">
-            <View className="flex-row items-start gap-3">
-              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}`}>
-                <ShieldAlert size={18} color="#E32727" />
-              </View>
-              <View className="flex-1">
-                <Text className={`text-[15px] font-bold ${primary}`}>Emergency Alert</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Tap Warning Mode or SOS on Home to instantly alert all enabled contacts</Text>
-              </View>
-            </View>
-            <View className="flex-row items-start gap-3">
-              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#3A2A11]' : 'bg-[#FFF3DC]'}`}>
-                <Clock size={18} color="#D88700" />
-              </View>
-              <View className="flex-1">
-                <Text className={`text-[15px] font-bold ${primary}`}>Warning Mode</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Activate a 60-second countdown that auto-alerts your contacts if you don&apos;t cancel it</Text>
-              </View>
-            </View>
-            <View className="flex-row items-start gap-3">
-              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
-                <MapPin size={18} color="#2647B8" />
-              </View>
-              <View className="flex-1">
-                <Text className={`text-[15px] font-bold ${primary}`}>Real-Time Location</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Your location is included with alerts sent to trusted contacts</Text>
-              </View>
-            </View>
-            <View className="flex-row items-start gap-3">
-              <View className={`h-9 w-9 items-center justify-center rounded-full ${isDark ? 'bg-[#0F2B1E]' : 'bg-[#EAF8F0]'}`}>
-                <Shield size={18} color="#00A56A" />
-              </View>
-              <View className="flex-1">
-                <Text className={`text-[15px] font-bold ${primary}`}>Secure & Private</Text>
-                <Text className={`mt-0.5 text-[14px] leading-5 ${secondary}`}>Info only shared in emergencies with contacts who confirmed and enabled alerts</Text>
-              </View>
-            </View>
+        <Animated.View entering={enterFromBelow(contacts.length + 1)} className="mt-2">
+          <Text className={`mb-3 px-1 text-[13px] font-bold uppercase tracking-widest ${secondary}`}>How it works</Text>
+          <View className="flex-row flex-wrap justify-between gap-y-3">
+            {howItWorks.map((item) => {
+              const Icon = item.icon;
+              return (
+                <View key={item.title} style={[cardStyle, { width: '48.5%', borderRadius: 22, padding: 14 }]}>
+                  <View className="h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: `${item.color}1A` }}>
+                    <Icon size={19} color={item.color} />
+                  </View>
+                  <Text className={`mt-3 text-[15px] font-bold ${primary}`}>{item.title}</Text>
+                  <Text className={`mt-1 text-[12.5px] leading-[17px] ${secondary}`}>{item.body}</Text>
+                </View>
+              );
+            })}
           </View>
-        </Card>
+        </Animated.View>
       </ScrollView>
 
       <Modal visible={addVisible} transparent animationType="fade" onRequestClose={closeAddModal}>

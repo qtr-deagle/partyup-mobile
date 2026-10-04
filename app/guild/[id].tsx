@@ -4,6 +4,7 @@ import {
   type GuildFormValues,
 } from "@/components/GuildFormModal";
 import { GuildAnnouncement } from "@/components/guild/GuildAnnouncement";
+import { GuildPartyups } from "@/components/guild/GuildPartyups";
 import { GuildPerksModal } from "@/components/guild/GuildPerksModal";
 import { RankMedal } from "@/components/guild/RankMedal";
 import {
@@ -344,6 +345,18 @@ export default function GuildHallScreen() {
                   isDark={isDark}
                   canEdit={canManage}
                   onSaved={() => void load(period)}
+                />
+              ) : null}
+
+              {/* Let's PartyUp: guild-only hangouts (members + leader). */}
+              {isMine || canManage ? (
+                <GuildPartyups
+                  key="partyups"
+                  guildId={guild.id}
+                  guildName={guild.name}
+                  color={color}
+                  isDark={isDark}
+                  canCreate={canManage}
                 />
               ) : null}
 

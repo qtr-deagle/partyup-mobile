@@ -102,7 +102,12 @@ async function handleRequest(req: Request): Promise<Response> {
   if (!member) return jsonResponse({ error: 'You are not an accepted rider on this trip' }, 403);
   if (member.payment_status === 'paid') return jsonResponse({ error: 'This trip is already paid' }, 400);
 
-  const amount = trip.price_per_person ?? trip.total_cost;
+  // Carpool riders pay their accepted fuel contribution plus the platform fee;
+  // tours charge the organizer's per-person price.
+  const amount =
+    member.offered_amount != null
+      ? Number(member.offered_amount) + Number(member.platform_fee ?? 0)
+      : (trip.price_per_person ?? trip.total_cost);
   if (!amount || amount <= 0) return jsonResponse({ error: 'This trip does not have a cost set yet' }, 400);
 
   const { data: profile } = await db.from('profiles').select('display_name, email').eq('id', callerId).maybeSingle();
@@ -137,7 +142,7 @@ async function getTrip(db: ReturnType<typeof createClient>, tripId: string) {
 async function getPayableMember(db: ReturnType<typeof createClient>, tripId: string, callerId: string) {
   const { data, error } = await db
     .from('trip_members')
-    .select('id, payment_status, payment_channel')
+    .select('id, payment_status, payment_channel, offered_amount, platform_fee')
     .eq('trip_id', tripId)
     .eq('user_id', callerId)
     .eq('member_role', 'member')

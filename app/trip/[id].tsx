@@ -17,6 +17,7 @@ import {
   leaveTrip,
   listTripMembers,
   paymentStatusColors,
+  CARPOOL_PLATFORM_FEE_RATE,
   PLATFORM_FEE_RATE,
   splitPlatformFee,
   respondToJoinRequest,
@@ -34,7 +35,7 @@ import { getTourDetail, joinPublicTrip, listTripItinerary, type ItineraryDay, ty
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
-import { ArrowLeft, BadgeCheck, Calendar, Check, Flag, MapPin, MessageCircle, Share2, Sparkles, Star, Users, Wallet, X } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, Calendar, Check, Flag, MapPin, MessageCircle, Route, Share2, Sparkles, Star, Users, Wallet, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -467,11 +468,17 @@ export default function TripDetailScreen() {
   const isTour = detail.trip_type === 'tour';
   const pendingRequests = members.filter((m) => m.status === 'pending');
   const acceptedRiders = members.filter((m) => m.member_role === 'member' && m.status === 'accepted');
-  const riderFare = (member: TripMember) => member.payment_amount ?? detail.price_per_person ?? 0;
+  // Carpool riders pay their accepted fuel contribution to the driver plus a
+  // PartyUp fee on top; tour participants pay the organizer's price, from
+  // which PartyUp keeps its fee.
+  const isFuelShare = !isTour;
+  const riderFare = (member: TripMember) =>
+    isFuelShare ? (member.offered_amount ?? 0) : (member.payment_amount ?? detail.price_per_person ?? 0);
   const expectedTotal = acceptedRiders.reduce((sum, member) => sum + riderFare(member), 0);
   const collectedTotal = acceptedRiders.filter((m) => m.payment_status === 'paid').reduce((sum, member) => sum + riderFare(member), 0);
-  const earnings = splitPlatformFee(collectedTotal);
-  const feePercent = `${Math.round(PLATFORM_FEE_RATE * 100)}%`;
+  const earnings = isFuelShare ? { fee: 0, net: collectedTotal } : splitPlatformFee(collectedTotal);
+  const feePercent = `${Math.round((isFuelShare ? CARPOOL_PLATFORM_FEE_RATE : PLATFORM_FEE_RATE) * 100)}%`;
+  const myTotalDue = detail.my_payment_amount ?? (detail.my_offered_amount != null ? detail.my_offered_amount + (detail.my_platform_fee ?? 0) : detail.price_per_person);
 
   return (
     <View className={`flex-1 ${background}`}>
@@ -519,6 +526,49 @@ export default function TripDetailScreen() {
 
         <TripMeetupCard detail={detail} isDark={isDark} />
 
+        {!isTour && detail.route_stops?.length ? (
+          <View className={`rounded-[22px] border p-4 ${card}`}>
+            <View className="flex-row items-center gap-2">
+              <Route size={18} color="#2A55D4" />
+              <Text className={`text-base font-bold ${primary}`}>Stops along the route</Text>
+            </View>
+            <View className="mt-3 gap-2">
+              {detail.route_stops.map((stop, index) => (
+                <View key={`${stop.label}-${index}`} className="flex-row items-center gap-3">
+                  <View className={`h-6 w-6 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
+                    <Text className="text-xs font-bold text-[#2A55D4]">{index + 1}</Text>
+                  </View>
+                  <Text className={`flex-1 text-base ${primary}`}>{stop.label}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
+
+        {isFuelShare ? (
+          <View className="rounded-[22px] bg-[#2A55D4] p-5">
+            <View className="flex-row items-center gap-2">
+              <Sparkles size={18} color="#FFFFFF" />
+              <Text className="text-sm font-semibold text-white/80">{detail.is_driver ? 'Fuel sharing' : 'Your fuel contribution'}</Text>
+            </View>
+            {detail.is_driver ? (
+              <>
+                <Text className="mt-2 text-[30px] font-black text-white">{formatCurrency(expectedTotal)}</Text>
+                <Text className="mt-1 text-sm text-white/80">
+                  From {acceptedRiders.length} accepted rider{acceptedRiders.length === 1 ? '' : 's'}. Riders offer a contribution and you choose who rides.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text className="mt-2 text-[36px] font-black text-white">{formatCurrency(detail.my_offered_amount)}</Text>
+                <Text className="mt-1 text-sm text-white/80">
+                  + {formatCurrency(detail.my_platform_fee)} PartyUp fee ({feePercent}) = {formatCurrency(myTotalDue)}
+                  {detail.my_pickup_label ? `\nPickup: ${detail.my_pickup_label}` : ''}
+                </Text>
+              </>
+            )}
+          </View>
+        ) : (
         <View className="rounded-[22px] bg-[#2A55D4] p-5">
           <View className="flex-row items-center gap-2">
             <Sparkles size={18} color="#FFFFFF" />
@@ -537,6 +587,7 @@ export default function TripDetailScreen() {
             </Text>
           )}
         </View>
+        )}
 
         {isTour && (detail.interest_tags.length > 0 || itinerary.length > 0) ? (
           <View className="gap-3">
@@ -633,6 +684,14 @@ export default function TripDetailScreen() {
                       <UserRankTag userId={member.user_id} isDark={isDark} />
                     </View>
                     {member.invited_by_display_name ? <Text className={`mt-0.5 text-sm ${secondary}`}>Invited by {member.invited_by_display_name}</Text> : null}
+                    {member.offered_amount != null ? (
+                      <View className={`mt-2 rounded-xl px-3 py-2 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F7FF]'}`}>
+                        <Text className={`text-sm ${primary}`}>
+                          Offers <Text className="font-extrabold text-[#2A55D4]">{formatCurrency(member.offered_amount)}</Text> for fuel
+                        </Text>
+                        {member.pickup_label ? <Text className={`mt-0.5 text-sm ${secondary}`}>Pickup: {member.pickup_label}</Text> : null}
+                      </View>
+                    ) : null}
                     <View className="mt-3 flex-row gap-2">
                       <TouchableOpacity
                         onPress={() => void handleRespond(member.id, 'accepted')}
@@ -667,6 +726,11 @@ export default function TripDetailScreen() {
                         <Text className={`text-base font-bold ${primary}`}>{member.display_name}</Text>
                         <UserRankTag userId={member.user_id} isDark={isDark} />
                         {member.invited_by_display_name ? <Text className={`mt-0.5 text-sm ${secondary}`}>Invited by {member.invited_by_display_name}</Text> : null}
+                        {member.offered_amount != null ? (
+                          <Text className={`mt-0.5 text-sm ${secondary}`}>
+                            {formatCurrency(member.offered_amount)} fuel{member.pickup_label ? ` · ${member.pickup_label}` : ''}
+                          </Text>
+                        ) : null}
                       </View>
                       <View className={`rounded-full px-3 py-1.5 ${colors.bg}`}>
                         <Text className={`text-sm font-bold ${colors.text}`}>{member.payment_status === 'paid' ? 'Paid' : member.payment_status === 'pending' ? 'Processing' : 'Unpaid'}</Text>
@@ -697,10 +761,14 @@ export default function TripDetailScreen() {
                       {formatCurrency(collectedTotal)} <Text className={`text-sm ${secondary}`}>of {formatCurrency(expectedTotal)}</Text>
                     </Text>
                   </View>
-                  <View className="flex-row justify-between">
-                    <Text className={`text-base ${secondary}`}>PartyUp service fee ({feePercent})</Text>
-                    <Text className="text-base text-[#E32727]">−{formatCurrency(earnings.fee)}</Text>
-                  </View>
+                  {isFuelShare ? (
+                    <Text className={`text-sm ${secondary}`}>The PartyUp fee ({feePercent}) is paid by riders on top, so you keep the full contribution.</Text>
+                  ) : (
+                    <View className="flex-row justify-between">
+                      <Text className={`text-base ${secondary}`}>PartyUp service fee ({feePercent})</Text>
+                      <Text className="text-base text-[#E32727]">−{formatCurrency(earnings.fee)}</Text>
+                    </View>
+                  )}
                   <View className={`mt-1 flex-row justify-between border-t pt-2 ${border}`}>
                     <Text className={`text-base font-bold ${primary}`}>You receive</Text>
                     <Text className="text-base font-extrabold text-[#19A06B]">{formatCurrency(earnings.net)}</Text>
@@ -738,8 +806,11 @@ export default function TripDetailScreen() {
             ) : null}
           </>
         ) : detail.my_status === 'pending' ? (
-          <View className={`items-center rounded-[22px] border p-6 ${card}`}>
-            <Text className={`text-center text-base ${secondary}`}>Your request to join is pending the driver&apos;s approval.</Text>
+          <View className={`items-center gap-3 rounded-[22px] border p-6 ${card}`}>
+            <Text className={`text-center text-base ${secondary}`}>Your request is waiting for the driver to accept it. We&apos;ll notify you when they respond.</Text>
+            <TouchableOpacity onPress={confirmLeave} disabled={busyId === 'leave'} className="rounded-2xl border border-[#E32727] px-5 py-2.5">
+              <Text className="font-bold text-[#E32727]">Cancel request</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <>
@@ -750,8 +821,9 @@ export default function TripDetailScreen() {
                   <Text className={`text-headline-18 font-bold ${primary}`}>Pay Your Share</Text>
                 </View>
                 <Text className={`mt-2 text-sm ${secondary}`}>
-                  Pay {formatCurrency(detail.my_payment_amount ?? detail.price_per_person)} securely with GCash or PayMaya through PayMongo. PartyUp keeps a {Math.round(PLATFORM_FEE_RATE * 100)}%
-                  service fee and the rest goes to the {isTour ? 'organizer' : 'driver'}. Test mode — no real money moves.
+                  {isFuelShare
+                    ? `Pay ${formatCurrency(myTotalDue)} securely with GCash or PayMaya through PayMongo: your ${formatCurrency(detail.my_offered_amount)} fuel contribution goes to the driver, plus the ${feePercent} PartyUp fee. Test mode — no real money moves.`
+                    : `Pay ${formatCurrency(myTotalDue)} securely with GCash or PayMaya through PayMongo. PartyUp keeps a ${feePercent} service fee and the rest goes to the organizer. Test mode — no real money moves.`}
                 </Text>
                 <View className="mt-3 flex-row gap-2">
                   <TouchableOpacity

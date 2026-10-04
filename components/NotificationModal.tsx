@@ -1,8 +1,10 @@
-import { IconSymbol } from '@/components/ui/icon-symbol';
+import { EmptyState, enterFromBelow } from '@/components/ui/motion';
 import * as Haptics from 'expo-haptics';
-import { X } from 'lucide-react-native';
-import React, { useEffect, useRef, useState } from 'react';
+import { Bell, BellOff, CheckCheck, MessageCircle, Plane, ShieldAlert, Sparkles, UserPlus, X, type LucideIcon } from 'lucide-react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import Reanimated from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Notification {
   id: string;
@@ -20,56 +22,53 @@ interface NotificationModalProps {
   isDark?: boolean;
   notifications?: Notification[];
   onNotificationPress?: (notification: Notification) => void;
+  onMarkAllRead?: () => void;
 }
 
+type Filter = 'all' | 'unread';
+
 const { width: screenWidth } = Dimensions.get('window');
+
+const KIND_STYLES: Record<Notification['type'], { icon: LucideIcon; color: string; label: string }> = {
+  trip: { icon: Plane, color: '#3B82F6', label: 'Trip' },
+  message: { icon: MessageCircle, color: '#8B5CF6', label: 'Message' },
+  match: { icon: UserPlus, color: '#10B981', label: 'Friends' },
+  safety: { icon: ShieldAlert, color: '#EF4444', label: 'Safety' },
+  system: { icon: Sparkles, color: '#F59E0B', label: 'PartyUp' },
+};
 
 export default function NotificationModal({
   visible,
   onClose,
   isDark = false,
   notifications = [],
-  onNotificationPress
+  onNotificationPress,
+  onMarkAllRead,
 }: NotificationModalProps) {
-  const [unreadCount, setUnreadCount] = useState(0);
+  const insets = useSafeAreaInsets();
   const slideX = useRef(new Animated.Value(-screenWidth)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const [isMounted, setIsMounted] = useState(visible);
+  const [filter, setFilter] = useState<Filter>('all');
 
-  useEffect(() => {
-    const count = notifications.filter(n => !n.read).length;
-    setUnreadCount(count);
-  }, [notifications]);
+  const unreadCount = notifications.filter((n) => !n.read).length;
+  const shown = useMemo(() => (filter === 'unread' ? notifications.filter((n) => !n.read) : notifications), [filter, notifications]);
+  const fresh = shown.filter((n) => !n.read);
+  const earlier = shown.filter((n) => n.read);
 
   useEffect(() => {
     if (visible) {
       setIsMounted(true);
       Animated.parallel([
-        Animated.timing(slideX, {
-          toValue: 0,
-          duration: 260,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: 220,
-          useNativeDriver: true,
-        }),
+        Animated.timing(slideX, { toValue: 0, duration: 260, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 1, duration: 220, useNativeDriver: true }),
       ]).start();
       return;
     }
 
     Animated.parallel([
-      Animated.timing(slideX, {
-        toValue: -screenWidth,
-        duration: 220,
-        useNativeDriver: true,
-      }),
-      Animated.timing(backdropOpacity, {
-        toValue: 0,
-        duration: 180,
-        useNativeDriver: true,
-      }),
+      Animated.timing(slideX, { toValue: -screenWidth, duration: 220, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
     ]).start(({ finished }) => {
       if (finished) {
         setIsMounted(false);
@@ -77,44 +76,8 @@ export default function NotificationModal({
     });
   }, [backdropOpacity, slideX, visible]);
 
-  const getNotificationIcon = (type: string) => {
-    switch (type) {
-      case 'trip':
-        return 'paperplane.fill';
-      case 'message':
-        return 'bubble.right.fill';
-      case 'match':
-        return 'checkmark.circle.fill';
-      case 'safety':
-        return 'shield.fill';
-      case 'system':
-        return 'sparkles';
-      default:
-        return 'bell.fill';
-    }
-  };
-
-  const getNotificationColor = (type: string) => {
-    switch (type) {
-      case 'trip':
-        return '#3B82F6';
-      case 'message':
-        return '#8B5CF6';
-      case 'match':
-        return '#10B981';
-      case 'safety':
-        return '#EF4444';
-      case 'system':
-        return '#F59E0B';
-      default:
-        return '#6B7280';
-    }
-  };
-
   const handleNotificationPress = async (notification: Notification) => {
-    // Trigger haptic feedback
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
     if (onNotificationPress) {
       onNotificationPress(notification);
     } else {
@@ -126,83 +89,154 @@ export default function NotificationModal({
     return null;
   }
 
+  const t = {
+    screen: isDark ? '#0B1220' : '#EEF2F8',
+    card: isDark ? '#16223A' : '#FFFFFF',
+    cardUnread: isDark ? '#1B2A47' : '#FFFFFF',
+    border: isDark ? '#26364F' : '#E1E7F0',
+    title: isDark ? '#FFFFFF' : '#182A4D',
+    body: isDark ? '#94A3B8' : '#6C7A95',
+    faint: isDark ? '#64748B' : '#9AA6BC',
+    chip: isDark ? '#18253C' : '#ECF0F7',
+  };
+
+  const renderCard = (notification: Notification, index: number) => {
+    const kind = KIND_STYLES[notification.type] ?? { icon: Bell, color: '#6B7280', label: 'Update' };
+    const Icon = kind.icon;
+    const unread = !notification.read;
+    return (
+      <Reanimated.View key={notification.id} entering={enterFromBelow(index)}>
+        <TouchableOpacity activeOpacity={0.75} onPress={() => handleNotificationPress(notification)} style={{ marginBottom: 12 }}>
+          <View
+            style={{
+              backgroundColor: unread ? t.cardUnread : t.card,
+              borderColor: unread ? `${kind.color}55` : t.border,
+              borderWidth: 1,
+              borderRadius: 20,
+              padding: 14,
+              flexDirection: 'row',
+              alignItems: 'flex-start',
+              shadowColor: '#0B1220',
+              shadowOpacity: isDark ? 0 : 0.07,
+              shadowRadius: 12,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: isDark ? 0 : 2,
+            }}>
+            <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: `${kind.color}1F`, alignItems: 'center', justifyContent: 'center' }}>
+              <Icon size={21} color={kind.color} strokeWidth={2.2} />
+            </View>
+
+            <View className="ml-3 flex-1">
+              <View className="flex-row items-center">
+                <Text style={{ color: kind.color }} className="text-[11px] font-bold uppercase tracking-wider">
+                  {kind.label}
+                </Text>
+                <Text style={{ color: t.faint }} className="text-[11px]">
+                  {'  ·  '}
+                  {notification.timestamp}
+                </Text>
+              </View>
+              <Text numberOfLines={1} style={{ color: t.title }} className={`mt-1 text-[15px] ${unread ? 'font-bold' : 'font-semibold'}`}>
+                {notification.title}
+              </Text>
+              <Text numberOfLines={3} style={{ color: t.body }} className="mt-0.5 text-[13px] leading-[18px]">
+                {notification.message}
+              </Text>
+            </View>
+
+            {unread ? <View key="dot" style={{ backgroundColor: kind.color }} className="ml-2 mt-1.5 h-2.5 w-2.5 rounded-full" /> : null}
+          </View>
+        </TouchableOpacity>
+      </Reanimated.View>
+    );
+  };
+
+  const sectionLabel = (label: string) => (
+    <Text style={{ color: t.faint }} className="mb-2.5 mt-1 px-1 text-xs font-bold uppercase tracking-widest">
+      {label}
+    </Text>
+  );
+
   return (
     <Modal visible transparent statusBarTranslucent animationType="none" onRequestClose={onClose}>
       <View className="flex-1">
-        <Animated.View
-          style={{ opacity: backdropOpacity }}
-          className="absolute inset-0 bg-black/20"
-        >
+        <Animated.View style={{ opacity: backdropOpacity }} className="absolute inset-0 bg-black/30">
           <Pressable className="flex-1" onPress={onClose} />
         </Animated.View>
 
-        <Animated.View
-          style={{ transform: [{ translateX: slideX }] }}
-          className={isDark ? 'flex-1 bg-[#0B1220]' : 'flex-1 bg-gray-50'}
-        >
-          <View className={`px-6 py-4 border-b pt-14 ${isDark ? 'bg-[#0F172A] border-[#1E293B]' : 'bg-white border-gray-100'}`}>
+        <Animated.View style={{ flex: 1, backgroundColor: t.screen, transform: [{ translateX: slideX }] }}>
+          <View style={{ paddingTop: insets.top + 12 }} className="px-5 pb-3">
             <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
-                <Text className={`text-headline-24 font-bold ${isDark ? 'text-white' : 'text-black'}`}>Notifications</Text>
-                {unreadCount > 0 && (
-                  <View className="bg-red-500 rounded-full px-2 py-1">
-                    <Text className="text-white text-xs font-bold">{unreadCount}</Text>
-                  </View>
-                )}
+              <View>
+                <Text style={{ color: t.title }} className="text-[28px] font-black tracking-tight">
+                  Notifications
+                </Text>
+                <Text style={{ color: t.body }} className="mt-0.5 text-[13px]">
+                  {unreadCount > 0 ? `${unreadCount} new ${unreadCount === 1 ? 'update' : 'updates'}` : "You're all caught up"}
+                </Text>
               </View>
-              <TouchableOpacity onPress={onClose} className={`rounded-full p-2 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F8]'}`}>
-                <X size={20} color={isDark ? '#E2E8F0' : '#666'} strokeWidth={2.25} />
+              <TouchableOpacity
+                onPress={onClose}
+                accessibilityLabel="Close notifications"
+                style={{ backgroundColor: t.chip }}
+                className="h-10 w-10 items-center justify-center rounded-full">
+                <X size={20} color={isDark ? '#E2E8F0' : '#475569'} strokeWidth={2.25} />
               </TouchableOpacity>
+            </View>
+
+            <View className="mt-4 flex-row items-center justify-between">
+              <View style={{ backgroundColor: t.chip }} className="flex-row rounded-full p-1">
+                {(['all', 'unread'] as const).map((value) => {
+                  const active = filter === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => setFilter(value)}
+                      style={{ backgroundColor: active ? (isDark ? '#2B3B57' : '#FFFFFF') : 'transparent' }}
+                      className="flex-row items-center rounded-full px-4 py-1.5">
+                      <Text style={{ color: active ? t.title : t.body }} className="text-[13px] font-semibold">
+                        {value === 'all' ? 'All' : 'Unread'}
+                      </Text>
+                      {value === 'unread' && unreadCount > 0 ? (
+                        <View key="count" className="ml-1.5 min-w-[18px] items-center rounded-full bg-[#EF4444] px-1.5">
+                          <Text className="text-[11px] font-bold text-white">{unreadCount}</Text>
+                        </View>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {onMarkAllRead && unreadCount > 0 ? (
+                <TouchableOpacity key="mark-all" onPress={onMarkAllRead} className="flex-row items-center gap-1.5 px-1 py-1.5">
+                  <CheckCheck size={16} color="#3B82F6" strokeWidth={2.4} />
+                  <Text className="text-[13px] font-semibold text-[#3B82F6]">Mark all read</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           </View>
 
-          {notifications.length === 0 ? (
-            <View className="flex-1 items-center justify-center">
-              <IconSymbol size={60} name="bell" color={isDark ? '#3A4A66' : '#DDD'} />
-              <Text className={`mt-4 font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-gray-500'}`}>No notifications yet</Text>
-              <Text className={`text-sm mt-2 ${isDark ? 'text-[#64748B]' : 'text-gray-400'}`}>You&apos;re all caught up!</Text>
+          {shown.length === 0 ? (
+            <View key="empty" className="flex-1">
+              <EmptyState
+                icon={filter === 'unread' ? <BellOff size={34} color={isDark ? '#64748B' : '#9AA6BC'} /> : <Bell size={34} color={isDark ? '#64748B' : '#9AA6BC'} />}
+                title={filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+                message={filter === 'unread' ? 'Nice — you have seen everything.' : "Trip updates, messages and friend requests will show up here."}
+              />
             </View>
           ) : (
-            <ScrollView className="flex-1">
-              {notifications.map((notification) => (
-                <TouchableOpacity
-                  key={notification.id}
-                  onPress={() => handleNotificationPress(notification)}
-                  className={`px-6 py-4 border-b ${isDark ? 'border-[#1E293B]' : 'border-gray-100'} ${
-                    !notification.read ? (isDark ? 'bg-[#111B2E]' : 'bg-blue-50') : (isDark ? 'bg-[#0B1220]' : 'bg-white')
-                  }`}
-                >
-                  <View className="flex-row items-start gap-3">
-                    <View
-                      className="w-10 h-10 rounded-full items-center justify-center"
-                      style={{
-                        backgroundColor: getNotificationColor(notification.type) + '20',
-                      }}
-                    >
-                      <IconSymbol
-                        size={20}
-                        name={getNotificationIcon(notification.type) as any}
-                        color={getNotificationColor(notification.type)}
-                      />
-                    </View>
-
-                    <View className="flex-1">
-                      <View className="flex-row items-start justify-between">
-                        <View className="flex-1">
-                          <Text className={`font-semibold ${isDark ? 'text-white' : !notification.read ? 'text-black' : 'text-gray-900'}`}>
-                            {notification.title}
-                          </Text>
-                          <Text className={`text-sm mt-1 ${isDark ? 'text-[#94A3B8]' : !notification.read ? 'text-gray-700' : 'text-gray-600'}`}>
-                            {notification.message}
-                          </Text>
-                        </View>
-                        {!notification.read && <View className="w-2 h-2 rounded-full bg-blue-800 mt-2" />}
-                      </View>
-                      <Text className={`text-xs mt-2 ${isDark ? 'text-[#64748B]' : 'text-gray-500'}`}>{notification.timestamp}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ))}
+            <ScrollView key="list" className="flex-1" contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: insets.bottom + 24 }}>
+              {fresh.length > 0 ? (
+                <View key="new">
+                  {sectionLabel('New')}
+                  {fresh.map((n, i) => renderCard(n, i))}
+                </View>
+              ) : null}
+              {earlier.length > 0 ? (
+                <View key="earlier" className={fresh.length > 0 ? 'mt-3' : ''}>
+                  {sectionLabel('Earlier')}
+                  {earlier.map((n, i) => renderCard(n, fresh.length + i))}
+                </View>
+              ) : null}
             </ScrollView>
           )}
         </Animated.View>

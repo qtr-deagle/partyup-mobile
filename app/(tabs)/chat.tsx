@@ -65,15 +65,18 @@ function TypingDot({ index, color }: { index: number; color: string }) {
 }
 
 function Avatar({ name, url, size = 48 }: { name: string; url: string | null; size?: number }) {
+  const isDark = useColorScheme() === 'dark';
   if (url) {
     return <Image source={{ uri: url }} style={{ width: size, height: size, borderRadius: size / 2 }} transition={200} />;
   }
   return (
-    <View className="items-center justify-center rounded-full bg-[#B7C4EC]" style={{ width: size, height: size }}>
-      <Text className="text-lg font-bold text-[#24314A]">{name.charAt(0).toUpperCase()}</Text>
+    <View className="items-center justify-center rounded-full" style={{ width: size, height: size, backgroundColor: isDark ? '#22324B' : '#DCE5FF' }}>
+      <Text className="font-black" style={{ color: isDark ? '#CBD5E1' : '#284BD6', fontSize: Math.max(size * 0.4, 8) }}>{name.trim().charAt(0).toUpperCase()}</Text>
     </View>
   );
 }
+
+type ListFilter = 'all' | 'unread' | 'groups';
 
 function previewText(type: ChatMessage['message_type'] | null, body: string | null, deleted: boolean, mine: boolean) {
   if (deleted) return mine ? 'You unsent a message' : 'Unsent a message';
@@ -108,6 +111,7 @@ export default function ChatScreen() {
   const [selected, setSelected] = useState<Conversation | null>(null);
   const [messageText, setMessageText] = useState('');
   const [search, setSearch] = useState('');
+  const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [loading, setLoading] = useState(true);
   const [receipts, setReceipts] = useState<ThreadReceipts>({ readAt: null, deliveredAt: null });
   const [otherTyping, setOtherTyping] = useState(false);
@@ -141,10 +145,10 @@ export default function ChatScreen() {
   }, [keyboardHeight]);
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-white';
   const borderColor = isDark ? 'border-[#22324B]' : 'border-[#E7EAF2]';
-  const panelBackground = isDark ? 'bg-[#111B2E]' : 'bg-[#F6F7FB]';
   const textPrimary = isDark ? 'text-white' : 'text-[#182847]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
   const iconMuted = isDark ? '#94A3B8' : '#67748D';
+  const softFill = isDark ? '#18253C' : '#F0F2F7';
   const { titleColor } = getTheme(isDark);
 
   const thread = useThreadMessages({
@@ -475,13 +479,13 @@ export default function ChatScreen() {
 
     return (
       <View className={`flex-1 ${screenBackground}`} style={{ paddingBottom: keyboardPadding }}>
-        <View className={`flex-row items-center gap-3 border-b px-4 py-3 ${borderColor}`}>
-          <TouchableOpacity onPress={closeConversation} hitSlop={10}>
-            <ArrowLeft size={24} color="#284BD6" />
+        <View className="flex-row items-center gap-3 px-3 py-2.5" style={{ borderBottomWidth: 1, borderBottomColor: isDark ? '#16213A' : '#F0F2F7' }}>
+          <TouchableOpacity onPress={closeConversation} hitSlop={10} accessibilityLabel="Back to chats" className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: softFill }}>
+            <ArrowLeft size={20} color={isDark ? '#FFFFFF' : '#182847'} />
           </TouchableOpacity>
           <TouchableOpacity onPress={openProfile} activeOpacity={0.7} accessibilityLabel={`View ${selected.display_name}'s profile`} className="flex-1 flex-row items-center gap-3">
           <View>
-            <Avatar name={selected.display_name} url={selected.avatar_url} size={40} />
+            <Avatar name={selected.display_name} url={selected.avatar_url} size={42} />
             {otherHere ? (
               <Animated.View key="header-online" entering={FadeIn.duration(200)} exiting={FadeOut.duration(200)} className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 bg-[#10B981] ${isDark ? 'border-[#0B1220]' : 'border-white'}`} />
             ) : null}
@@ -496,32 +500,28 @@ export default function ChatScreen() {
             ) : otherHere ? (
               <View className="flex-row items-center gap-1.5">
                 <View className="h-2 w-2 rounded-full bg-[#10B981]" />
-                <Text className={`text-xs ${textSecondary}`}>In this chat now</Text>
+                <Text className={`text-xs ${textSecondary}`}>Active now</Text>
               </View>
             ) : (
               <Text className={`text-xs ${textSecondary}`}>Tap to view profile</Text>
             )}
           </View>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat info" hitSlop={10}>
-            <Info size={24} color="#284BD6" />
+          <TouchableOpacity onPress={() => setMenuVisible(true)} accessibilityLabel="Chat info" hitSlop={10} className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: softFill }}>
+            <Info size={20} color={isDark ? '#FFFFFF' : '#284BD6'} />
           </TouchableOpacity>
         </View>
         {chatSearchOpen ? (
           <Animated.View key="chat-search" entering={riseIn(0, 220)} className={`flex-row items-center gap-2 border-b px-4 py-2 ${borderColor}`}>
-            <View className={`flex-1 flex-row items-center gap-2 rounded-full border px-3.5 py-2 ${borderColor} ${panelBackground}`}>
+            <View className="flex-1 flex-row items-center gap-2 rounded-full px-3.5 py-2" style={{ backgroundColor: softFill }}>
               <Search size={17} color="#7A859D" />
-              <TextInput autoFocus value={chatSearch} onChangeText={setChatSearch} placeholder="Search in conversation" placeholderTextColor="#94A3B8" className={`flex-1 py-0 ${textPrimary}`} />
+              <TextInput autoFocus value={chatSearch} onChangeText={setChatSearch} placeholder="Search in conversation" placeholderTextColor="#94A3B8" className="flex-1 py-0" style={{ color: isDark ? '#FFFFFF' : '#182847' }} />
             </View>
             <TouchableOpacity onPress={() => { setChatSearchOpen(false); setChatSearch(''); }} hitSlop={8}>
               <Text className="font-semibold text-[#284BD6]">Done</Text>
             </TouchableOpacity>
           </Animated.View>
         ) : null}
-        <View className={`flex-row items-center gap-2 border-b px-4 py-2.5 ${borderColor} ${panelBackground}`}>
-          <ShieldCheck size={16} color="#10B981" />
-          <Text className={`flex-1 text-xs leading-5 ${textSecondary}`}>Keep plans and payments inside PartyUp. Never share OTP codes or passwords in chat.</Text>
-        </View>
         {errorMessage ? <Text className="m-4 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
         <ScrollView
           ref={scrollRef}
@@ -529,10 +529,15 @@ export default function ChatScreen() {
           contentContainerStyle={{ paddingVertical: 16 }}
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
+          <View className="mb-4 flex-row items-start gap-2 self-center rounded-2xl px-3.5 py-2.5" style={{ backgroundColor: isDark ? '#0F2A22' : '#ECFDF5', maxWidth: 340 }}>
+            <ShieldCheck size={15} color="#10B981" style={{ marginTop: 1 }} />
+            <Text className="flex-1 text-[12px] leading-[17px]" style={{ color: isDark ? '#A7F3D0' : '#047857' }}>Keep plans and payments inside PartyUp. Never share OTP codes or passwords in chat.</Text>
+          </View>
           {thread.loaded && messages.length === 0 ? (
-            <Animated.View key="empty-chat" entering={FadeIn.delay(250)} className="items-center pt-16">
-              <Text className="text-4xl">👋</Text>
-              <Text className={`mt-3 text-center text-sm ${textSecondary}`}>Say hi to {firstName}!</Text>
+            <Animated.View key="empty-chat" entering={FadeIn.delay(250)} className="items-center pt-12">
+              <Avatar name={selected.display_name} url={selected.avatar_url} size={84} />
+              <Text className="mt-3 text-[18px] font-extrabold" style={{ color: isDark ? '#FFFFFF' : '#182847' }}>{selected.display_name}</Text>
+              <Text className={`mt-1 text-center text-sm ${textSecondary}`}>{`You're friends on PartyUp. Say hi to ${firstName}! 👋`}</Text>
             </Animated.View>
           ) : null}
           {searchTerm && shownMessages.length === 0 ? (
@@ -586,7 +591,7 @@ export default function ChatScreen() {
           {otherTyping ? (
             <Animated.View key="typing-indicator" entering={riseIn(0, 180)} exiting={FadeOut.duration(150)} className="mb-2.5 flex-row items-end gap-2">
               <Avatar name={selected.display_name} url={selected.avatar_url} size={24} />
-              <View className={`flex-row items-center gap-1.5 rounded-2xl rounded-bl-md border px-4 py-3.5 ${borderColor} ${panelBackground}`}>
+              <View className="flex-row items-center gap-1.5 px-4 py-3.5" style={{ backgroundColor: isDark ? '#1A2539' : '#F0F2F7', borderRadius: 22, borderBottomLeftRadius: 6 }}>
                 {[0, 1, 2].map((dot) => <TypingDot key={dot} index={dot} color={isDark ? '#94A3B8' : '#7A859D'} />)}
               </View>
             </Animated.View>
@@ -676,17 +681,57 @@ export default function ChatScreen() {
   const showGuildChat = guildChat !== null && (!query || guildChat.guild.name.toLowerCase().includes(query));
   // One list like Messenger: pinned first, then most recent activity.
   const listItems: ListItem[] = [
-    ...visibleConversations.map((conversation) => ({ kind: 'direct' as const, conversation, pinned: prefsOf(conversation).pinned, at: conversation.last_message_at })),
-    ...visibleGroups.map((group) => ({ kind: 'group' as const, group, pinned: group.pinned, at: group.last_message_at })),
+    ...(listFilter === 'groups' ? [] : visibleConversations)
+      .filter((conversation) => listFilter !== 'unread' || conversation.unread_count > 0)
+      .map((conversation) => ({ kind: 'direct' as const, conversation, pinned: prefsOf(conversation).pinned, at: conversation.last_message_at })),
+    ...visibleGroups
+      .filter((group) => listFilter !== 'unread' || group.unread_count > 0)
+      .map((group) => ({ kind: 'group' as const, group, pinned: group.pinned, at: group.last_message_at })),
   ].sort((a, b) => Number(b.pinned) - Number(a.pinned) || (b.at ?? '').localeCompare(a.at ?? ''));
+  const totalUnread =
+    conversations.reduce((sum, conversation) => sum + (prefsOf(conversation).muted ? 0 : conversation.unread_count), 0) +
+    groups.reduce((sum, group) => sum + (group.muted ? 0 : group.unread_count), 0) +
+    (guildChat?.unread_count ?? 0);
+  const showGuildInList = showGuildChat && (listFilter !== 'unread' || Boolean(guildChat?.unread_count));
+  const filters: { key: ListFilter; label: string }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'unread', label: totalUnread ? `Unread · ${totalUnread}` : 'Unread' },
+    { key: 'groups', label: 'Groups' },
+  ];
+  const rowStyle = (highlight: boolean) => ({ backgroundColor: highlight ? (isDark ? '#14213D' : '#F2F5FF') : 'transparent' });
 
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl} keyboardShouldPersistTaps="handled">
-      <View className={`border-b px-4 pb-4 pt-5 ${borderColor}`}>
-        <Text className={`${typography.pageTitle} ${titleColor}`}>Messages</Text>
-        <View className={`mt-4 flex-row items-center gap-3 rounded-full border px-4 py-3 ${borderColor} ${panelBackground}`}>
-          <Search size={19} color="#7A859D" />
-          <TextInput value={search} onChangeText={setSearch} placeholder="Search chats" placeholderTextColor="#94A3B8" className={`flex-1 ${textPrimary}`} />
+      <View className="px-4 pb-2 pt-5">
+        <View className="flex-row items-end justify-between">
+          <Text className={`${typography.pageTitle} ${titleColor}`}>Messages</Text>
+          {totalUnread ? (
+            <View className="mb-1 rounded-full bg-[#284BD6] px-2.5 py-1">
+              <Text className="text-[12px] font-black text-white">{totalUnread} new</Text>
+            </View>
+          ) : null}
+        </View>
+        <View className="mt-4 flex-row items-center gap-2.5 rounded-2xl px-4 py-3" style={{ backgroundColor: softFill }}>
+          <Search size={18} color="#7A859D" />
+          <TextInput value={search} onChangeText={setSearch} placeholder="Search chats" placeholderTextColor="#94A3B8" className="flex-1 py-0 text-[15px]" style={{ color: isDark ? '#FFFFFF' : '#182847' }} />
+        </View>
+        <View className="mt-3 flex-row gap-2">
+          {filters.map((item) => {
+            const active = listFilter === item.key;
+            return (
+              <TouchableOpacity
+                key={item.key}
+                onPress={() => {
+                  feedback.select();
+                  setListFilter(item.key);
+                }}
+                activeOpacity={0.8}
+                className="rounded-full px-4 py-2"
+                style={{ backgroundColor: active ? '#284BD6' : softFill }}>
+                <Text className="text-[13px] font-bold" style={{ color: active ? '#FFFFFF' : isDark ? '#CBD5E1' : '#4A5875' }}>{item.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
       {errorMessage ? <Text className="m-4 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{errorMessage}</Text> : null}
@@ -699,7 +744,7 @@ export default function ChatScreen() {
         <EmptyState icon={<MessageCircle size={34} color="#3B82F6" />} title="No conversations yet" message="Add a friend or join a trip to start chatting." />
       ) : null}
 
-      {showGuildChat && guildChat ? (
+      {showGuildInList && guildChat ? (
         <Animated.View key="guild-chat" entering={enterFromBelow(0)} className="px-4 pt-3">
           <TouchableOpacity
             onPress={() => {
@@ -707,7 +752,8 @@ export default function ChatScreen() {
               router.push('/guild/chat');
             }}
             accessibilityLabel={`Open ${guildChat.guild.name} guild chat`}
-            className={`flex-row items-center gap-3 rounded-2xl border px-3 py-3 ${borderColor} ${panelBackground}`}>
+            className="flex-row items-center gap-3 rounded-3xl px-3.5 py-3.5"
+            style={{ backgroundColor: `${guildChat.guild.color}${isDark ? '26' : '14'}`, borderWidth: 1, borderColor: `${guildChat.guild.color}40` }}>
             <GuildEmblem emblem={guildChat.guild.emblem} color={guildChat.guild.color} size={48} />
             <View className="flex-1">
               <View className="flex-row items-center justify-between">
@@ -732,14 +778,16 @@ export default function ChatScreen() {
         </Animated.View>
       ) : null}
 
-      {newFriends.length > 0 ? (
+      {newFriends.length > 0 && listFilter === 'all' ? (
         <View className="pt-5">
-          <Text className={`px-4 text-sm font-bold ${textPrimary}`}>New friends • say hi! 👋</Text>
+          <Text className="px-4 text-[12px] font-extrabold uppercase tracking-[1.2px]" style={{ color: isDark ? '#94A3B8' : '#67748D' }}>New friends · say hi 👋</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingHorizontal: 16, paddingTop: 12 }}>
             {newFriends.map((conversation, index) => (
               <Animated.View key={conversation.thread_id} entering={enterFromBelow(index)}>
                 <TouchableOpacity onPress={() => openConversation(conversation)} className="w-16 items-center">
-                  <Avatar name={conversation.display_name} url={conversation.avatar_url} size={56} />
+                  <View className="rounded-full p-[3px]" style={{ borderWidth: 2, borderColor: '#284BD6' }}>
+                    <Avatar name={conversation.display_name} url={conversation.avatar_url} size={50} />
+                  </View>
                   <Text numberOfLines={1} className={`mt-1 text-center text-xs ${textSecondary}`}>{conversation.display_name.split(' ')[0]}</Text>
                 </TouchableOpacity>
               </Animated.View>
@@ -748,7 +796,7 @@ export default function ChatScreen() {
         </View>
       ) : null}
 
-      <View className="px-4 pt-4">
+      <View className="gap-1 px-2 pt-3">
         {listItems.map((item, index) => {
           if (item.kind === 'group') {
             const { group } = item;
@@ -764,9 +812,11 @@ export default function ChatScreen() {
                     router.push({ pathname: '/trip/chat/[id]', params: { id: group.trip_id } });
                   }}
                   accessibilityLabel={`Open ${group.title} group chat`}
-                  className={`flex-row items-center gap-3 border-b px-1 py-3.5 ${borderColor}`}>
-                  <View className="h-12 w-12 items-center justify-center rounded-full" style={{ backgroundColor: `${color}1F` }}>
-                    <Icon size={22} color={color} />
+                  activeOpacity={0.7}
+                  className="flex-row items-center gap-3 rounded-2xl px-2.5 py-3"
+                  style={rowStyle(unread && !group.muted)}>
+                  <View className="h-[54px] w-[54px] items-center justify-center rounded-[18px]" style={{ backgroundColor: `${color}1F` }}>
+                    <Icon size={24} color={color} />
                   </View>
                   <View className="flex-1">
                     <View className="flex-row items-center justify-between">
@@ -803,8 +853,8 @@ export default function ChatScreen() {
             : null;
           return (
             <Animated.View key={conversation.thread_id} entering={enterFromBelow(index)}>
-              <TouchableOpacity onPress={() => openConversation(conversation)} className={`flex-row items-center gap-3 border-b px-1 py-3.5 ${borderColor}`}>
-                <Avatar name={conversation.display_name} url={conversation.avatar_url} />
+              <TouchableOpacity onPress={() => openConversation(conversation)} activeOpacity={0.7} className="flex-row items-center gap-3 rounded-2xl px-2.5 py-3" style={rowStyle(unread && !muted)}>
+                <Avatar name={conversation.display_name} url={conversation.avatar_url} size={54} />
                 <View className="flex-1">
                   <View className="flex-row items-center justify-between">
                     <View className="flex-1 flex-row items-center gap-1.5">
@@ -830,8 +880,11 @@ export default function ChatScreen() {
             </Animated.View>
           );
         })}
-        {query && listItems.length === 0 && !showGuildChat && (conversations.length > 0 || groups.length > 0) ? (
+        {query && listItems.length === 0 && !showGuildInList && (conversations.length > 0 || groups.length > 0) ? (
           <Text className={`pt-8 text-center text-sm ${textSecondary}`}>No chats match “{search.trim()}”.</Text>
+        ) : null}
+        {!query && listFilter !== 'all' && listItems.length === 0 && !showGuildInList && (conversations.length > 0 || groups.length > 0) ? (
+          <Text className={`pt-8 text-center text-sm ${textSecondary}`}>{listFilter === 'unread' ? "You're all caught up 🎉" : 'No group chats yet. Join a trip to get one.'}</Text>
         ) : null}
       </View>
     </ScrollView>

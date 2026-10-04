@@ -954,3 +954,79 @@ export function hexToHsl(hex: string) {
   const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
   return { h: Math.round(h), s: Math.round(s * 100), l: Math.round(l * 100) };
 }
+
+// ---------------------------------------------------------------------
+// Guild "Let's PartyUp": a hangout the guild leader posts for guild mates
+// only (not a carpool or tour). Members tap in to the going list.
+// ---------------------------------------------------------------------
+export type GuildPartyupGoer = {
+  user_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
+export type GuildPartyup = {
+  id: string;
+  title: string;
+  place_label: string;
+  place_municipality: string | null;
+  place_lat: number | null;
+  place_lng: number | null;
+  meet_at: string;
+  notes: string | null;
+  created_by: string;
+  creator_name: string | null;
+  going_count: number;
+  i_am_going: boolean;
+  going: GuildPartyupGoer[];
+};
+
+export type GuildPartyupInput = {
+  guildId: string;
+  title: string;
+  placeLabel: string;
+  placeMunicipality: string | null;
+  placeLat: number | null;
+  placeLng: number | null;
+  meetAt: Date;
+  notes: string;
+};
+
+export async function listGuildPartyups(guildId: string) {
+  let response;
+  try {
+    response = await withRequestTimeout(supabase.rpc('list_guild_partyups', { p_guild_id: guildId }), 'Loading PartyUps');
+  } catch (error) {
+    return { data: [] as GuildPartyup[], error: error instanceof Error ? error : new Error('Unable to load PartyUps.') };
+  }
+  const { data, error } = response;
+  return { data: (data ?? []) as GuildPartyup[], error };
+}
+
+export async function createGuildPartyup(input: GuildPartyupInput) {
+  return withRequestTimeout(
+    supabase.rpc('create_guild_partyup', {
+      p_guild_id: input.guildId,
+      p_title: input.title.trim(),
+      p_place_label: input.placeLabel.trim(),
+      p_meet_at: input.meetAt.toISOString(),
+      p_place_municipality: input.placeMunicipality,
+      p_place_lat: input.placeLat,
+      p_place_lng: input.placeLng,
+      p_notes: input.notes.trim() || null,
+    }),
+    'Posting PartyUp'
+  );
+}
+
+export async function joinGuildPartyup(partyupId: string) {
+  return withRequestTimeout(supabase.rpc('join_guild_partyup', { p_partyup_id: partyupId }), 'Joining PartyUp');
+}
+
+export async function leaveGuildPartyup(partyupId: string) {
+  return withRequestTimeout(supabase.rpc('leave_guild_partyup', { p_partyup_id: partyupId }), 'Leaving PartyUp');
+}
+
+export async function cancelGuildPartyup(partyupId: string) {
+  return withRequestTimeout(supabase.rpc('cancel_guild_partyup', { p_partyup_id: partyupId }), 'Cancelling PartyUp');
+}

@@ -1,10 +1,16 @@
+import { TOUR_ACTIVITIES } from '@/lib/tours';
 import { Plus, Trash2 } from 'lucide-react-native';
-import { Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 
 export type ItineraryDayInput = {
   dayNumber: number;
-  description: string;
+  activities: string[];
 };
+
+// Saved as the day's description, e.g. "Travel · Hiking · Food stop".
+export function describeItineraryDay(day: ItineraryDayInput) {
+  return day.activities.join(' · ');
+}
 
 type Props = {
   days: ItineraryDayInput[];
@@ -15,16 +21,27 @@ type Props = {
 export function ItineraryDayBuilder({ days, onChange, isDark }: Props) {
   const border = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
   const inputBg = isDark ? 'bg-[#111B2E]' : 'bg-white';
-  const inputText = isDark ? 'text-white' : 'text-[#17233F]';
+  const chipText = isDark ? 'text-[#E2E8F0]' : 'text-[#24314A]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
-  const placeholderColor = isDark ? '#64748B' : '#9AA3B1';
 
   function addDay() {
-    onChange([...days, { dayNumber: days.length + 1, description: '' }]);
+    onChange([...days, { dayNumber: days.length + 1, activities: [] }]);
   }
 
-  function updateDescription(index: number, description: string) {
-    onChange(days.map((day, i) => (i === index ? { ...day, description } : day)));
+  function toggleActivity(index: number, activity: string) {
+    onChange(
+      days.map((day, i) =>
+        i === index
+          ? {
+              ...day,
+              activities: day.activities.includes(activity)
+                ? day.activities.filter((a) => a !== activity)
+                : // Keep the TOUR_ACTIVITIES order so days read consistently.
+                  TOUR_ACTIVITIES.filter((a) => a === activity || day.activities.includes(a)),
+            }
+          : day
+      )
+    );
   }
 
   function removeDay(index: number) {
@@ -39,20 +56,25 @@ export function ItineraryDayBuilder({ days, onChange, isDark }: Props) {
     <View className="gap-3">
       {days.map((day, index) => (
         <View key={index} className={`rounded-2xl border p-3.5 ${border} ${inputBg}`}>
-          <View className="mb-2 flex-row items-center justify-between">
+          <View className="mb-2.5 flex-row items-center justify-between">
             <Text className={`text-[13px] font-bold ${secondary}`}>DAY {day.dayNumber}</Text>
             <TouchableOpacity onPress={() => removeDay(index)} accessibilityLabel={`Remove day ${day.dayNumber}`}>
               <Trash2 size={16} color="#B91C1C" />
             </TouchableOpacity>
           </View>
-          <TextInput
-            className={`min-h-[64px] text-base ${inputText}`}
-            placeholder="Describe activities for this day..."
-            placeholderTextColor={placeholderColor}
-            multiline
-            value={day.description}
-            onChangeText={(value) => updateDescription(index, value)}
-          />
+          <View className="flex-row flex-wrap gap-2">
+            {TOUR_ACTIVITIES.map((activity) => {
+              const selected = day.activities.includes(activity);
+              return (
+                <TouchableOpacity
+                  key={activity}
+                  onPress={() => toggleActivity(index, activity)}
+                  className={`rounded-full border px-3 py-1.5 ${selected ? 'border-[#2A55D4] bg-[#2A55D4]' : border}`}>
+                  <Text className={`text-[13px] font-semibold ${selected ? 'text-white' : chipText}`}>{activity}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
       ))}
 

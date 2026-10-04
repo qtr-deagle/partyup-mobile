@@ -54,8 +54,19 @@ type AiResult = {
   ai_underage_flag: boolean;
   ai_address_flag: AddressFlag;
   ai_detected_municipality: string | null;
+  // The ID photo is an LTO driver's license, whatever type the user picked.
+  // Lets them reuse it as their driver's license for carpools.
+  ai_detected_license: boolean;
   ai_error: string | null;
 };
+
+// LTO driver's licenses print "LAND TRANSPORTATION OFFICE" and "DRIVER'S
+// LICENSE"; compare with spaces and punctuation stripped so OCR quirks
+// ("DRIVER S LICENSE", "DRIVERS LICENSE") still match.
+function looksLikeDriverLicense(lines: string[]) {
+  const text = lines.join(' ').toUpperCase().replace(/[^A-Z]/g, '');
+  return text.includes('LANDTRANSPORTATIONOFFICE') || text.includes('DRIVERSLICENSE') || text.includes('DRIVERLICENSE');
+}
 
 type AddressInput = {
   // Passports carry no address, so the OCR call is skipped for them.
@@ -82,6 +93,7 @@ async function runAiChecks(
   let ageHigh: number | null = null;
   let addressFlag: AddressFlag = 'not_applicable';
   let detectedMunicipality: string | null = null;
+  let detectedLicense = false;
   const errors: string[] = [];
 
   try {
@@ -115,6 +127,7 @@ async function runAiChecks(
           .filter((detection: { Type?: string }) => detection.Type === 'LINE')
           .map((detection: { DetectedText?: string }) => detection.DetectedText ?? '')
       );
+      detectedLicense = looksLikeDriverLicense(lines);
       const check = checkBulacanAddress(lines, address.declaredCity);
       addressFlag = check.flag;
       detectedMunicipality = check.municipality;
@@ -133,6 +146,7 @@ async function runAiChecks(
     ai_underage_flag: ageHigh !== null && ageHigh < 18,
     ai_address_flag: addressFlag,
     ai_detected_municipality: detectedMunicipality,
+    ai_detected_license: detectedLicense,
     ai_error: errors.length > 0 ? errors.join('; ') : null,
   };
 }
@@ -285,6 +299,7 @@ async function handleRequest(req: Request): Promise<Response> {
       ai_underage_flag: false,
       ai_address_flag: 'error',
       ai_detected_municipality: null,
+      ai_detected_license: false,
       ai_error: message,
     });
     return jsonResponse({ ai_flag: 'error', error: message }, 200);

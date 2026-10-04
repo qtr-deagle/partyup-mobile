@@ -17,10 +17,35 @@ import { listTrustedContacts, type TrustedContact } from '@/lib/trustedCircle';
 import { getMyVerification, type IdVerification } from '@/lib/verification';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { AlertCircle, Camera, Car, CheckCircle2, Clock, Cog, LifeBuoy, LogOut, Palette, Pencil, Shield, ShieldAlert, ShieldCheck, Star, Trophy, Users } from 'lucide-react-native';
-import { useCallback, useState } from 'react';
+import {
+  Cake,
+  Camera,
+  Car,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Cog,
+  Compass,
+  Flag,
+  LifeBuoy,
+  LogOut,
+  MapPin,
+  MapPinned,
+  Palette,
+  Pencil,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Siren,
+  Star,
+  Trophy,
+  Users,
+} from 'lucide-react-native';
+import { useCallback, useState, type ComponentType } from 'react';
 import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
+
+type IconType = ComponentType<{ size?: number; color?: string; fill?: string }>;
 
 function formatRelativeDate(iso: string) {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -43,7 +68,7 @@ function StarRow({ rating, size }: { rating: number; size: number }) {
   const isDark = useColorScheme() === 'dark';
   const rounded = Math.round(rating);
   return (
-    <View className="flex-row items-center gap-1">
+    <View className="flex-row items-center gap-0.5">
       {Array.from({ length: 5 }).map((_, index) => (
         <Star key={index} size={size} color={index < rounded ? '#F4B400' : isDark ? '#334155' : '#CBD5E1'} fill={index < rounded ? '#F4B400' : 'transparent'} />
       ))}
@@ -51,14 +76,95 @@ function StarRow({ rating, size }: { rating: number; size: number }) {
   );
 }
 
-function SectionCard({ children, index = 0 }: { children: React.ReactNode; index?: number }) {
+function SectionCard({ children, index = 0, className = '' }: { children: React.ReactNode; index?: number; className?: string }) {
   const isDark = useColorScheme() === 'dark';
   return (
     <Animated.View
       entering={enterFromBelow(index)}
-      className={`rounded-[22px] border p-4 shadow-sm ${isDark ? 'border-[#22324B] bg-[#111B2E] shadow-black/20' : 'border-[#E9EDF5] bg-white shadow-black/5'}`}>
+      className={`rounded-[28px] border p-5 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E9EDF5] bg-white'} ${className}`}
+      style={{ shadowColor: '#0F1B3D', shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: isDark ? 0 : 2 }}>
       {children}
     </Animated.View>
+  );
+}
+
+function SectionTitle({ title, action, onAction }: { title: string; action?: string; onAction?: () => void }) {
+  const isDark = useColorScheme() === 'dark';
+  return (
+    <View className="flex-row items-center justify-between">
+      <Text className={`text-[17px] font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-[#182847]'}`}>{title}</Text>
+      {action ? (
+        <TouchableOpacity onPress={onAction} hitSlop={8} className="flex-row items-center gap-0.5">
+          <Text className="text-[13px] font-bold" style={{ color: isDark ? '#8FA8FF' : '#2647B8' }}>{action}</Text>
+          <ChevronRight size={14} color={isDark ? '#8FA8FF' : '#2647B8'} />
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+}
+
+function MetaChip({ icon: Icon, label }: { icon: IconType; label: string }) {
+  const isDark = useColorScheme() === 'dark';
+  return (
+    <View className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5" style={{ backgroundColor: isDark ? '#1A2539' : '#F2F4F9' }}>
+      <Icon size={13} color={isDark ? '#94A3B8' : '#67748D'} />
+      <Text className={`text-[13px] font-semibold ${isDark ? 'text-[#CBD5E1]' : 'text-[#4A5875]'}`}>{label}</Text>
+    </View>
+  );
+}
+
+function StatTile({ icon: Icon, value, label, tint }: { icon: IconType; value: number; label: string; tint: string }) {
+  const isDark = useColorScheme() === 'dark';
+  return (
+    <View className="flex-1 rounded-[20px] p-3.5" style={{ backgroundColor: isDark ? '#18253C' : '#F7F8FC' }}>
+      <View className="h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: `${tint}1F` }}>
+        <Icon size={18} color={tint} />
+      </View>
+      <Text className={`mt-3 text-[24px] font-black tracking-tight ${isDark ? 'text-white' : 'text-[#182847]'}`}>{value}</Text>
+      <Text className={`text-[12.5px] font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-[#67748D]'}`}>{label}</Text>
+    </View>
+  );
+}
+
+function MenuRow({
+  icon: Icon,
+  tint,
+  label,
+  subtitle,
+  badge,
+  onPress,
+  last,
+  accessibilityLabel,
+}: {
+  icon: IconType;
+  tint: string;
+  label: string;
+  subtitle?: string;
+  badge?: number;
+  onPress: () => void;
+  last?: boolean;
+  accessibilityLabel?: string;
+}) {
+  const isDark = useColorScheme() === 'dark';
+  return (
+    <View>
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7} accessibilityLabel={accessibilityLabel ?? label} className="flex-row items-center gap-3.5 py-3.5">
+        <View className="h-10 w-10 items-center justify-center rounded-2xl" style={{ backgroundColor: `${tint}1F` }}>
+          <Icon size={19} color={tint} />
+        </View>
+        <View className="flex-1">
+          <Text className={`text-[15px] font-semibold ${isDark ? 'text-white' : 'text-[#182847]'}`}>{label}</Text>
+          {subtitle ? <Text className={`mt-0.5 text-[12.5px] ${isDark ? 'text-[#94A3B8]' : 'text-[#67748D]'}`}>{subtitle}</Text> : null}
+        </View>
+        {badge ? (
+          <View className="min-w-[22px] items-center rounded-full bg-[#DC2626] px-1.5 py-0.5">
+            <Text className="text-[11px] font-black text-white">{badge}</Text>
+          </View>
+        ) : null}
+        <ChevronRight size={18} color={isDark ? '#475569' : '#A3AEC2'} />
+      </TouchableOpacity>
+      {last ? null : <View className="ml-[54px] h-px" style={{ backgroundColor: isDark ? '#1E2A40' : '#EEF1F7' }} />}
+    </View>
   );
 }
 
@@ -72,12 +178,11 @@ export default function ProfileScreen() {
   const [loadout, setLoadout] = useState<Loadout>({ banner: null, frame: null });
   const [unreadTickets, setUnreadTickets] = useState(0);
   const isDark = useColorScheme() === 'dark';
-  const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F7F8FC]';
-  const headerBackground = isDark ? 'border-[#1E293B] bg-[#0F172A]' : 'border-[#E5EAF2] bg-white';
+  const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F4F6FB]';
   const { titleColor } = getTheme(isDark);
   const textPrimary = isDark ? 'text-white' : 'text-[#182847]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
-  const softFill = isDark ? 'bg-[#18253C]' : 'bg-[#F2F4F8]';
+  const cardBorder = isDark ? 'border-[#111B2E]' : 'border-white';
   const profileAge = profile?.date_of_birth ? Math.max(0, new Date().getFullYear() - new Date(profile.date_of_birth).getFullYear() - (new Date() < new Date(new Date().getFullYear(), new Date(profile.date_of_birth).getMonth(), new Date(profile.date_of_birth).getDate()) ? 1 : 0)) : null;
   const confirmedTrustedContacts = trustedContacts.filter((contact) => contact.status === 'accepted');
   const userId = session?.user.id;
@@ -154,38 +259,53 @@ export default function ProfileScreen() {
     }, [loadProfile])
   );
 
+  const verificationStatus =
+    verification?.status === 'pending' || verification?.status === 'resubmitted'
+      ? 'pending'
+      : profile?.verification_status ?? 'unverified';
+  const verificationStyle = {
+    approved: { icon: CheckCircle2, tint: '#00A56A', label: 'Verified' },
+    pending: { icon: Clock, tint: '#D88700', label: 'Pending review' },
+    rejected: { icon: ShieldAlert, tint: '#DC2626', label: 'Rejected' },
+    unverified: { icon: Shield, tint: '#6B7590', label: 'Not verified' },
+  }[verificationStatus];
+  const VerificationIcon = verificationStyle.icon;
+
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl}>
-      <View className={`border-b px-4 py-4 ${headerBackground}`}>
-        <View className="flex-row items-center justify-between">
-          <TouchableOpacity onPress={() => router.push('/modal')} className="h-10 w-10 items-center justify-center rounded-full">
-            <Cog size={22} color={isDark ? '#E2E8F0' : '#2647B8'} />
-          </TouchableOpacity>
-          <Text className={`${typography.pageTitle} ${titleColor}`}>Profile</Text>
-          <View className="h-10 w-10" />
-        </View>
+      <View className="flex-row items-center justify-between px-5 pb-2 pt-4">
+        <Text className={`${typography.pageTitle} ${titleColor}`}>Profile</Text>
+        <TouchableOpacity
+          onPress={() => router.push('/modal')}
+          accessibilityLabel="Settings"
+          className="h-10 w-10 items-center justify-center rounded-full"
+          style={{ backgroundColor: isDark ? '#18253C' : '#FFFFFF' }}>
+          <Cog size={20} color={isDark ? '#E2E8F0' : '#2647B8'} />
+        </TouchableOpacity>
       </View>
 
-      <View className="px-4 pt-4 gap-5">
-        <SectionCard index={0}>
-          <ProfileBanner bannerKey={loadout.banner} height={88} className="-mx-4 -mt-4 rounded-t-[22px] items-end p-3">
+      <View className="gap-4 px-4 pt-2">
+        {/* Hero */}
+        <SectionCard index={0} className="p-0">
+          <ProfileBanner bannerKey={loadout.banner} height={120} className="items-end rounded-t-[28px] p-3">
             <TouchableOpacity
               onPress={() => router.push('/rewards')}
               activeOpacity={0.8}
-              className="flex-row items-center gap-1 rounded-full bg-black/25 px-2.5 py-1"
+              className="flex-row items-center gap-1.5 rounded-full bg-black/30 px-3 py-1.5"
               accessibilityLabel="Change your profile banner and frame">
               <Palette size={13} color="#FFFFFF" />
-              <Text className="text-xs font-bold text-white">Style</Text>
+              <Text className="text-xs font-bold text-white">Customize</Text>
             </TouchableOpacity>
           </ProfileBanner>
-          <View className="-mt-10 items-center">
-            <TouchableOpacity onPress={handleChangeAvatar} disabled={avatarUploading} activeOpacity={0.8}>
-              <AvatarFrame frameKey={loadout.frame} size={80}>
+
+          <View className="-mt-12 items-center px-5 pb-5">
+            <TouchableOpacity onPress={handleChangeAvatar} disabled={avatarUploading} activeOpacity={0.8} accessibilityLabel="Change profile photo">
+              <AvatarFrame frameKey={loadout.frame} size={96}>
                 {profile?.avatar_url ? (
-                  <Image source={{ uri: profile.avatar_url }} className={`h-20 w-20 rounded-full border-4 ${isDark ? 'border-[#111B2E]' : 'border-white'}`} />
+                  <Image source={{ uri: profile.avatar_url }} className={`h-24 w-24 rounded-full border-4 ${cardBorder}`} />
                 ) : (
-                  <View className={`h-20 w-20 items-center justify-center rounded-full border-4 ${isDark ? 'border-[#111B2E] bg-[#18253C]' : 'border-white bg-[#D5E4EE]'}`}>
-                    <Text className={`text-[32px] font-bold ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{profile?.display_name?.trim().charAt(0).toUpperCase() ?? ''}</Text>
+                  <View className={`h-24 w-24 items-center justify-center rounded-full border-4 ${cardBorder} ${isDark ? 'bg-[#18253C]' : 'bg-[#E3EBFF]'}`}>
+                    <Text className={`text-[38px] font-black ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{profile?.display_name?.trim().charAt(0).toUpperCase() ?? ''}</Text>
                   </View>
                 )}
               </AvatarFrame>
@@ -194,148 +314,136 @@ export default function ProfileScreen() {
                   <ActivityIndicator color="#FFFFFF" />
                 </View>
               ) : null}
-              <View className={`absolute -bottom-0.5 -right-0.5 h-7 w-7 items-center justify-center rounded-full border-2 bg-[#2747C7] ${isDark ? 'border-[#111B2E]' : 'border-white'}`}>
+              <View className={`absolute bottom-0 right-0 h-8 w-8 items-center justify-center rounded-full border-[3px] bg-[#2747C7] ${cardBorder}`}>
                 <Camera size={14} color="#FFFFFF" />
               </View>
             </TouchableOpacity>
 
-            <View className="mt-4 max-w-full flex-row items-center justify-center gap-1.5 px-2">
-              <Text className={`shrink text-center text-headline-20 font-bold ${textPrimary}`} numberOfLines={2}>{profile?.display_name ?? ''}</Text>
-              {profile?.verification_status === 'approved' ? <ShieldCheck size={18} color="#00A56A" /> : null}
+            <View className="mt-3 max-w-full flex-row items-center justify-center gap-1.5 px-2">
+              <Text className={`shrink text-center text-[24px] font-black tracking-tight ${textPrimary}`} numberOfLines={2}>{profile?.display_name ?? ''}</Text>
+              {profile?.verification_status === 'approved' ? <ShieldCheck size={20} color="#00A56A" /> : null}
             </View>
 
-            <TouchableOpacity onPress={() => router.push('/guild')} activeOpacity={0.8} className="mt-2" accessibilityLabel="Open your guild rank">
+            <TouchableOpacity onPress={() => router.push('/guild')} activeOpacity={0.8} className="mt-1.5" accessibilityLabel="Open your guild rank">
               <UserRankTag userId={profile?.id} isDark={isDark} variant="title" role={profile?.role} />
             </TouchableOpacity>
 
-            {profileAge ? (
-              <View className="mt-2 flex-row items-center gap-2">
-                <View className={`h-px w-4 ${isDark ? 'bg-[#B08D57]/40' : 'bg-[#A9793F]/30'}`} />
-                <Text className={`text-[11px] font-semibold uppercase tracking-[3px] ${isDark ? 'text-[#D9B77E]' : 'text-[#A9793F]'}`}>{profileAge} Years Old</Text>
-                <View className={`h-px w-4 ${isDark ? 'bg-[#B08D57]/40' : 'bg-[#A9793F]/30'}`} />
+            <View className="mt-3 flex-row flex-wrap justify-center gap-2">
+              {profileAge ? <MetaChip icon={Cake} label={`${profileAge} yrs`} /> : null}
+              {location ? <MetaChip icon={MapPin} label={location} /> : null}
+              <View className="flex-row items-center gap-1.5 rounded-full px-3 py-1.5" style={{ backgroundColor: isDark ? '#2B2410' : '#FFF6DB' }}>
+                <Star size={13} color="#F4B400" fill="#F4B400" />
+                <Text className="text-[13px] font-bold" style={{ color: isDark ? '#FCD34D' : '#9A6B00' }}>
+                  {stats?.rating_count && stats.avg_rating != null
+                    ? `${stats.avg_rating.toFixed(1)} · ${stats.rating_count} ${stats.rating_count === 1 ? 'review' : 'reviews'}`
+                    : 'No ratings yet'}
+                </Text>
               </View>
-            ) : null}
-
-            {location ? <Text className={`mt-2 text-[15px] ${textSecondary}`}>{location}</Text> : null}
-
-            <View className="mt-3">
-              <StarRow rating={stats?.avg_rating ?? 0} size={16} />
             </View>
 
-            <Text className={`mt-1 text-[14px] ${textSecondary}`}>
-              {stats?.rating_count && stats.avg_rating != null
-                ? `${stats.avg_rating.toFixed(1)} rating (${stats.rating_count} ${stats.rating_count === 1 ? 'review' : 'reviews'})`
-                : 'No ratings yet'}
-            </Text>
-
             {profile?.bio?.trim() ? (
-              <Text className={`mt-4 self-stretch text-[15px] leading-6 ${textPrimary}`}>{profile.bio.trim()}</Text>
+              <Text className={`mt-4 text-center text-[15px] leading-6 ${isDark ? 'text-[#CBD5E1]' : 'text-[#3B4763]'}`}>{profile.bio.trim()}</Text>
             ) : (
               <Text className={`mt-4 text-[14px] italic ${textSecondary}`}>No bio yet.</Text>
             )}
 
-            <TouchableOpacity
-              onPress={() => router.push('/edit-profile')}
-              className={`mt-4 flex-row items-center justify-center gap-2 self-stretch rounded-2xl border py-3 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#2647B8] bg-white'}`}>
-              <Pencil size={16} color={isDark ? '#E2E8F0' : '#2647B8'} />
-              <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Edit Profile</Text>
-            </TouchableOpacity>
-
-            <View className={`mt-5 w-full border-t ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'} pt-5`}>
-              <Text className={`text-[16px] font-bold ${textPrimary}`}>Travel Experience</Text>
-
-              <View className="mt-3 gap-3">
-                {[
-                  ['Trips Completed', String(stats?.trips_completed ?? 0)],
-                  ['Places Visited', String(stats?.places_visited ?? 0)],
-                  ['Carpools', String(stats?.carpools_completed ?? 0)],
-                  ['Tours', String(stats?.tours_completed ?? 0)],
-                ].map(([label, value]) => (
-                  <View key={label} className="flex-row items-center justify-between">
-                    <Text className={`text-[15px] ${textSecondary}`}>{label}</Text>
-                    <Text className={`text-[15px] font-bold ${textPrimary}`}>{value}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View className={`mt-5 w-full border-t ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'} pt-5`}>
-              <Text className={`text-[16px] font-bold ${textPrimary}`}>Interests</Text>
-              <View className="mt-4 flex-row flex-wrap gap-2.5">
-                {profile?.interests?.length ? profile.interests.map((interest) => (
-                  <View key={interest} className={`rounded-full px-4 py-2 ${softFill}`}>
-                    <Text className={`text-[15px] ${textSecondary}`}>{interest}</Text>
-                  </View>
-                )) : <Text className={`text-[15px] ${textSecondary}`}>No interests selected yet.</Text>}
-              </View>
+            <View className="mt-5 flex-row gap-2.5 self-stretch">
+              <TouchableOpacity
+                onPress={() => router.push('/edit-profile')}
+                activeOpacity={0.85}
+                className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl bg-[#2747C7] py-3.5">
+                <Pencil size={16} color="#FFFFFF" />
+                <Text className="text-[15px] font-bold text-white">Edit Profile</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push('/friends')}
+                activeOpacity={0.85}
+                className="flex-1 flex-row items-center justify-center gap-2 rounded-2xl py-3.5"
+                style={{ backgroundColor: isDark ? '#18253C' : '#EEF2FF' }}>
+                <Users size={16} color={isDark ? '#E2E8F0' : '#2647B8'} />
+                <Text className={`text-[15px] font-bold ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Friends</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </SectionCard>
 
-        {(() => {
-          const status =
-            verification?.status === 'pending' || verification?.status === 'resubmitted'
-              ? 'pending'
-              : profile?.verification_status ?? 'unverified';
-          const styles = {
-            approved: { border: isDark ? 'border-[#1F3B3D] bg-[#0F1F24]' : 'border-[#BEEFCB] bg-[#EFFCF3]', icon: <CheckCircle2 size={24} color="#00A56A" />, label: 'Verified', labelColor: '#00A56A' },
-            pending: { border: isDark ? 'border-[#3B341F] bg-[#241F0F]' : 'border-[#F3E3B5] bg-[#FFF8E6]', icon: <Clock size={24} color="#D88700" />, label: 'Pending Review', labelColor: '#D88700' },
-            rejected: { border: isDark ? 'border-[#3B1F1F] bg-[#240F0F]' : 'border-[#F3C7C7] bg-[#FFF0F0]', icon: <ShieldAlert size={24} color="#DC2626" />, label: 'Rejected', labelColor: '#DC2626' },
-            unverified: { border: isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E9EDF5] bg-white', icon: <Shield size={24} color="#6B7590" />, label: 'Not Verified', labelColor: '#6B7590' },
-          }[status];
+        {/* Travel stats */}
+        <SectionCard index={1}>
+          <SectionTitle title="Travel Experience" />
+          <View className="mt-4 gap-2.5">
+            <View className="flex-row gap-2.5">
+              <StatTile icon={Flag} value={stats?.trips_completed ?? 0} label="Trips completed" tint="#2747C7" />
+              <StatTile icon={MapPinned} value={stats?.places_visited ?? 0} label="Places visited" tint="#00A56A" />
+            </View>
+            <View className="flex-row gap-2.5">
+              <StatTile icon={Car} value={stats?.carpools_completed ?? 0} label="Carpools" tint="#D88700" />
+              <StatTile icon={Compass} value={stats?.tours_completed ?? 0} label="Tours" tint="#8B5CF6" />
+            </View>
+          </View>
+        </SectionCard>
 
-          return (
-            <Animated.View entering={enterFromBelow(1)} className={`rounded-[22px] border p-4 ${styles.border}`}>
-              <View className="flex-row items-start gap-3">
-                {styles.icon}
-                <View className="flex-1">
-                  <Text className={`text-[16px] font-bold ${textPrimary}`}>ID Verification</Text>
-                  <Text className="text-[15px]" style={{ color: styles.labelColor }}>{styles.label}</Text>
-
-                  {status === 'approved' && (
-                    <View className={`mt-3 rounded-xl px-4 py-4 ${isDark ? 'bg-[#153224]' : 'bg-[#D9F8E4]'}`}>
-                      <Text className={`text-[15px] leading-6 ${isDark ? 'text-[#A7F3D0]' : 'text-[#0F7B4B]'}`}>
-                        ✓ Your identity is verified. You can now create and join trips!
-                      </Text>
-                    </View>
-                  )}
-
-                  {status === 'pending' && (
-                    <Text className={`mt-2 text-[15px] leading-5 ${textSecondary}`}>Your documents are under review. This usually takes 1-2 hours.</Text>
-                  )}
-
-                  {status === 'rejected' && verification?.reviewer_notes && (
-                    <Text className="mt-2 text-[15px] leading-5 text-[#DC2626]">Reason: {verification.reviewer_notes}</Text>
-                  )}
-
-                  {(status === 'unverified' || status === 'rejected') && (
-                    <TouchableOpacity onPress={() => router.push('/verify-id')} className="mt-3 self-start rounded-full bg-[#2747C7] px-5 py-3">
-                      <Text className="text-[15px] font-bold text-white">{status === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}</Text>
-                    </TouchableOpacity>
-                  )}
+        {/* Verification */}
+        <SectionCard index={2}>
+          <View className="flex-row items-center gap-3.5">
+            <View className="h-12 w-12 items-center justify-center rounded-2xl" style={{ backgroundColor: `${verificationStyle.tint}1F` }}>
+              <VerificationIcon size={22} color={verificationStyle.tint} />
+            </View>
+            <View className="flex-1">
+              <Text className={`text-[16px] font-extrabold ${textPrimary}`}>ID Verification</Text>
+              <View className="mt-1 flex-row">
+                <View className="rounded-full px-2.5 py-0.5" style={{ backgroundColor: `${verificationStyle.tint}1F` }}>
+                  <Text className="text-[12px] font-bold" style={{ color: verificationStyle.tint }}>{verificationStyle.label}</Text>
                 </View>
               </View>
-            </Animated.View>
-          );
-        })()}
-
-        <SectionCard index={3}>
-          <View className="flex-row items-center gap-2">
-            <Users size={18} color="#2647B8" />
-            <Text className={`text-[16px] font-bold ${textPrimary}`}>Trusted Circle</Text>
+            </View>
           </View>
 
-          <TouchableOpacity onPress={() => router.push('/friends')} className={`mt-4 flex-row items-center justify-center gap-2 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DDE8] bg-white'}`}>
-            <Users size={18} color="#2647B8" />
-            <Text className={`text-[15px] font-medium ${textPrimary}`}>View Friends</Text>
-          </TouchableOpacity>
+          {verificationStatus === 'approved' ? (
+            <Text className={`mt-3 text-[14px] leading-5 ${textSecondary}`}>Your identity is verified. You can create and join trips.</Text>
+          ) : null}
+          {verificationStatus === 'pending' ? (
+            <Text className={`mt-3 text-[14px] leading-5 ${textSecondary}`}>Your documents are under review. This usually takes 1-2 hours.</Text>
+          ) : null}
+          {verificationStatus === 'rejected' && verification?.reviewer_notes ? (
+            <Text className="mt-3 text-[14px] leading-5 text-[#DC2626]">Reason: {verification.reviewer_notes}</Text>
+          ) : null}
+          {verificationStatus === 'unverified' || verificationStatus === 'rejected' ? (
+            <TouchableOpacity onPress={() => router.push('/verify-id')} activeOpacity={0.85} className="mt-4 items-center rounded-2xl bg-[#2747C7] py-3.5">
+              <Text className="text-[15px] font-bold text-white">{verificationStatus === 'rejected' ? 'Resubmit Documents' : 'Verify Now'}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </SectionCard>
 
-          <View className="mt-4 gap-3">
+        {/* Interests */}
+        <SectionCard index={3}>
+          <SectionTitle title="Interests" action="Edit" onAction={() => router.push('/edit-profile')} />
+          <View className="mt-4 flex-row flex-wrap gap-2">
+            {profile?.interests?.length ? (
+              profile.interests.map((interest) => (
+                <View key={interest} className="rounded-full border px-3.5 py-1.5" style={{ borderColor: isDark ? '#2C3E5F' : '#DCE4FB', backgroundColor: isDark ? '#18253C' : '#F3F6FF' }}>
+                  <Text className="text-[14px] font-semibold" style={{ color: isDark ? '#C7D2FE' : '#2647B8' }}>{interest}</Text>
+                </View>
+              ))
+            ) : (
+              <Text className={`text-[14px] ${textSecondary}`}>No interests selected yet.</Text>
+            )}
+          </View>
+        </SectionCard>
+
+        {/* Trusted circle + SOS */}
+        <SectionCard index={4}>
+          <SectionTitle title="Trusted Circle" action="Manage" onAction={() => router.push('/trusted-circle')} />
+          <View className="mt-3">
             {confirmedTrustedContacts.length ? (
-              confirmedTrustedContacts.slice(0, 3).map((contact) => (
-                <View key={contact.id} className={`rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F3F4F7]'}`}>
-                  <Text className={`text-[15px] ${textPrimary}`}>{contact.display_name}</Text>
-                  <Text className={`mt-1 text-[15px] ${textSecondary}`}>{contact.relationship}</Text>
+              confirmedTrustedContacts.slice(0, 3).map((contact, index) => (
+                <View key={contact.id} className={`flex-row items-center gap-3 py-2.5 ${index > 0 ? `border-t ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'}` : ''}`}>
+                  <View className={`h-10 w-10 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#E3EBFF]'}`}>
+                    <Text className={`text-[15px] font-black ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{contact.display_name?.trim().charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className={`text-[15px] font-semibold ${textPrimary}`}>{contact.display_name}</Text>
+                    <Text className={`text-[13px] ${textSecondary}`}>{contact.relationship}</Text>
+                  </View>
                 </View>
               ))
             ) : (
@@ -343,26 +451,38 @@ export default function ProfileScreen() {
             )}
           </View>
 
-          <TouchableOpacity onPress={() => router.push('/trusted-circle')} className={`mt-4 rounded-2xl border py-3.5 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#D7DDE8] bg-white'}`}>
-            <Text className={`text-center text-[15px] ${textPrimary}`}>{confirmedTrustedContacts.length ? 'Manage Emergency Contacts' : 'Add Emergency Contact'}</Text>
-          </TouchableOpacity>
+          <View className="mt-4 rounded-[20px] p-4" style={{ backgroundColor: isDark ? '#2A1215' : '#FFF1F1' }}>
+            <View className="flex-row items-center gap-2">
+              <Siren size={18} color="#E32727" />
+              <Text className="text-[15px] font-extrabold" style={{ color: isDark ? '#FCA5A5' : '#B91C1C' }}>Emergency SOS</Text>
+            </View>
+            <Text className="mt-1.5 text-[13.5px] leading-5" style={{ color: isDark ? '#F5C2C2' : '#8F2D2D' }}>
+              When you activate SOS, your location is shared with your trusted circle and our safety team.
+            </Text>
+            <TouchableOpacity onPress={() => router.push('/trusted-circle')} activeOpacity={0.85} className="mt-3 items-center rounded-2xl bg-[#E32727] py-3">
+              <Text className="text-[14px] font-bold text-white">{confirmedTrustedContacts.length ? 'Manage Emergency Contacts' : 'Add Emergency Contact'}</Text>
+            </TouchableOpacity>
+          </View>
         </SectionCard>
 
-        <SectionCard index={4}>
-            <Text className={`text-[16px] font-bold ${textPrimary}`}>Recent Reviews</Text>
-
+        {/* Reviews */}
+        <SectionCard index={5}>
+          <SectionTitle title="Recent Reviews" />
           <View className="mt-3 gap-3">
             {reviews.length ? (
-              reviews.map((review, index) => (
-                <View key={review.id} className={`${index > 0 ? `border-t pt-4 ${isDark ? 'border-[#22324B]' : 'border-[#E8ECF3]'}` : ''}`}>
-                  <View className="flex-row items-center justify-between">
-                    <Text className={`text-[15px] ${textPrimary}`}>{review.author_name}</Text>
-                    <Text className={`text-[15px] ${textSecondary}`}>{formatRelativeDate(review.created_at)}</Text>
+              reviews.map((review) => (
+                <View key={review.id} className="rounded-[18px] p-3.5" style={{ backgroundColor: isDark ? '#18253C' : '#F7F8FC' }}>
+                  <View className="flex-row items-center gap-2.5">
+                    <View className={`h-8 w-8 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#E3EBFF]'}`}>
+                      <Text className={`text-[13px] font-black ${isDark ? 'text-[#94A3B8]' : 'text-[#2647B8]'}`}>{review.author_name?.trim().charAt(0).toUpperCase()}</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className={`text-[14px] font-semibold ${textPrimary}`} numberOfLines={1}>{review.author_name}</Text>
+                      <StarRow rating={review.rating} size={12} />
+                    </View>
+                    <Text className={`text-[12px] ${textSecondary}`}>{formatRelativeDate(review.created_at)}</Text>
                   </View>
-                  <View className="mt-2">
-                    <StarRow rating={review.rating} size={15} />
-                  </View>
-                  {review.comment ? <Text className={`mt-2 text-[15px] leading-6 ${textSecondary}`}>{review.comment}</Text> : null}
+                  {review.comment ? <Text className={`mt-2.5 text-[14px] leading-5 ${isDark ? 'text-[#CBD5E1]' : 'text-[#3B4763]'}`}>{review.comment}</Text> : null}
                 </View>
               ))
             ) : (
@@ -371,48 +491,21 @@ export default function ProfileScreen() {
           </View>
         </SectionCard>
 
-        <SectionCard index={5}>
-          <View className="flex-row items-center gap-2">
-            <AlertCircle size={18} color="#E32727" />
-            <Text className={`text-[16px] font-bold ${textPrimary}`}>Emergency Settings</Text>
-          </View>
-          <Text className={`mt-4 text-[15px] leading-6 ${textSecondary}`}>
-            When you activate SOS, your location will be shared with your trusted circle and our safety team.
-          </Text>
-          <TouchableOpacity onPress={() => router.push('/trusted-circle')} className="mt-4 rounded-2xl bg-[#E32727] py-4">
-            <Text className="text-center text-[15px] font-bold text-white">Manage Emergency Contacts</Text>
-          </TouchableOpacity>
+        {/* Menu */}
+        <SectionCard index={6} className="py-1">
+          <MenuRow icon={Trophy} tint="#D88700" label="My Guild & Rewards" subtitle="Rank, missions and cosmetics" onPress={() => router.push('/guild')} />
+          <MenuRow icon={Car} tint="#2747C7" label="My Vehicles" subtitle="Manage cars for carpooling" onPress={() => router.push('/vehicles')} />
+          <MenuRow
+            icon={LifeBuoy}
+            tint="#00A56A"
+            label="Help & Reports"
+            subtitle="Support tickets and safety reports"
+            badge={unreadTickets}
+            accessibilityLabel={unreadTickets > 0 ? `Help and Reports, ${unreadTickets} new replies` : 'Help and Reports'}
+            onPress={() => router.push('/support')}
+          />
+          <MenuRow icon={LogOut} tint="#E32727" label="Log Out" onPress={() => setShowLogoutConfirm(true)} last />
         </SectionCard>
-
-        <TouchableOpacity onPress={() => router.push('/guild')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
-          <Trophy size={20} color="#2647B8" />
-          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>My Guild & Rewards</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => router.push('/vehicles')} className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
-          <Car size={20} color="#2647B8" />
-          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>My Vehicles</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push('/support')}
-          accessibilityLabel={unreadTickets > 0 ? `Help and Reports, ${unreadTickets} new replies` : 'Help and Reports'}
-          className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#2647B8] bg-white'}`}>
-          <LifeBuoy size={20} color="#2647B8" />
-          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#2647B8]'}`}>Help & Reports</Text>
-          {unreadTickets > 0 ? (
-            <View className="min-w-[20px] items-center rounded-full bg-[#DC2626] px-1.5 py-0.5">
-              <Text className="text-[11px] font-black text-white">{unreadTickets}</Text>
-            </View>
-          ) : null}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => setShowLogoutConfirm(true)}
-          className={`flex-row items-center justify-center gap-2 rounded-2xl border py-4 ${isDark ? 'border-[#7A2D2D] bg-[#111827]' : 'border-[#FF4D4D] bg-white'}`}>
-          <LogOut size={20} color="#E32727" />
-          <Text className={`text-[15px] font-medium ${isDark ? 'text-[#E2E8F0]' : 'text-[#E32727]'}`}>Log Out</Text>
-        </TouchableOpacity>
 
         <LogoutConfirmModal visible={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)} onConfirm={signOut} isDark={isDark} />
       </View>

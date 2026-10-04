@@ -102,6 +102,7 @@ function RootLayoutContent() {
         <Stack.Screen name="guild" options={{ headerShown: false }} />
         <Stack.Screen name="guild/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="guild/chat" options={{ headerShown: false }} />
+        <Stack.Screen name="guild/partyup" options={{ headerShown: false }} />
         <Stack.Screen name="rewards" options={{ headerShown: false }} />
         <Stack.Screen name="support/index" options={{ headerShown: false }} />
         <Stack.Screen name="support/new" options={{ headerShown: false }} />

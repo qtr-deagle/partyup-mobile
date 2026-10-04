@@ -4,10 +4,15 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import {
+  getDriverLicenseFor,
+  getDriverLicensePhotoUrl,
   getVehiclePhotoUrl,
   listPendingVehicleVerifications,
   reviewVehicleVerification,
+  type DriverLicense,
   type PendingVehicleVerification,
+  type Vehicle,
+  type VehicleAiFlag,
 } from '@/lib/vehicles';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { BadgeCheck, Check, ShieldQuestion, X } from 'lucide-react-native';
@@ -16,7 +21,18 @@ import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, View } fr
 import Animated, { FadeOutLeft, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-function VehicleImage({ path, label, isDark }: { path: string | null; label: string; isDark: boolean }) {
+function VehicleImage({
+  path,
+  label,
+  isDark,
+  resolveUrl = getVehiclePhotoUrl,
+}: {
+  path: string | null;
+  label: string;
+  isDark: boolean;
+  // Licenses reused from ID verification live in another bucket.
+  resolveUrl?: (path: string) => Promise<string | null>;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -28,7 +44,7 @@ function VehicleImage({ path, label, isDark }: { path: string | null; label: str
         return;
       }
       setLoading(true);
-      void getVehiclePhotoUrl(path).then((signedUrl) => {
+      void resolveUrl(path).then((signedUrl) => {
         if (!cancelled) {
           setUrl(signedUrl);
           setLoading(false);
@@ -37,7 +53,7 @@ function VehicleImage({ path, label, isDark }: { path: string | null; label: str
       return () => {
         cancelled = true;
       };
-    }, [path])
+    }, [path, resolveUrl])
   );
 
   if (!path) {
@@ -196,6 +212,10 @@ export default function VehicleReviewScreen() {
                 <VehicleImage path={row.plate_image_path} label="Plate" isDark={isDark} />
               </View>
 
+              <VehicleAiSummary vehicle={row} isDark={isDark} />
+
+              <OwnerLicense userId={row.user_id} isDark={isDark} />
+
               {row.ownership_type === 'borrowed' ? (
                 <>
                   <Text className={`text-sm font-bold ${primary}`}>Owner's authorization</Text>
@@ -253,6 +273,122 @@ export default function VehicleReviewScreen() {
           ))
         )}
       </ScrollView>
+    </View>
+  );
+}
+
+const AI_FLAG_STYLES: Record<VehicleAiFlag, { label: string; bg: string; text: string }> = {
+  passed: { label: 'AI check passed', bg: '#E0F2EA', text: '#146C4A' },
+  needs_review: { label: 'AI: needs a closer look', bg: '#FEF3C7', text: '#92400E' },
+  mismatch: { label: "AI: details don't match", bg: '#FEE2E2', text: '#B91C1C' },
+  error: { label: 'AI check failed to run', bg: '#E5E7EB', text: '#374151' },
+};
+
+function checkLabel(value: boolean | null) {
+  return value === null ? 'unreadable' : value ? 'match' : 'no match';
+}
+
+// Advisory OCR result from verify-vehicle-ai, shown next to the photos.
+function VehicleAiSummary({ vehicle, isDark }: { vehicle: Vehicle; isDark: boolean }) {
+  const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
+  if (!vehicle.ai_flag) {
+    return <Text className={`text-xs ${secondary}`}>AI check pending…</Text>;
+  }
+  const style = AI_FLAG_STYLES[vehicle.ai_flag];
+  return (
+    <View className="gap-1">
+      <View className="self-start rounded-full px-3 py-1" style={{ backgroundColor: style.bg }}>
+        <Text className="text-xs font-bold" style={{ color: style.text }}>
+          {style.label}
+        </Text>
+      </View>
+      {vehicle.ai_flag === 'error' ? (
+        <Text className={`text-xs ${secondary}`}>{vehicle.ai_error}</Text>
+      ) : (
+        <Text className={`text-xs ${secondary}`}>
+          Plate photo reads {vehicle.ai_plate_detected ?? '—'} ({checkLabel(vehicle.ai_plate_match)}) · OR/CR plate {checkLabel(vehicle.ai_orcr_plate_match)} · Owner name{' '}
+          {checkLabel(vehicle.ai_owner_match)}
+        </Text>
+      )}
+    </View>
+  );
+}
+
+// The submitter's driver's license, reviewed together with the vehicle
+// (approving the vehicle also approves a pending uploaded license).
+function OwnerLicense({ userId, isDark }: { userId: string; isDark: boolean }) {
+  const [license, setLicense] = useState<DriverLicense | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [showQr, setShowQr] = useState(false);
+  const primary = isDark ? 'text-white' : 'text-[#1B2340]';
+  const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]';
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void getDriverLicenseFor(userId).then((data) => {
+        if (cancelled) return;
+        setLicense(data);
+        setLoaded(true);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [userId])
+  );
+
+  const resolveUrl = useCallback((path: string) => (license ? getDriverLicensePhotoUrl(license, path) : Promise.resolve(null)), [license]);
+
+  if (!loaded) {
+    return null;
+  }
+  if (!license) {
+    return <Text className="text-xs font-bold text-[#B91C1C]">No driver&apos;s license on file. Reject and ask them to add one.</Text>;
+  }
+
+  const style = license.ai_flag ? AI_FLAG_STYLES[license.ai_flag] : null;
+  const expired = !!license.expiry_date && license.expiry_date < new Date().toISOString().slice(0, 10);
+  return (
+    <View className="gap-2">
+      <View className="flex-row items-center justify-between">
+        <Text className={`text-sm font-bold ${primary}`}>Driver&apos;s license</Text>
+        <Text className={`text-xs ${secondary}`}>
+          {license.source === 'id_verification' ? 'From verified ID' : 'Uploaded'} · {license.status}
+        </Text>
+      </View>
+      <View className="flex-row gap-2">
+        <VehicleImage path={license.front_image_path} label="Front" isDark={isDark} resolveUrl={resolveUrl} />
+        <VehicleImage path={license.back_image_path} label="Back" isDark={isDark} resolveUrl={resolveUrl} />
+      </View>
+      {style ? (
+        <View className="self-start rounded-full px-3 py-1" style={{ backgroundColor: style.bg }}>
+          <Text className="text-xs font-bold" style={{ color: style.text }}>
+            {style.label}
+          </Text>
+        </View>
+      ) : (
+        <Text className={`text-xs ${secondary}`}>AI check pending…</Text>
+      )}
+      <Text className={`text-xs ${expired ? 'font-bold text-[#B91C1C]' : secondary}`}>
+        Expires {license.expiry_date ?? 'unreadable'}
+        {expired ? ' (EXPIRED)' : ''} · Codes {license.restriction_codes.length ? license.restriction_codes.join(', ') : 'unreadable'} · Name{' '}
+        {license.ai_name_match === null ? 'unreadable' : license.ai_name_match ? 'match' : 'no match'}
+      </Text>
+      <Text className={`text-xs ${license.ai_qr_match === false ? 'font-bold text-[#B91C1C]' : secondary}`}>
+        QR check {license.ai_qr_match === null ? (license.qr_data ? 'unreadable' : 'not scanned') : license.ai_qr_match ? 'matches the card' : "DOESN'T match the card"}
+        {license.license_number ? ` · License no. ${license.license_number}` : ''}
+      </Text>
+      {license.ai_error ? <Text className="text-xs font-bold text-[#B91C1C]">{license.ai_error}</Text> : null}
+      {license.qr_data ? (
+        <AnimatedPressable onPress={() => setShowQr((current) => !current)} className="self-start">
+          <Text className="text-xs font-bold text-[#2A55D4]">{showQr ? 'Hide raw QR' : 'Show raw QR'}</Text>
+        </AnimatedPressable>
+      ) : null}
+      {showQr && license.qr_data ? (
+        <Text selectable className={`rounded-lg p-2 text-[11px] ${isDark ? 'bg-[#18253C] text-[#CBD5E1]' : 'bg-[#F4F6FB] text-[#374151]'}`}>
+          {license.qr_data}
+        </Text>
+      ) : null}
     </View>
   );
 }

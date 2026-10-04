@@ -52,8 +52,6 @@ export function MessageBubble({ message, mine, isDark, accent = '#284BD6', statu
   const isPhoto = message.message_type === 'image' && !unsent;
   const bigEmoji = !unsent && message.message_type === 'text' && BIG_EMOJI.has(message.body.trim());
   const borderColor = isDark ? 'border-[#22324B]' : 'border-[#E7EAF2]';
-  const panelBackground = isDark ? 'bg-[#111B2E]' : 'bg-[#F6F7FB]';
-  const textPrimary = isDark ? 'text-white' : 'text-[#182847]';
   const textSecondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
   const plain = isPhoto || bigEmoji || unsent;
 
@@ -75,7 +73,7 @@ export function MessageBubble({ message, mine, isDark, accent = '#284BD6', statu
             <Reply size={12} color={isDark ? '#94A3B8' : '#67748D'} />
             <Text className={`text-[11px] ${textSecondary}`}>{replyLabel}</Text>
           </View>
-          <View className={`rounded-2xl px-3.5 py-2 opacity-70 ${isDark ? 'bg-[#1E2A40]' : 'bg-[#E9ECF3]'}`}>
+          <View className="rounded-[18px] px-3.5 py-2" style={{ backgroundColor: isDark ? '#152033' : '#E9ECF3', opacity: 0.75 }}>
             <Text numberOfLines={2} className={`text-sm ${textSecondary}`}>{messageSummary(replyTo)}</Text>
           </View>
         </Pressable>
@@ -83,13 +81,13 @@ export function MessageBubble({ message, mine, isDark, accent = '#284BD6', statu
 
       <Pressable onLongPress={unsent ? undefined : onLongPress} onPress={onPress} delayLongPress={300}>
         {unsent ? (
-          <View className={`rounded-2xl border px-4 py-2.5 ${borderColor}`}>
+          <View className={`rounded-[22px] border px-4 py-2.5 ${borderColor}`}>
             <Text className={`text-sm italic ${textSecondary}`}>
               {message.deleted_by && message.deleted_by !== message.sender_id ? 'Message removed' : mine ? 'You unsent a message' : 'Message unsent'}
             </Text>
           </View>
         ) : isPhoto ? (
-          <View className="overflow-hidden rounded-2xl" style={{ width: PHOTO_WIDTH, height: photoHeight, opacity: failed ? 0.6 : 1, backgroundColor: isDark ? '#1E2A40' : '#E9ECF3' }}>
+          <View className="overflow-hidden rounded-[22px]" style={{ width: PHOTO_WIDTH, height: photoHeight, opacity: failed ? 0.6 : 1, backgroundColor: isDark ? '#1E2A40' : '#E9ECF3' }}>
             {photoUri ? <Image source={{ uri: photoUri }} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={200} /> : null}
             {status === 'sending' ? (
               <View className="absolute inset-0 items-center justify-center bg-black/30">
@@ -101,9 +99,14 @@ export function MessageBubble({ message, mine, isDark, accent = '#284BD6', statu
           <Text style={{ fontSize: 44, lineHeight: 52, opacity: failed ? 0.6 : 1 }}>{message.body.trim()}</Text>
         ) : (
           <View
-            className={`px-4 py-2.5 ${mine ? 'rounded-2xl rounded-br-md' : `rounded-2xl rounded-bl-md border ${borderColor} ${panelBackground}`}`}
-            style={mine ? { backgroundColor: accent, opacity: failed ? 0.6 : 1 } : undefined}>
-            <Text className={`text-base ${mine ? 'text-white' : textPrimary}`}>{message.body}</Text>
+            className="px-4 py-2.5"
+            style={{
+              backgroundColor: mine ? accent : isDark ? '#1A2539' : '#F0F2F7',
+              opacity: failed ? 0.6 : 1,
+              borderRadius: 22,
+              ...(mine ? { borderBottomRightRadius: 6 } : { borderBottomLeftRadius: 6 }),
+            }}>
+            <Text className="text-[15.5px] leading-[21px]" style={{ color: mine ? '#FFFFFF' : isDark ? '#F1F5F9' : '#182847' }}>{message.body}</Text>
             {time}
           </View>
         )}

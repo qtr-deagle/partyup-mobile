@@ -7,6 +7,8 @@ export type VehicleVerificationStatus = 'unverified' | 'pending' | 'approved' | 
 
 export type VehicleOwnershipType = 'owned' | 'borrowed';
 
+export type VehicleAiFlag = 'passed' | 'needs_review' | 'mismatch' | 'error';
+
 export type Vehicle = {
   id: string;
   user_id: string;
@@ -27,6 +29,14 @@ export type Vehicle = {
   owner_id_back_path: string | null;
   owner_signatures_path: string | null;
   reviewer_notes: string | null;
+  // Advisory OCR pre-check (verify-vehicle-ai); admins still decide.
+  ai_plate_detected: string | null;
+  ai_plate_match: boolean | null;
+  ai_orcr_plate_match: boolean | null;
+  ai_owner_match: boolean | null;
+  ai_flag: VehicleAiFlag | null;
+  ai_error: string | null;
+  ai_checked_at: string | null;
   submitted_at: string | null;
   reviewed_at: string | null;
   created_at: string;
@@ -66,7 +76,16 @@ export type SubmitVehicleVerificationInput = {
   borrowed?: BorrowedVehicleDocuments;
 };
 
-type VehiclePhotoLabel = 'exterior' | 'orcr' | 'plate' | 'authorization-letter' | 'owner-id-front' | 'owner-id-back' | 'owner-signatures';
+type VehiclePhotoLabel =
+  | 'exterior'
+  | 'orcr'
+  | 'plate'
+  | 'authorization-letter'
+  | 'owner-id-front'
+  | 'owner-id-back'
+  | 'owner-signatures'
+  | 'license-front'
+  | 'license-back';
 
 async function uploadVehiclePhoto(userId: string, label: VehiclePhotoLabel, uri: string) {
   // Same re-encode-to-JPEG + base64-js decode approach as ID verification's
@@ -207,6 +226,13 @@ export async function submitVehicleForVerification(vehicleId: string, input: Sub
       return { error: updateError };
     }
 
+    // Fire-and-forget, like verify-id-ai: an advisory OCR check of the plate
+    // and OR/CR runs in the background. Admin review is required either way,
+    // so a failure here must never surface as a submission failure.
+    supabase.functions
+      .invoke('verify-vehicle-ai', { body: { vehicleId } })
+      .catch((error) => console.warn('Vehicle AI pre-check failed to run:', error));
+
     return { error: null };
   } catch (error) {
     return { error: error instanceof Error ? error : new Error('Failed to submit verification.') };
@@ -259,5 +285,126 @@ export async function reviewVehicleVerification(vehicleId: string, decision: 'ap
   return withRequestTimeout(
     supabase.rpc('review_vehicle_verification', { p_vehicle_id: vehicleId, p_decision: decision, p_notes: notes ?? null }),
     'Submitting review'
+  );
+}
+
+// ---------------------------------------------------------------------
+// Driver's license (one per person, required to create carpools)
+// ---------------------------------------------------------------------
+export type DriverLicense = {
+  user_id: string;
+  source: 'id_verification' | 'upload';
+  id_verification_id: string | null;
+  front_image_path: string;
+  back_image_path: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  expiry_date: string | null;
+  restriction_codes: string[];
+  ai_name_match: boolean | null;
+  // QR on the back (scanned live) vs the printed card and the driver's name.
+  qr_data: string | null;
+  license_number: string | null;
+  ai_qr_match: boolean | null;
+  ai_flag: VehicleAiFlag | null;
+  ai_error: string | null;
+  ai_checked_at: string | null;
+  reviewer_notes: string | null;
+  submitted_at: string;
+  reviewed_at: string | null;
+};
+
+// Approved and not expired (an unread expiry counts as valid). Mirrors
+// public.has_valid_driver_license().
+export function isLicenseValid(license: DriverLicense | null, on: Date = new Date()) {
+  if (!license || license.status !== 'approved') return false;
+  return !license.expiry_date || license.expiry_date >= on.toISOString().slice(0, 10);
+}
+
+export function isLicenseExpired(license: DriverLicense | null) {
+  return !!license?.expiry_date && license.expiry_date < new Date().toISOString().slice(0, 10);
+}
+
+export async function getMyDriverLicense() {
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    return { data: null as DriverLicense | null, error: null };
+  }
+  try {
+    const { data, error } = await withRequestTimeout(
+      supabase.from('driver_licenses').select('*').eq('user_id', userData.user.id).maybeSingle(),
+      "Loading driver's license"
+    );
+    return { data: (data ?? null) as DriverLicense | null, error };
+  } catch (error) {
+    return { data: null as DriverLicense | null, error: error instanceof Error ? error : new Error("Unable to load driver's license.") };
+  }
+}
+
+// Admin review: the license of the person who submitted a vehicle.
+export async function getDriverLicenseFor(userId: string) {
+  const { data } = await supabase.from('driver_licenses').select('*').eq('user_id', userId).maybeSingle();
+  return (data ?? null) as DriverLicense | null;
+}
+
+// True when the user's approved ID verification was a driver's license, so
+// it can be reused in one tap.
+export async function hasVerifiedIdLicense() {
+  try {
+    const { data } = await withRequestTimeout(supabase.rpc('get_verified_id_license'), "Checking your verified ID");
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
+// Fire-and-forget OCR of the license (name, expiry, restriction codes).
+function runLicenseAiCheck() {
+  supabase.functions
+    .invoke('verify-vehicle-ai', { body: { license: true } })
+    .catch((error) => console.warn('License AI check failed to run:', error));
+}
+
+export async function reuseVerifiedIdAsLicense(qrData: string) {
+  try {
+    const { data, error } = await withRequestTimeout(
+      supabase.rpc('use_verified_id_as_license', { p_qr_data: qrData }),
+      "Saving driver's license"
+    );
+    if (!error) runLicenseAiCheck();
+    return { data: (data ?? null) as DriverLicense | null, error };
+  } catch (error) {
+    return { data: null, error: error instanceof Error ? error : new Error("Unable to use your verified license.") };
+  }
+}
+
+export async function submitDriverLicense(frontUri: string, backUri: string, qrData: string) {
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError || !userData.user) {
+    return { error: userError ?? new Error('You must be signed in.') };
+  }
+  try {
+    const frontPath = await uploadVehiclePhoto(userData.user.id, 'license-front', frontUri);
+    const backPath = await uploadVehiclePhoto(userData.user.id, 'license-back', backUri);
+    const { error } = await withRequestTimeout(
+      supabase.rpc('submit_driver_license', { p_front_path: frontPath, p_back_path: backPath, p_qr_data: qrData }),
+      "Submitting driver's license"
+    );
+    if (!error) runLicenseAiCheck();
+    return { error };
+  } catch (error) {
+    return { error: error instanceof Error ? error : new Error("Failed to submit driver's license.") };
+  }
+}
+
+export async function getDriverLicensePhotoUrl(license: DriverLicense, path: string) {
+  const bucket = license.source === 'id_verification' ? 'id-verifications' : 'vehicle-verifications';
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 600);
+  return error || !data ? null : data.signedUrl;
+}
+
+export async function reviewDriverLicense(userId: string, decision: 'approved' | 'rejected', notes?: string) {
+  return withRequestTimeout(
+    supabase.rpc('review_driver_license', { p_user_id: userId, p_decision: decision, p_notes: notes ?? null }),
+    "Reviewing driver's license"
   );
 }

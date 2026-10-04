@@ -54,6 +54,77 @@ export async function getSafetyOverview() {
   return { data: rows[0] ?? null, error: null };
 }
 
+export type TrustBreakdown = {
+  verified: boolean;
+  has_avatar: boolean;
+  has_bio: boolean;
+  has_phone: boolean;
+  has_city: boolean;
+  completed_trips: number;
+  trust_score: number;
+};
+
+export type TrustItem = {
+  key: string;
+  label: string;
+  detail: string;
+  earned: number;
+  max: number;
+  done: boolean;
+  actionLabel: string | null;
+  route: '/verify-id' | '/profile' | '/edit-profile' | '/carpooling' | null;
+};
+
+// Mirrors the weights in public.get_trust_score.
+const TRIP_POINTS = 5;
+const MAX_TRIPS = 6;
+
+export function trustItems(breakdown: TrustBreakdown): TrustItem[] {
+  const trips = Math.min(breakdown.completed_trips, MAX_TRIPS);
+  const flag = (key: string, label: string, detail: string, done: boolean, max: number, actionLabel: string, route: TrustItem['route']): TrustItem => ({
+    key,
+    label,
+    detail,
+    earned: done ? max : 0,
+    max,
+    done,
+    actionLabel: done ? null : actionLabel,
+    route: done ? null : route,
+  });
+  return [
+    flag('verified', 'Verify your ID', 'Approved government ID', breakdown.verified, 50, 'Verify', '/verify-id'),
+    flag('avatar', 'Add a profile photo', 'Helps travelers recognize you', breakdown.has_avatar, 5, 'Add photo', '/profile'),
+    flag('bio', 'Write a bio', 'Tell others a bit about you', breakdown.has_bio, 5, 'Add bio', '/edit-profile'),
+    flag('phone', 'Add a phone number', 'So your group can reach you', breakdown.has_phone, 5, 'Add phone', '/edit-profile'),
+    flag('city', 'Set your city', 'Your home municipality', breakdown.has_city, 5, 'Set city', '/edit-profile'),
+    {
+      key: 'trips',
+      label: 'Complete trips',
+      detail: `${trips} of ${MAX_TRIPS} trips · ${TRIP_POINTS} pts each`,
+      earned: trips * TRIP_POINTS,
+      max: MAX_TRIPS * TRIP_POINTS,
+      done: trips >= MAX_TRIPS,
+      actionLabel: trips >= MAX_TRIPS ? null : 'Find a ride',
+      route: trips >= MAX_TRIPS ? null : '/carpooling',
+    },
+  ];
+}
+
+export async function getTrustBreakdown() {
+  let response;
+  try {
+    response = await withRequestTimeout(supabase.rpc('get_trust_breakdown'), 'Loading your trust score');
+  } catch (error) {
+    return { data: null, error: error instanceof Error ? error : new Error('Unable to load your trust score.') };
+  }
+  const { data, error } = response;
+  if (error) {
+    return { data: null, error };
+  }
+  const rows = (data ?? []) as TrustBreakdown[];
+  return { data: rows[0] ?? null, error: null };
+}
+
 export type StaffSosAlert = {
   id: string;
   user_id: string;
@@ -82,7 +153,8 @@ type OverviewCounts = Record<
 >;
 
 // Counts come from get_staff_overview_counts() (leaders can't read every
-// row anymore); active SOS alerts are readable by leaders and admins.
+// row anymore); active SOS alerts are readable by admins only (leaders get
+// an empty list from RLS).
 export async function getStaffOverview() {
   try {
     const [countsResult, sosResult] =

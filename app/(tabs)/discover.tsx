@@ -292,8 +292,12 @@ export default function DiscoverScreen() {
   }
 
   const segmentTrack = isDark ? 'bg-white/5' : 'bg-[#E9EDF5]';
-  const segmentActive = isDark ? 'bg-[#22324B]' : 'bg-white shadow-sm shadow-black/10';
-  const chip = isDark ? 'bg-white/5' : 'bg-white shadow-sm shadow-black/5';
+  // Keep shadow-* classes present in every state: NativeWind remounts a
+  // component whose styles start using CSS variables (shadows do) after the
+  // first render, and remounting animated components mid-session breaks taps.
+  const segmentActive = isDark ? 'bg-[#22324B] shadow-sm shadow-transparent' : 'bg-white shadow-sm shadow-black/10';
+  const segmentInactive = 'shadow-sm shadow-transparent';
+  const chip = isDark ? 'bg-white/5 shadow-sm shadow-transparent' : 'bg-white shadow-sm shadow-black/5';
   const iconMuted = isDark ? '#94A3B8' : '#6C7A95';
   const iconStrong = isDark ? '#E2E8F0' : '#182847';
   const activeFilterCount = countActiveFilters(filters);
@@ -308,7 +312,7 @@ export default function DiscoverScreen() {
             const active = mode === option;
             const Icon = option === 'swipe' ? Sparkles : Search;
             return (
-              <TouchableOpacity key={option} onPress={() => setMode(option)} accessibilityLabel={option === 'swipe' ? 'For you' : 'Search'} className={`h-8 w-9 items-center justify-center rounded-full ${active ? segmentActive : ''}`}>
+              <TouchableOpacity key={option} onPress={() => setMode(option)} accessibilityLabel={option === 'swipe' ? 'For you' : 'Search'} className={`h-8 w-9 items-center justify-center rounded-full ${active ? segmentActive : segmentInactive}`}>
                 <Icon size={16} color={active ? (isDark ? '#FFFFFF' : '#284BD6') : iconMuted} />
               </TouchableOpacity>
             );

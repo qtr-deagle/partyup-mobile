@@ -73,6 +73,21 @@ export type TripDetail = {
   meetup_lng: number | null;
   destination_lat: number | null;
   destination_lng: number | null;
+  origin_lat: number | null;
+  origin_lng: number | null;
+  route_stops: RouteStop[];
+  guild_id: string | null;
+  my_pickup_label: string | null;
+  my_offered_amount: number | null;
+  my_platform_fee: number | null;
+};
+
+// A place along the driver's route where they can pick riders up.
+export type RouteStop = {
+  label: string;
+  municipality: string | null;
+  lat: number;
+  lng: number;
 };
 
 export type MeetupLocation = {
@@ -110,6 +125,9 @@ export type TripMember = {
   payment_confirmed_at: string | null;
   joined_at: string | null;
   created_at: string;
+  pickup_label: string | null;
+  offered_amount: number | null;
+  platform_fee: number | null;
 };
 
 export async function listMyTrips(tripType: TripType = 'carpool') {
@@ -142,6 +160,10 @@ export async function createTrip(input: {
   itinerary?: { dayNumber: number; description: string }[];
   vehicleId?: string | null;
   meetup?: MeetupLocation | null;
+  originLat?: number | null;
+  originLng?: number | null;
+  routeStops?: RouteStop[];
+  guildId?: string | null;
 }) {
   return withRequestTimeout(
     supabase.rpc('create_trip', {
@@ -166,6 +188,10 @@ export async function createTrip(input: {
       p_meetup_landmark: input.meetup?.landmark ?? null,
       p_meetup_lat: input.meetup?.latitude ?? null,
       p_meetup_lng: input.meetup?.longitude ?? null,
+      p_origin_lat: input.originLat ?? null,
+      p_origin_lng: input.originLng ?? null,
+      p_route_stops: input.routeStops ?? [],
+      p_guild_id: input.guildId ?? null,
     }),
     'Creating trip'
   );
@@ -316,6 +342,52 @@ export function buildInviteUrl(inviteCode: string, referrerUserId: string) {
 // share (riders pay the listed price). Display-only for now: PayMongo is in
 // test mode and there are no payouts yet, so nothing is actually split.
 export const PLATFORM_FEE_RATE = 0.02;
+
+// Carpool riders pay this on top of their accepted fuel contribution. Must
+// match public.carpool_platform_fee_rate() in the database.
+export const CARPOOL_PLATFORM_FEE_RATE = 0.1;
+
+export function carpoolFee(contribution: number) {
+  return Math.round(contribution * CARPOOL_PLATFORM_FEE_RATE * 100) / 100;
+}
+
+// One pickup choice (index 0 = main pickup point, then route stops) with the
+// fuel contribution range a rider may offer there.
+export type CarpoolPickupOption = {
+  stop_index: number;
+  label: string;
+  lat: number | null;
+  lng: number | null;
+  min_amount: number;
+  suggested_amount: number;
+  max_amount: number;
+  fee_rate: number;
+};
+
+export async function getCarpoolRequestOptions(tripId: string) {
+  let response;
+  try {
+    response = await withRequestTimeout(supabase.rpc('get_carpool_request_options', { p_trip_id: tripId }), 'Loading pickup points');
+  } catch (error) {
+    return { data: [] as CarpoolPickupOption[], error: error instanceof Error ? error : new Error('Unable to load pickup points.') };
+  }
+  const { data, error } = response;
+  const rows = ((data ?? []) as CarpoolPickupOption[]).map((row) => ({
+    ...row,
+    min_amount: Number(row.min_amount),
+    suggested_amount: Number(row.suggested_amount),
+    max_amount: Number(row.max_amount),
+    fee_rate: Number(row.fee_rate),
+  }));
+  return { data: rows, error };
+}
+
+export async function requestCarpoolSeat(tripId: string, stopIndex: number, offer: number) {
+  return withRequestTimeout(
+    supabase.rpc('request_carpool_seat', { p_trip_id: tripId, p_stop_index: stopIndex, p_offer: offer }),
+    'Requesting seat'
+  );
+}
 
 export function splitPlatformFee(amount: number) {
   const fee = Math.round(amount * PLATFORM_FEE_RATE * 100) / 100;

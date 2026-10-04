@@ -55,7 +55,8 @@ export default function StaffDashboard({ isDark, overview, isAdmin }: Props) {
 
   return (
     <>
-      {/* Live SOS */}
+      {/* Live SOS (admins only; SOS is otherwise private to the trusted circle) */}
+      {isAdmin ? (
       <Animated.View
         key={sosCount > 0 ? 'staff-sos-active' : 'staff-sos-clear'}
         entering={riseIn(80)}
@@ -111,6 +112,7 @@ export default function StaffDashboard({ isDark, overview, isAdmin }: Props) {
           </View>
         )}
       </Animated.View>
+      ) : null}
 
       {/* Guild, points and rank */}
       <GuildSummaryCard isDark={isDark} delay={110} />

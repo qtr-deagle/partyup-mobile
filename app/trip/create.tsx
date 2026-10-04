@@ -6,19 +6,24 @@ import { EmptyState, SkeletonCard, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { createTrip, formatMeetupLabel, type TripVisibility } from '@/lib/carpool';
-import { normalizePlace } from '@/lib/names';
-import { listMyApprovedVehicles, type Vehicle } from '@/lib/vehicles';
-import { useFocusEffect, useRouter } from 'expo-router';
-import * as Location from 'expo-location';
-import { Calendar, Car, Clock, Flag, Globe, Lock, MapPin, NotebookPen, Plus, ShieldAlert, Users, Wallet, X } from 'lucide-react-native';
+import { CARPOOL_PLATFORM_FEE_RATE, createTrip, formatMeetupLabel, type MeetupLocation, type RouteStop, type TripVisibility } from '@/lib/carpool';
+import {
+  getMyDriverLicense,
+  hasVerifiedIdLicense,
+  isLicenseValid,
+  listMyApprovedVehicles,
+  type DriverLicense,
+  type Vehicle,
+} from '@/lib/vehicles';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { Calendar, Car, Clock, Flag, Globe, IdCard, Lock, MapPin, NotebookPen, Plus, Route, ShieldAlert, Trash2, Users, Wallet, X } from 'lucide-react-native';
 import { useCallback, useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const visibilityOptions: { key: TripVisibility; label: string; description: string; icon: typeof Globe }[] = [
-  { key: 'public', label: 'Public', description: 'Shows up in Browse for anyone to find and join instantly', icon: Globe },
+  { key: 'public', label: 'Public', description: 'Shows up in Browse. Riders request a seat and you accept who rides', icon: Globe },
   { key: 'trusted_circle', label: 'Trusted Circle', description: 'You approve each join request', icon: Users },
   { key: 'private', label: 'Private', description: 'You approve each join request', icon: Lock },
 ];
@@ -40,13 +45,15 @@ function formatTimeLabel(date: Date | null) {
 // Driver + at least one rider.
 const MIN_TOTAL_SEATS = 2;
 
-// Up to ₱999,999.99 -- well under trips.total_cost's numeric(10,2) limit.
-const COST_PATTERN = /^\d{1,6}(\.\d{1,2})?$/;
+// Must match the 8-stop cap in create_trip().
+const MAX_ROUTE_STOPS = 8;
 
-function sanitizeCost(text: string) {
-  const [whole = '', ...rest] = text.replace(/[^\d.]/g, '').split('.');
-  const wholePart = whole.slice(0, 6);
-  return rest.length > 0 ? `${wholePart}.${rest.join('').slice(0, 2)}` : wholePart;
+// A complete MeetupDraft (city + pin + landmark) as a location, else null.
+function toLocation(draft: MeetupDraft): MeetupLocation | null {
+  if (!draft.municipality || !draft.pin || !draft.landmark.trim()) {
+    return null;
+  }
+  return { municipality: draft.municipality, landmark: draft.landmark.trim(), latitude: draft.pin.latitude, longitude: draft.pin.longitude };
 }
 
 function seatSummary(seatsText: string) {
@@ -80,6 +87,8 @@ function SectionTitle({ icon, title, isDark }: { icon: ReactNode; title: string;
 
 export default function CreateTripScreen() {
   const router = useRouter();
+  // Set when a guild leader posts this carpool as a guild "Let's PartyUp".
+  const { guildId, guildName } = useLocalSearchParams<{ guildId?: string; guildName?: string }>();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
@@ -96,6 +105,9 @@ export default function CreateTripScreen() {
   const [approvedVehicles, setApprovedVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  // Carpool drivers need a valid driver's license on file.
+  const [license, setLicense] = useState<DriverLicense | null>(null);
+  const [idIsLicense, setIdIsLicense] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -104,10 +116,12 @@ export default function CreateTripScreen() {
       }
       let cancelled = false;
       setVehiclesLoading(true);
-      void listMyApprovedVehicles().then(({ data }) => {
+      void Promise.all([listMyApprovedVehicles(), getMyDriverLicense(), hasVerifiedIdLicense()]).then(([{ data }, licenseResult, verifiedIdIsLicense]) => {
         if (cancelled) return;
         setApprovedVehicles(data);
         setSelectedVehicleId((current) => (current && data.some((v) => v.id === current) ? current : (data[0]?.id ?? null)));
+        setLicense(licenseResult.data);
+        setIdIsLicense(verifiedIdIsLicense);
         setVehiclesLoading(false);
       });
       return () => {
@@ -117,8 +131,10 @@ export default function CreateTripScreen() {
   );
 
   const [title, setTitle] = useState('');
+  const [origin, setOrigin] = useState<MeetupDraft>(EMPTY_MEETUP);
+  const [destination, setDestination] = useState<MeetupDraft>(EMPTY_MEETUP);
   const [meetup, setMeetup] = useState<MeetupDraft>(EMPTY_MEETUP);
-  const [destination, setDestination] = useState('');
+  const [routeStops, setRouteStops] = useState<MeetupDraft[]>([]);
 
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
@@ -131,7 +147,6 @@ export default function CreateTripScreen() {
 
   const [visibility, setVisibility] = useState<TripVisibility>('public');
   const [seatsTotal, setSeatsTotal] = useState('');
-  const [totalCost, setTotalCost] = useState('');
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -152,21 +167,46 @@ export default function CreateTripScreen() {
   }
 
   async function handleSubmit() {
-    if (!title.trim() || !destination.trim()) {
-      fail('Title and destination are required.');
+    if (!title.trim()) {
+      fail('Give your carpool a title.');
       return;
     }
 
-    if (!meetup.municipality || !meetup.pin || !meetup.landmark.trim()) {
-      fail('Set the meetup city, pin the exact spot on the map, and name a landmark.');
+    const originLocation = toLocation(origin);
+    if (!originLocation) {
+      fail('Set where you are coming from: city, map pin, and a landmark.');
       return;
     }
-    const meetupLocation = {
-      municipality: meetup.municipality,
-      landmark: meetup.landmark.trim(),
-      latitude: meetup.pin.latitude,
-      longitude: meetup.pin.longitude,
-    };
+    const destinationLocation = toLocation(destination);
+    if (!destinationLocation) {
+      fail('Set how far you are going: city, map pin, and a landmark.');
+      return;
+    }
+
+    if (!startDate) {
+      fail('Set when you leave (departure date and time).');
+      return;
+    }
+    if (startDate.getTime() < Date.now()) {
+      fail('Departure time must be in the future.');
+      return;
+    }
+
+    const meetupLocation = toLocation(meetup);
+    if (!meetupLocation) {
+      fail('Set the pickup point: city, map pin, and a landmark.');
+      return;
+    }
+
+    const stops: RouteStop[] = [];
+    for (const [index, stop] of routeStops.entries()) {
+      const location = toLocation(stop);
+      if (!location) {
+        fail(`Finish stop ${index + 1} (city, map pin, and a landmark) or remove it.`);
+        return;
+      }
+      stops.push({ label: formatMeetupLabel(location), municipality: location.municipality, lat: location.latitude, lng: location.longitude });
+    }
 
     if (!selectedVehicleId) {
       fail('Select a vehicle for this trip.');
@@ -184,47 +224,31 @@ export default function CreateTripScreen() {
     }
     const riderSeats = totalSeats !== null ? totalSeats - 1 : null;
 
-    const costText = totalCost.trim();
-    const cost = costText ? Number.parseFloat(costText) : null;
-    if (costText && (!COST_PATTERN.test(costText) || cost === null || cost <= 0)) {
-      fail('Total cost must be more than ₱0 and up to ₱999,999.99.');
-      return;
-    }
-
-    if (includeEnd && startDate && endDate && endDate.getTime() < startDate.getTime()) {
-      fail('End date & time must be after the meetup date & time.');
+    if (includeEnd && endDate && endDate.getTime() < startDate.getTime()) {
+      fail('Return / end time must be after your departure time.');
       return;
     }
 
     setSubmitting(true);
     setErrorMessage(null);
 
-    let destinationLat: number | null = null;
-    let destinationLng: number | null = null;
-    try {
-      const geocoded = await Location.geocodeAsync(destination.trim());
-      if (geocoded[0]) {
-        destinationLat = geocoded[0].latitude;
-        destinationLng = geocoded[0].longitude;
-      }
-    } catch {
-      // Best-effort only -- trip creation still succeeds without geofence support.
-    }
-
     const { data, error } = await createTrip({
       title: title.trim(),
-      origin: formatMeetupLabel(meetupLocation),
-      destination: normalizePlace(destination),
-      startAt: startDate ? startDate.toISOString() : null,
+      origin: formatMeetupLabel(originLocation),
+      destination: formatMeetupLabel(destinationLocation),
+      startAt: startDate.toISOString(),
       endAt: includeEnd && endDate ? endDate.toISOString() : null,
       visibility,
       seatsTotal: riderSeats,
-      totalCost: cost,
       notes: notes.trim() || null,
-      destinationLat,
-      destinationLng,
+      destinationLat: destinationLocation.latitude,
+      destinationLng: destinationLocation.longitude,
       vehicleId: selectedVehicleId,
       meetup: meetupLocation,
+      originLat: originLocation.latitude,
+      originLng: originLocation.longitude,
+      routeStops: stops,
+      guildId: guildId ?? null,
     });
 
     setSubmitting(false);
@@ -239,7 +263,10 @@ export default function CreateTripScreen() {
 
   return (
     <KeyboardAvoidingView behavior="padding" className={`flex-1 ${background}`}>
-      <ScreenHeader title="Create Carpool" subtitle="Share your ride and split the cost" />
+      <ScreenHeader
+        title={guildId ? "Let's PartyUp" : 'Create Carpool'}
+        subtitle={guildId ? `Carpool for ${guildName ?? 'your guild'}` : 'Share your ride, riders chip in for fuel'}
+      />
 
       {!isVerified ? (
         <EmptyState
@@ -281,6 +308,34 @@ export default function CreateTripScreen() {
             </AnimatedPressable>
           }
         />
+      ) : !isLicenseValid(license) ? (
+        <EmptyState
+          key="no-license"
+          icon={<IdCard size={34} color="#2A55D4" />}
+          title={license?.status === 'pending' ? "Your driver's license is under review" : "Add your driver's license"}
+          message={
+            license?.status === 'pending'
+              ? "You can create carpools once a PartyUp admin verifies it. We'll notify you."
+              : license?.status === 'approved'
+                ? 'Your license on file has expired. Add your renewed license to keep driving with PartyUp.'
+                : license?.status === 'rejected'
+                  ? `Your license photos were rejected${license.reviewer_notes ? `: ${license.reviewer_notes}` : ''}. Please retake them.`
+                  : idIsLicense
+                    ? "You verified your ID with a driver's license. Just scan the QR code on its back."
+                    : "Drivers need a valid license to create carpools. Take a photo of the front and back."
+          }
+          action={
+            license?.status === 'pending' ? undefined : (
+              <AnimatedPressable
+                onPress={() => router.push({ pathname: '/verify-vehicle', params: { licenseOnly: '1' } })}
+                className="rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+                <Text className="text-base font-bold text-white">
+                  {idIsLicense && !license ? 'Use my verified license' : "Add Driver's License"}
+                </Text>
+              </AnimatedPressable>
+            )
+          }
+        />
       ) : (
       <>
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5"
@@ -299,22 +354,68 @@ export default function CreateTripScreen() {
             />
           </View>
 
-          <MeetupLocationPicker label="MEETUP LOCATION" value={meetup} onChange={setMeetup} isDark={isDark} />
+          <MeetupLocationPicker
+            label="COMING FROM"
+            value={origin}
+            onChange={setOrigin}
+            isDark={isDark}
+            landmarkPlaceholder="Where your trip starts, e.g. your barangay"
+          />
 
-          <View>
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>DESTINATION</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="e.g., Makati"
-              placeholderTextColor={placeholderColor}
-              maxLength={80}
-              value={destination}
-              onChangeText={setDestination}
-            />
-          </View>
+          <MeetupLocationPicker
+            label="GOING UP TO"
+            value={destination}
+            onChange={setDestination}
+            isDark={isDark}
+            landmarkPlaceholder="How far you're going, e.g. SM North EDSA"
+          />
         </Card>
 
-        <Card index={1}>
+        <Card index={1} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<Route size={16} color="#2A55D4" />} title="Pickup & stops" />
+          <View className="-mt-3">
+            <MeetupLocationPicker
+              label="PICKUP POINT"
+              value={meetup}
+              onChange={setMeetup}
+              isDark={isDark}
+              landmarkPlaceholder="Where riders meet you, e.g. Jollibee MacArthur"
+            />
+          </View>
+
+          <Text className={`text-[13px] leading-5 ${secondary}`}>
+            Add places you pass along the way where you can pick up an angkas. Riders choose one when they request a seat.
+          </Text>
+          {routeStops.map((stop, index) => (
+            <View key={index} className={`gap-2 rounded-2xl border p-3 ${border}`}>
+              <View className="flex-row items-center justify-between">
+                <Text className={`text-[13px] font-bold ${secondary}`}>STOP {index + 1}</Text>
+                <AnimatedPressable
+                  onPress={() => setRouteStops((current) => current.filter((_, i) => i !== index))}
+                  accessibilityLabel={`Remove stop ${index + 1}`}>
+                  <Trash2 size={16} color="#B91C1C" />
+                </AnimatedPressable>
+              </View>
+              <MeetupLocationPicker
+                label="PASSING THROUGH"
+                value={stop}
+                onChange={(next) => setRouteStops((current) => current.map((item, i) => (i === index ? next : item)))}
+                isDark={isDark}
+                landmarkPlaceholder="e.g. Petron, Guiguinto exit"
+              />
+            </View>
+          ))}
+          {routeStops.length < MAX_ROUTE_STOPS ? (
+            <AnimatedPressable
+              onPress={() => setRouteStops((current) => [...current, EMPTY_MEETUP])}
+              className={`flex-row items-center justify-center gap-2 rounded-2xl border border-dashed px-4 py-3.5 ${border}`}>
+              <Plus size={16} color="#2A55D4" />
+              <Text className="text-sm font-bold text-[#2A55D4]">Add a stop along the route</Text>
+            </AnimatedPressable>
+          ) : null}
+        </Card>
+
+        <Card index={2}>
           <SectionTitle isDark={isDark} icon={<Car size={16} color="#2A55D4" />} title="Vehicle" />
           <View className="flex-row flex-wrap gap-2">
             {approvedVehicles.map((vehicle) => {
@@ -335,10 +436,10 @@ export default function CreateTripScreen() {
           </View>
         </Card>
 
-        <Card index={2} className="gap-4">
+        <Card index={3} className="gap-4">
           <SectionTitle isDark={isDark} icon={<Calendar size={16} color="#2A55D4" />} title="Schedule" />
           <View className="-mt-3">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>MEETUP DATE &amp; TIME (OPTIONAL)</Text>
+            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>WHEN YOU LEAVE (DEPARTURE DATE &amp; TIME)</Text>
             <View className="flex-row gap-3">
               <AnimatedPressable
                 onPress={() => setShowStartDatePicker(true)}
@@ -361,7 +462,7 @@ export default function CreateTripScreen() {
             </View>
             {startDate ? (
               <AnimatedPressable onPress={() => setStartDate(null)} className="mt-2 self-start">
-                <Text className="text-sm font-bold text-[#B91C1C]">Clear meetup date &amp; time</Text>
+                <Text className="text-sm font-bold text-[#B91C1C]">Clear departure date &amp; time</Text>
               </AnimatedPressable>
             ) : null}
           </View>
@@ -409,7 +510,8 @@ export default function CreateTripScreen() {
           )}
         </Card>
 
-        <Card index={3}>
+        {guildId ? null : (
+        <Card index={4}>
           <SectionTitle isDark={isDark} icon={<Globe size={16} color="#2A55D4" />} title="Visibility" />
           <View className="gap-2">
             {visibilityOptions.map((option) => {
@@ -433,49 +535,34 @@ export default function CreateTripScreen() {
             })}
           </View>
         </Card>
+        )}
 
-        <Card index={4} className="gap-4">
-          <SectionTitle isDark={isDark} icon={<Wallet size={16} color="#2A55D4" />} title="Seats & cost" />
-          <View className="-mt-3 flex-row gap-3">
-            <View className="flex-1">
-              <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL SEATS (OPTIONAL)</Text>
-              <TextInput
-                className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-                placeholder="e.g., 7"
-                placeholderTextColor={placeholderColor}
-                keyboardType="number-pad"
-                maxLength={2}
-                value={seatsTotal}
-                onChangeText={(text) => setSeatsTotal(text.replace(/\D/g, '').slice(0, 2))}
-              />
-              <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>
-                {seatSummary(seatsTotal)}
-              </Text>
-            </View>
-            <View className="flex-1">
-              <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL TRIP COST (₱)</Text>
-              <TextInput
-                className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-                placeholder="e.g., 800"
-                placeholderTextColor={placeholderColor}
-                keyboardType="decimal-pad"
-                maxLength={9}
-                value={totalCost}
-                onChangeText={(text) => setTotalCost(sanitizeCost(text))}
-              />
-              <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>For the whole trip, up to ₱999,999.99</Text>
-            </View>
+        <Card index={5} className="gap-4">
+          <SectionTitle isDark={isDark} icon={<Wallet size={16} color="#2A55D4" />} title="Seats & fuel sharing" />
+          <View className="-mt-3">
+            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL SEATS (OPTIONAL)</Text>
+            <TextInput
+              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
+              placeholder="e.g., 4"
+              placeholderTextColor={placeholderColor}
+              keyboardType="number-pad"
+              maxLength={2}
+              value={seatsTotal}
+              onChangeText={(text) => setSeatsTotal(text.replace(/\D/g, '').slice(0, 2))}
+            />
+            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>{seatSummary(seatsTotal)}</Text>
           </View>
 
           <View className={`rounded-2xl border px-4 py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DFEE] bg-[#F4F7FF]'}`}>
             <Text className={`text-sm leading-5 ${secondary}`}>
-              You set the <Text className="font-bold">total cost</Text> for the whole trip — the app splits it evenly and live as riders join. Inviting more
-              friends lowers everyone&apos;s share, including yours.
+              No fixed fare. Each rider offers a <Text className="font-bold">small fuel contribution</Text> (PartyUp suggests a fair range by
+              distance) and you accept who rides, like a ride-hailing app. Riders also pay a {Math.round(CARPOOL_PLATFORM_FEE_RATE * 100)}%
+              PartyUp fee on top.
             </Text>
           </View>
         </Card>
 
-        <Card index={5}>
+        <Card index={6}>
           <SectionTitle isDark={isDark} icon={<NotebookPen size={16} color="#2A55D4" />} title="Notes (optional)" />
           <TextInput
             className={`min-h-[88px] rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}

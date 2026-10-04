@@ -122,7 +122,7 @@ function SpinningMedal({ rank, tier }: { rank: string; tier: number }) {
   );
 }
 
-function Rays({ color }: { color: string }) {
+export function Rays({ color }: { color: string }) {
   const rotation = useSharedValue(0);
 
   useEffect(() => {
@@ -157,7 +157,7 @@ function scatter(i: number, k: number) {
   return n - Math.floor(n);
 }
 
-function Confetti({ colors }: { colors: string[] }) {
+export function Confetti({ colors }: { colors: string[] }) {
   const { width, height } = useWindowDimensions();
   const pieces = useMemo(
     () =>

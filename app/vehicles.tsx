@@ -1,5 +1,5 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { Car, Plus } from 'lucide-react-native';
+import { Car, ChevronRight, IdCard, Plus } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
@@ -10,7 +10,16 @@ import { EmptyState, SkeletonCard, SuccessOverlay, useShake } from '@/components
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { createVehicle, listMyVehicles, updateVehicle, type Vehicle, type VehicleVerificationStatus } from '@/lib/vehicles';
+import {
+  createVehicle,
+  getMyDriverLicense,
+  isLicenseValid,
+  listMyVehicles,
+  updateVehicle,
+  type DriverLicense,
+  type Vehicle,
+  type VehicleVerificationStatus,
+} from '@/lib/vehicles';
 
 const STATUS_LABEL: Record<VehicleVerificationStatus, string> = {
   unverified: 'Unverified',
@@ -63,6 +72,7 @@ export default function VehiclesScreen() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
+  const [license, setLicense] = useState<DriverLicense | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [formVisible, setFormVisible] = useState(false);
@@ -78,7 +88,8 @@ export default function VehiclesScreen() {
   const load = useCallback(async () => {
     setVehiclesLoading(true);
     setErrorMessage(null);
-    const { data, error } = await listMyVehicles();
+    const [{ data, error }, licenseResult] = await Promise.all([listMyVehicles(), getMyDriverLicense()]);
+    setLicense(licenseResult.data);
     if (error) {
       setErrorMessage(error.message);
     } else {
@@ -185,6 +196,20 @@ export default function VehiclesScreen() {
           <View className="rounded-xl px-4 py-3" style={{ backgroundColor: errorBg }}>
             <Text className="text-sm" style={{ color: errorText }}>{errorMessage}</Text>
           </View>
+        ) : null}
+
+        {/* Drivers with an approved car but no valid license can't create carpools yet. */}
+        {!vehiclesLoading && vehicles.some((vehicle) => vehicle.verification_status === 'approved') && !isLicenseValid(license) && license?.status !== 'pending' ? (
+          <AnimatedPressable
+            key="license-banner"
+            onPress={() => router.push({ pathname: '/verify-vehicle', params: { licenseOnly: '1' } })}
+            className="mb-4 flex-row items-center gap-3 rounded-2xl border border-[#F5C26B] bg-[#FFF7E6] px-4 py-3">
+            <IdCard size={20} color="#B4650B" />
+            <Text className="flex-1 text-sm font-semibold text-[#7A4A08]">
+              {license ? "Your driver's license needs updating" : "Add your driver's license"} to create carpools.
+            </Text>
+            <ChevronRight size={18} color="#B4650B" />
+          </AnimatedPressable>
         ) : null}
 
         {vehiclesLoading ? (

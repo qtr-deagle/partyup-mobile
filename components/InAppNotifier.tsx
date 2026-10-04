@@ -12,7 +12,7 @@ import { Bell, BadgeCheck, Car, MessageCircle, UserPlus } from 'lucide-react-nat
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ToastKind = 'message' | 'trip' | 'match' | 'system';
@@ -35,6 +35,8 @@ const HIDDEN_Y = -160;
 
 const ICONS = { message: MessageCircle, trip: Car, match: UserPlus, system: BadgeCheck } as const;
 const ACCENTS = { message: '#3B82F6', trip: '#10B981', match: '#8B5CF6', system: '#F0A93B' } as const;
+const LABELS = { message: 'Message', trip: 'Trip', match: 'Friends', system: 'PartyUp' } as const;
+const SETTLE = { duration: 320, easing: Easing.out(Easing.cubic) };
 
 // Where tapping a toast or a push notification takes you.
 export function routeForNotification(data: Record<string, unknown>): Href | null {
@@ -176,7 +178,7 @@ export default function InAppNotifier() {
       return;
     }
     translateY.set(HIDDEN_Y);
-    translateY.set(withSpring(0, { damping: 18, stiffness: 180 }));
+    translateY.set(withTiming(0, SETTLE));
     if (current.kind === 'message') {
       feedback.received();
     } else {
@@ -195,7 +197,7 @@ export default function InAppNotifier() {
       if (event.translationY < -30 || event.velocityY < -500) {
         runOnJS(dismiss)();
       } else {
-        translateY.set(withSpring(0, { damping: 18, stiffness: 180 }));
+        translateY.set(withTiming(0, SETTLE));
       }
     });
 
@@ -233,25 +235,39 @@ export default function InAppNotifier() {
         style={[{ position: 'absolute', top: insets.top + 8, left: 12, right: 12, zIndex: 1000 }, animatedStyle]}>
         <Pressable
           onPress={open}
-          className={`flex-row items-center rounded-2xl border px-3.5 py-3 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white'}`}
-          style={{ shadowColor: '#0B1220', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 }}>
+          className={`flex-row items-center overflow-hidden rounded-3xl border py-3 pl-4 pr-3.5 ${isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white'}`}
+          style={{ shadowColor: '#0B1220', shadowOpacity: 0.16, shadowRadius: 22, shadowOffset: { width: 0, height: 10 }, elevation: 12 }}>
+          <View className="absolute bottom-0 left-0 top-0 w-1" style={{ backgroundColor: accent }} />
           {current.avatarUrl ? (
-            <Image source={{ uri: current.avatarUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+            <View key="avatar">
+              <Image source={{ uri: current.avatarUrl }} style={{ width: 44, height: 44, borderRadius: 22 }} />
+              <View
+                className={`absolute -bottom-0.5 -right-0.5 h-5 w-5 items-center justify-center rounded-full border-2 ${isDark ? 'border-[#111B2E]' : 'border-white'}`}
+                style={{ backgroundColor: accent }}>
+                <Icon size={10} color="#FFFFFF" strokeWidth={2.6} />
+              </View>
+            </View>
           ) : (
-            <View className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: `${accent}22` }}>
-              <Icon size={20} color={accent} strokeWidth={2.2} />
+            <View key="icon" className="h-11 w-11 items-center justify-center rounded-2xl" style={{ backgroundColor: `${accent}22` }}>
+              <Icon size={21} color={accent} strokeWidth={2.2} />
             </View>
           )}
           <View className="ml-3 flex-1">
-            <Text numberOfLines={1} className={`text-[15px] font-bold ${isDark ? 'text-white' : 'text-[#182A4D]'}`}>
+            <View className="flex-row items-center">
+              <Text className="text-[11px] font-bold uppercase tracking-wider" style={{ color: accent }}>
+                {LABELS[current.kind] ?? 'Update'}
+              </Text>
+              <Text className={`text-[11px] ${isDark ? 'text-[#64748B]' : 'text-[#9AA6BC]'}`}>{'  ·  now'}</Text>
+            </View>
+            <Text numberOfLines={1} className={`mt-0.5 text-[15px] font-bold ${isDark ? 'text-white' : 'text-[#182A4D]'}`}>
               {current.title}
             </Text>
-            <Text numberOfLines={2} className={`mt-0.5 text-[13px] ${isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]'}`}>
+            <Text numberOfLines={2} className={`mt-0.5 text-[13px] leading-[18px] ${isDark ? 'text-[#94A3B8]' : 'text-[#6C7A95]'}`}>
               {current.body}
             </Text>
           </View>
-          <View className="ml-2 h-2 w-2 rounded-full" style={{ backgroundColor: accent }} />
         </Pressable>
+        <View className={`mt-1.5 h-1 w-10 self-center rounded-full ${isDark ? 'bg-white/20' : 'bg-black/10'}`} />
       </Animated.View>
     </GestureDetector>
   );

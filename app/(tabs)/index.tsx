@@ -3,9 +3,13 @@ import { routeForNotification } from '@/components/InAppNotifier';
 import { GuildSummaryCard } from '@/components/GuildSummaryCard';
 import NotificationModal from '@/components/NotificationModal';
 import StaffDashboard from '@/components/StaffDashboard';
+import TrustAwardCelebration from '@/components/TrustAwardCelebration';
+import TrustScoreModal from '@/components/TrustScoreModal';
+import { RankMedal } from '@/components/guild/RankMedal';
 import { PopIn, riseIn } from '@/components/ui/motion';
 import WarningModeModal from '@/components/WarningModeModal';
 import { useAuth } from '@/hooks/auth-provider';
+import { useTrustAward } from '@/hooks/use-trust-award';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { startTrip } from '@/lib/carpool';
@@ -86,6 +90,7 @@ export default function HomeScreen() {
   const userId = session?.user.id;
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [warningModeVisible, setWarningModeVisible] = useState(false);
+  const [trustModalVisible, setTrustModalVisible] = useState(false);
   const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
   const [dbNotifications, setDbNotifications] = useState<AppNotification[]>([]);
   const [activeTrip, setActiveTrip] = useState<ActiveTripSummary | null>(null);
@@ -195,6 +200,15 @@ export default function HomeScreen() {
     })),
   ].sort((a, b) => b.sortTime - a.sortTime);
 
+  const handleMarkAllRead = () => {
+    const unreadIds = dbNotifications.filter((n) => !n.read).map((n) => n.id);
+    if (unreadIds.length === 0) {
+      return;
+    }
+    setDbNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    unreadIds.forEach((id) => void markNotificationRead(id));
+  };
+
   const handleNotificationPress = (notification: { id: string; title: string; message: string; read: boolean }) => {
     const dbNotification = dbNotifications.find((n) => n.id === notification.id);
     if (dbNotification && !notification.read) {
@@ -252,9 +266,15 @@ export default function HomeScreen() {
   const firstName = profile?.display_name?.trim().split(/\s+/)[0] ?? '';
   const countdownLabel = activeTrip ? formatCountdown(activeTrip.start_at) : null;
   const isVerified = safety?.verification_status === 'approved';
+  const trustScore = safety?.trust_score ?? 0;
+  const trustAward = useTrustAward(userId, safety ? safety.trust_score : null);
 
   const unreadCount = incomingRequests.length + dbNotifications.filter((notification) => !notification.read).length;
-  const iconButtonClass = `relative h-11 w-11 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-white shadow-sm shadow-black/5'}`;
+  // shadow-sm stays on in both themes (transparent in dark): NativeWind
+  // remounts a component whose styles start using CSS variables after the
+  // first render, and remounting these AnimatedPressables on a dark→light
+  // switch killed touch input app-wide.
+  const iconButtonClass = `relative h-11 w-11 items-center justify-center rounded-full shadow-sm ${isDark ? 'bg-[#18253C] shadow-transparent' : 'bg-white shadow-black/5'}`;
   const iconColor = isDark ? '#E2E8F0' : '#24314A';
   const initial = (firstName[0] ?? 'P').toUpperCase();
 
@@ -316,12 +336,21 @@ export default function HomeScreen() {
               </Defs>
               <Rect x="0" y="0" width="100" height="100" fill="url(#homeTripGradient)" />
             </Svg>
+            {/* Tapping the trip summary opens the trip. */}
+            <AnimatedPressable
+              onPress={() => router.push({ pathname: '/trip/[id]', params: { id: activeTrip.trip_id } })}
+              scaleTo={0.98}
+              accessibilityRole="button"
+              accessibilityLabel={`Open trip to ${activeTrip.destination}`}>
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-2 rounded-full bg-white/15 px-3 py-1">
                 <View className="h-2 w-2 rounded-full bg-[#34D399]" />
                 <Text className="text-xs font-semibold text-white">{TRIP_STATUS_LABELS[activeTrip.status]}</Text>
               </View>
-              <Send size={18} color="rgba(255,255,255,0.8)" />
+              <View className="flex-row items-center gap-1 rounded-full bg-white/15 py-1 pl-3 pr-2">
+                <Text className="text-xs font-semibold text-white">View trip</Text>
+                <ChevronRight size={14} color="#FFFFFF" />
+              </View>
             </View>
 
             <Text numberOfLines={2} className="mt-4 text-headline-28 font-bold text-white">{activeTrip.destination}</Text>
@@ -334,6 +363,7 @@ export default function HomeScreen() {
               </View>
               <Text className="text-headline-20 font-semibold text-white">{countdownLabel ?? TRIP_STATUS_LABELS[activeTrip.status]}</Text>
             </View>
+            </AnimatedPressable>
 
             <View className="mt-4 flex-row gap-3">
               {activeTrip.is_driver && activeTrip.status !== 'ongoing' ? (
@@ -387,16 +417,23 @@ export default function HomeScreen() {
               <Text className={`${typography.sectionTitle} ${primaryText}`}>Safety Overview</Text>
             </View>
 
-            <View className="mt-4 flex-row items-center gap-4">
-              <TrustRing score={safety?.trust_score ?? 0} color={accentColor} trackColor={isDark ? '#1E2A40' : '#E6EDF5'} textClassName={primaryText} />
+            <AnimatedPressable
+              onPress={() => setTrustModalVisible(true)}
+              accessibilityLabel="See how your trust score is calculated"
+              className="mt-4 flex-row items-center gap-4">
+              <TrustRing score={trustScore} color={accentColor} trackColor={isDark ? '#1E2A40' : '#E6EDF5'} textClassName={primaryText} />
               <View className="flex-1">
                 <Text className={`text-xs font-medium uppercase tracking-wide ${mutedText}`}>Trust score</Text>
-                <Text className={`mt-1 text-[15px] font-semibold leading-5 ${primaryText}`}>{isVerified ? 'Protected and verified' : 'Verify your ID to boost your score'}</Text>
-                <View className="mt-2 self-start rounded-full px-2.5 py-0.5" style={{ backgroundColor: isVerified ? (isDark ? '#0F3D2E' : '#DDF4EA') : (isDark ? '#3A2A12' : '#FFEBCF') }}>
-                  <Text className="text-xs font-semibold" style={{ color: isVerified ? accentColor : warningColor }}>{isVerified ? 'Verified' : 'Not verified'}</Text>
+                <Text className={`mt-1 text-[15px] font-semibold leading-5 ${primaryText}`}>{!isVerified ? 'Verify your ID to boost your score' : trustScore >= 100 ? 'Trusted Traveler' : 'Tap to see how to reach 100'}</Text>
+                <View className="mt-2 flex-row items-center gap-2">
+                  <View className="rounded-full px-2.5 py-0.5" style={{ backgroundColor: isVerified ? (isDark ? '#0F3D2E' : '#DDF4EA') : (isDark ? '#3A2A12' : '#FFEBCF') }}>
+                    <Text className="text-xs font-semibold" style={{ color: isVerified ? accentColor : warningColor }}>{isVerified ? 'Verified' : 'Not verified'}</Text>
+                  </View>
+                  {trustScore >= 100 ? <RankMedal key="trust-medal" rank="Gold" size={24} /> : null}
                 </View>
               </View>
-            </View>
+              <ChevronRight size={20} color={isDark ? '#64748B' : '#A0AABD'} />
+            </AnimatedPressable>
 
             <View className="mt-4 flex-row gap-3">
               <View className={`flex-1 rounded-2xl p-3.5 ${mutedPanel}`}>
@@ -467,7 +504,10 @@ export default function HomeScreen() {
         isDark={isDark}
         notifications={notifications}
         onNotificationPress={handleNotificationPress}
+        onMarkAllRead={handleMarkAllRead}
       />
+      <TrustScoreModal visible={trustModalVisible} onClose={() => setTrustModalVisible(false)} isDark={isDark} />
+      <TrustAwardCelebration visible={trustAward.celebrating} onClose={trustAward.dismiss} />
       <WarningModeModal
         visible={warningModeVisible}
         onClose={() => setWarningModeVisible(false)}

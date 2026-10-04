@@ -2,16 +2,16 @@ import { DatePickerModal } from '@/components/carpool/DatePickerModal';
 import { TimePickerModal } from '@/components/carpool/TimePickerModal';
 import MeetupLocationPicker, { EMPTY_MEETUP, type MeetupDraft } from '@/components/MeetupLocationPicker';
 import { InterestTagPicker } from '@/components/carpool/InterestTagPicker';
-import { ItineraryDayBuilder, type ItineraryDayInput } from '@/components/carpool/ItineraryDayBuilder';
+import { describeItineraryDay, ItineraryDayBuilder, type ItineraryDayInput } from '@/components/carpool/ItineraryDayBuilder';
+import { TourDestinationPicker } from '@/components/carpool/TourDestinationPicker';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createTrip, formatMeetupLabel } from '@/lib/carpool';
-import { normalizePlace } from '@/lib/names';
-import { useRouter } from 'expo-router';
-import * as Location from 'expo-location';
+import { formatTourDestination, TOUR_CATEGORIES, type TourCategory, type TourDestination } from '@/lib/tours';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Calendar, CalendarDays, Clock, MapPin, ShieldAlert, Sparkles, Wallet } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, View } from 'react-native';
@@ -88,6 +88,8 @@ function SectionTitle({ icon, title, isDark }: { icon: ReactNode; title: string;
 
 export default function CreateTourScreen() {
   const router = useRouter();
+  // Set when a guild leader posts this tour as a guild "Let's PartyUp".
+  const { guildId, guildName } = useLocalSearchParams<{ guildId?: string; guildName?: string }>();
   const isDark = useColorScheme() === 'dark';
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
@@ -101,7 +103,8 @@ export default function CreateTourScreen() {
   const isVerified = profile?.verification_status === 'approved';
 
   const [title, setTitle] = useState('');
-  const [destination, setDestination] = useState('');
+  const [destination, setDestination] = useState<TourDestination | null>(null);
+  const [category, setCategory] = useState<TourCategory | null>(null);
   const [meetup, setMeetup] = useState<MeetupDraft>(EMPTY_MEETUP);
 
   const [startDate, setStartDate] = useState<Date | null>(null);
@@ -129,8 +132,13 @@ export default function CreateTourScreen() {
   }
 
   async function handleSubmit() {
-    if (!title.trim() || !destination.trim()) {
+    if (!title.trim() || !destination) {
       fail('Tour title and destination are required.');
+      return;
+    }
+
+    if (!category) {
+      fail('Pick a tour category.');
       return;
     }
 
@@ -174,34 +182,26 @@ export default function CreateTourScreen() {
     setSubmitting(true);
     setErrorMessage(null);
 
-    let destinationLat: number | null = null;
-    let destinationLng: number | null = null;
-    try {
-      const geocoded = await Location.geocodeAsync(destination.trim());
-      if (geocoded[0]) {
-        destinationLat = geocoded[0].latitude;
-        destinationLng = geocoded[0].longitude;
-      }
-    } catch {
-      // Best-effort only -- tour creation still succeeds without geofence support.
-    }
-
     const { data, error } = await createTrip({
       title: title.trim(),
       origin: formatMeetupLabel(meetupLocation),
-      destination: normalizePlace(destination),
+      destination: formatTourDestination(destination),
       startAt: startDate ? startDate.toISOString() : null,
       visibility: 'public',
       seatsTotal: maxP,
       notes: description.trim() || null,
-      destinationLat,
-      destinationLng,
+      destinationLat: destination.latitude,
+      destinationLng: destination.longitude,
       tripType: 'tour',
       pricePerPerson: price,
       durationDays: duration,
-      interests,
-      itinerary: itinerary.filter((day) => day.description.trim().length > 0),
+      // The category goes first; extra themes follow.
+      interests: [category, ...interests],
+      itinerary: itinerary
+        .filter((day) => day.activities.length > 0)
+        .map((day, index) => ({ dayNumber: index + 1, description: describeItineraryDay(day) })),
       meetup: meetupLocation,
+      guildId: guildId ?? null,
     });
 
     setSubmitting(false);
@@ -219,7 +219,10 @@ export default function CreateTourScreen() {
 
   return (
     <KeyboardAvoidingView behavior="padding" className={`flex-1 ${background}`}>
-      <ScreenHeader title="Create Tour" subtitle="Plan a group trip others can join" />
+      <ScreenHeader
+        title={guildId ? "Let's PartyUp" : 'Create Tour'}
+        subtitle={guildId ? `Tour for ${guildName ?? 'your guild'}` : 'Plan a group trip others can join'}
+      />
 
       {!isVerified ? (
         <EmptyState
@@ -263,14 +266,24 @@ export default function CreateTourScreen() {
 
           <View>
             <Text className={label}>DESTINATION</Text>
-            <TextInput
-              className={input}
-              placeholder="Boracay, Aklan"
-              placeholderTextColor={placeholderColor}
-              maxLength={80}
-              value={destination}
-              onChangeText={setDestination}
-            />
+            <TourDestinationPicker value={destination} onChange={setDestination} isDark={isDark} />
+          </View>
+
+          <View>
+            <Text className={label}>CATEGORY</Text>
+            <View className="flex-row flex-wrap gap-2">
+              {TOUR_CATEGORIES.map((option) => {
+                const selected = category === option;
+                return (
+                  <AnimatedPressable
+                    key={option}
+                    onPress={() => setCategory(option)}
+                    className={`rounded-full border px-4 py-2 ${selected ? 'border-[#2A55D4] bg-[#2A55D4]' : `${border} ${inputBg}`}`}>
+                    <Text className={`text-sm font-bold ${selected ? 'text-white' : inputText}`}>{option}</Text>
+                  </AnimatedPressable>
+                );
+              })}
+            </View>
           </View>
 
           <MeetupLocationPicker
@@ -362,12 +375,12 @@ export default function CreateTourScreen() {
           </View>
 
           <View>
-            <Text className={label}>DESCRIPTION</Text>
+            <Text className={label}>SHORT NOTE (OPTIONAL)</Text>
             <TextInput
               className={`min-h-[88px] ${input}`}
-              placeholder="What's included, what to bring, activities, etc."
+              placeholder="What's included or what to bring"
               placeholderTextColor={placeholderColor}
-              maxLength={500}
+              maxLength={200}
               multiline
               value={description}
               onChangeText={setDescription}
@@ -376,7 +389,7 @@ export default function CreateTourScreen() {
         </Card>
 
         <Card index={3} className="gap-3">
-          <SectionTitle isDark={isDark} icon={<Sparkles size={16} color="#2A55D4" />} title="Tour themes" />
+          <SectionTitle isDark={isDark} icon={<Sparkles size={16} color="#2A55D4" />} title="Extra themes (optional)" />
           <InterestTagPicker selected={interests} onToggle={toggleInterest} isDark={isDark} />
         </Card>
 
