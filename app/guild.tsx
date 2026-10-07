@@ -1,6 +1,6 @@
 import { LeaderboardPanel, Segmented } from '@/components/guild/LeaderboardPanel';
 import { MissionsPanel } from '@/components/guild/MissionsPanel';
-import { MyGuildPanel } from '@/components/guild/MyGuildPanel';
+import { MyGuildPanel, type GuildPanelFocus } from '@/components/guild/MyGuildPanel';
 import { RewardsPanel } from '@/components/guild/RewardsPanel';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
@@ -16,13 +16,18 @@ type Tab = 'mine' | 'missions' | 'leaderboard' | 'rewards';
 const TAB_IDS: Tab[] = ['mine', 'missions', 'leaderboard', 'rewards'];
 
 // Guild hub with four tabs. Opens on Leaderboard for a traveler who has no
-// guild yet (that's where Join is), otherwise on My Guild. `?tab=` overrides.
+// guild yet (that's where Join is), otherwise on My Guild. `?tab=` overrides;
+// `?focus=reports` opens My Guild with the leader's reports inbox up.
 export default function GuildScreen() {
   const isDark = useColorScheme() === 'dark';
   const { profile } = useAuth();
   const { primaryColor, screenBackground } = getTheme(isDark);
-  const params = useLocalSearchParams<{ tab?: string }>();
-  const requestedTab = TAB_IDS.includes(params.tab as Tab) ? (params.tab as Tab) : null;
+  const params = useLocalSearchParams<{ tab?: string; focus?: string }>();
+  const requestedFocus: GuildPanelFocus | null = params.focus === 'reports' ? params.focus : null;
+  // Cleared on the first tab switch, so coming back to My Guild doesn't
+  // re-open the inbox.
+  const [focus, setFocus] = useState(requestedFocus);
+  const requestedTab = requestedFocus ? 'mine' : TAB_IDS.includes(params.tab as Tab) ? (params.tab as Tab) : null;
 
   const [tab, setTab] = useState<Tab | null>(requestedTab);
   const [guildId, setGuildId] = useState<string | null>(null);
@@ -62,7 +67,10 @@ export default function GuildScreen() {
     <View className={`flex-1 ${screenBackground}`}>
       <ScreenHeader title={isLeader ? 'Guild Leader Hub' : 'Guilds'} subtitle="Missions, rankings and rewards">
         <View className="mt-4">
-          <Segmented isDark={isDark} options={tabs} value={tab ?? 'mine'} onChange={(value) => setTab(value as Tab)} />
+          <Segmented isDark={isDark} options={tabs} value={tab ?? 'mine'} onChange={(value) => {
+              setFocus(null);
+              setTab(value as Tab);
+            }} />
         </View>
       </ScreenHeader>
 
@@ -71,7 +79,7 @@ export default function GuildScreen() {
           <ActivityIndicator color={primaryColor} />
         </View>
       ) : tab === 'mine' ? (
-        <MyGuildPanel key="mine" isDark={isDark} onFindGuild={() => setTab('leaderboard')} onGuildChanged={() => void loadMembership()} />
+        <MyGuildPanel key="mine" isDark={isDark} focus={focus} onFindGuild={() => setTab('leaderboard')} onGuildChanged={() => void loadMembership()} />
       ) : tab === 'missions' ? (
         <MissionsPanel key="missions" isDark={isDark} onFindGuild={() => setTab('leaderboard')} onChanged={() => void loadMissionCount()} />
       ) : tab === 'leaderboard' ? (

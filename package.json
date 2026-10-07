@@ -6,8 +6,9 @@
     "start": "expo start --localhost",
     "start:device": "expo start --lan",
     "reset-project": "node ./scripts/reset-project.js",
-    "demo:seed": "node ./scripts/demo-seed.mjs seed",
-    "demo:reset": "node ./scripts/demo-seed.mjs reset",
+    "demo:seed": "node ./scripts/seed/index.mjs seed",
+    "demo:locations": "node ./scripts/seed/index.mjs locations",
+    "demo:reset": "node ./scripts/seed/index.mjs reset",
     "android": "expo start --android --localhost",
     "ios": "expo run:ios",
     "web": "expo start --web",
@@ -75,6 +76,7 @@
     "eslint": "^9.25.0",
     "eslint-config-expo": "~57.0.2",
     "patch-package": "^8.0.1",
+    "pngjs": "^3.4.0",
     "typescript": "~6.0.3"
   },
   "private": true

@@ -5,7 +5,7 @@ import { getTheme, typography } from '@/lib/theme';
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Text, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -50,16 +50,18 @@ type CardProps = {
   index?: number;
   className?: string;
   style?: StyleProp<ViewStyle>;
+  onLayout?: (event: LayoutChangeEvent) => void;
   children: ReactNode;
 };
 
 // Rounded, softly shadowed content card that rises in with the shared stagger.
-export function Card({ index = 0, className = '', style, children }: CardProps) {
+export function Card({ index = 0, className = '', style, onLayout, children }: CardProps) {
   const isDark = useColorScheme() === 'dark';
   return (
     <Animated.View
       entering={enterFromBelow(index)}
       style={style}
+      onLayout={onLayout}
       className={`rounded-3xl border p-4 shadow-sm ${isDark ? 'border-white/5 bg-[#111B2E] shadow-black/20' : 'border-[#EDF0F5] bg-white shadow-black/5'} ${className}`}>
       {children}
     </Animated.View>

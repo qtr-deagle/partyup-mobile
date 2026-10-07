@@ -172,6 +172,16 @@ async function isTrackingStarted() {
   return registered && (await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK_NAME));
 }
 
+// Whether this device is currently sharing its location in the background.
+export async function isLocationTrackingActive() {
+  if (!backgroundLocationSupported) return false;
+  try {
+    return await isTrackingStarted();
+  } catch {
+    return false;
+  }
+}
+
 async function startTracking(mode: TrackingMode) {
   const alreadyStarted = await isTrackingStarted();
   if (alreadyStarted && (trackingMode === mode || (trackingMode === null && mode === 'balanced'))) {

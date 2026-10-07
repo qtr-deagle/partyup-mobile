@@ -1,6 +1,6 @@
 import { Segmented } from '@/components/guild/LeaderboardPanel';
 import { EmptyState, enterFromBelow } from '@/components/ui/motion';
-import { parseTimestamp } from '@/lib/datetime';
+import { formatDateTime, parseTimestamp } from '@/lib/datetime';
 import {
   escalateGuildReport,
   ESCALATION_REASON_LABELS,
@@ -156,7 +156,7 @@ export function GuildReportsInbox({ visible, onClose, isDark, guildId, onChanged
                         {GUILD_REPORT_CATEGORY_LABELS[report.category].toUpperCase()}
                       </Text>
                     </View>
-                    <Text className={`flex-1 text-right text-xs ${mutedText}`}>{parseTimestamp(report.created_at).toLocaleString()}</Text>
+                    <Text className={`flex-1 text-right text-xs ${mutedText}`}>{formatDateTime(report.created_at)}</Text>
                   </View>
 
                   <Text className={`mt-2 text-xs ${mutedText}`}>

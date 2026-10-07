@@ -1,5 +1,5 @@
 import { EmptyState } from '@/components/ui/motion';
-import { parseTimestamp } from '@/lib/datetime';
+import { formatClockTime, parseTimestamp } from '@/lib/datetime';
 import { AUDIT_PAGE_SIZE, auditEventKind, describeAuditEvent, getGuildAuditLog, type GuildAuditEvent } from '@/lib/guildReports';
 import { getTheme } from '@/lib/theme';
 import { Flag, MessageSquareX, ScrollText, Settings2, Shield, Users, X } from 'lucide-react-native';
@@ -130,7 +130,7 @@ export function GuildAuditLogModal({ visible, onClose, isDark, guildId }: Props)
                               </Text>
                             ) : null}
                             <Text className={`mt-0.5 text-[11px] ${mutedText}`}>
-                              {parseTimestamp(event.created_at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+                              {formatClockTime(event.created_at)}
                             </Text>
                           </View>
                         </View>

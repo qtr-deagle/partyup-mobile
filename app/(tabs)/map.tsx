@@ -4,6 +4,7 @@ import MapBottomSheet, { SHEET_PEEK_HEIGHT, type MapBottomSheetHandle } from '@/
 import PersonCard, { MeetupCard, type PersonCardData } from '@/components/map/PersonCard';
 import { riseIn } from '@/components/ui/motion';
 import WarningModeModal from '@/components/WarningModeModal';
+import { useTabBarSpace } from '@/components/ui/tab-bar-visibility';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '@/hooks/auth-provider';
 import { getTripDetail } from '@/lib/carpool';
@@ -124,6 +125,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 
 export default function MapScreen() {
+  const tabBarSpace = useTabBarSpace();
   const isDark = useColorScheme() === 'dark';
   const router = useRouter();
   const { session } = useAuth();
@@ -621,7 +623,8 @@ export default function MapScreen() {
   const showMap = !!permission?.foreground && !!region;
 
   return (
-    <View className={`flex-1 ${screenBackground}`} onLayout={(event) => {
+    // Stops above the floating tab bar so the sheet and controls aren't covered.
+    <View className={`flex-1 ${screenBackground}`} style={{ marginBottom: tabBarSpace }} onLayout={(event) => {
         setContainerHeight(event.nativeEvent.layout.height);
         setContainerWidth(event.nativeEvent.layout.width);
       }}>

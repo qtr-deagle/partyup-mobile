@@ -11,7 +11,10 @@ import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useThreadMessages, type ScreenMessage } from '@/hooks/use-thread-messages';
 import { setActiveChatThread } from '@/lib/active-chat';
 import { pickChatPhoto } from '@/lib/chat-media';
-import { getChatPrefs, setChatMuted, setChatPinned, type ChatMessage } from '@/lib/social';
+import { SeenByRow } from '@/components/chat/SeenByRow';
+import { parseTimestamp } from '@/lib/datetime';
+import { getChatPrefs, getThreadReadMarks, setChatMuted, setChatPinned, type ChatMessage } from '@/lib/social';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { feedback } from '@/lib/sounds';
 import { getTheme } from '@/lib/theme';
 import { Image } from 'expo-image';
@@ -63,6 +66,8 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [infoVisible, setInfoVisible] = useState(false);
   const [prefs, setPrefs] = useState({ muted: false, pinned: false });
+  // userId -> last_read_at, kept live for the "seen by" avatars.
+  const [readMarks, setReadMarks] = useState<Map<string, string>>(new Map());
   const listRef = useRef<FlatList<ScreenMessage>>(null);
   const inputRef = useRef<TextInput>(null);
 
@@ -79,6 +84,33 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
     };
   }, [threadId, myUserId]);
 
+  useEffect(() => {
+    if (!threadId || !myUserId) return;
+    let active = true;
+    void getThreadReadMarks(threadId).then((result) => {
+      if (!active || result.error) return;
+      setReadMarks(new Map(result.data.filter((row) => row.last_read_at).map((row) => [row.user_id, row.last_read_at as string])));
+    });
+    const channel = supabase
+      .channel(uniqueChannelName(`group-reads:${threadId}`))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_participants', filter: `thread_id=eq.${threadId}` }, (payload) => {
+        const row = payload.new as { user_id: string; last_read_at: string | null };
+        if (!row.last_read_at) return;
+        setReadMarks((current) => {
+          if (current.get(row.user_id) === row.last_read_at) return current;
+          const next = new Map(current);
+          next.set(row.user_id, row.last_read_at as string);
+          return next;
+        });
+      })
+      .subscribe();
+    return () => {
+      active = false;
+      setReadMarks(new Map());
+      void supabase.removeChannel(channel);
+    };
+  }, [threadId, myUserId]);
+
   // Keep the in-app notifier quiet for the chat on screen.
   useEffect(() => {
     setActiveChatThread(threadId);
@@ -88,6 +120,24 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
   const byId = useMemo(() => new Map(members.map((member) => [member.userId, member])), [members]);
   // Messages from people you blocked stay hidden.
   const visible = useMemo(() => thread.messages.filter((message) => !blockedIds?.has(message.sender_id)), [thread.messages, blockedIds]);
+  // Each member's head sits under the latest message they've read, unless
+  // that message is their own.
+  const seenByMessageId = useMemo(() => {
+    const placed = new Map<string, GroupMember[]>();
+    const sentTimes = visible.map((message) => (message.pending ? Infinity : parseTimestamp(message.created_at).getTime()));
+    for (const [userId, readAt] of readMarks) {
+      if (userId === myUserId || blockedIds?.has(userId)) continue;
+      const member = byId.get(userId);
+      if (!member) continue;
+      const readTime = parseTimestamp(readAt).getTime();
+      let index = visible.length - 1;
+      while (index >= 0 && sentTimes[index] > readTime) index--;
+      if (index < 0 || visible[index].sender_id === userId) continue;
+      const messageId = visible[index].id;
+      placed.set(messageId, [...(placed.get(messageId) ?? []), member]);
+    }
+    return placed;
+  }, [visible, readMarks, byId, myUserId, blockedIds]);
   const nameOf = (userId: string) => (userId === myUserId ? 'You' : byId.get(userId)?.name ?? 'Former member');
   const firstNameOf = (userId: string) => nameOf(userId).split(' ')[0];
 
@@ -200,6 +250,7 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
             const name = sender?.name ?? 'Former member';
             const quoted = item.reply_to_id ? thread.messagesById.get(item.reply_to_id) ?? null : null;
             const isNew = !thread.initialIds.has(item.id);
+            const seenBy = item.pending ? undefined : seenByMessageId.get(item.id);
             return (
               <Animated.View key={item.localKey ?? item.id} entering={isNew ? riseIn(0, 300) : undefined} className={`flex-row items-end gap-2 ${grouped ? 'mt-0.5' : 'mt-3'} ${mine ? 'justify-end' : ''}`}>
                 {!mine ? (
@@ -247,6 +298,7 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
                     }}
                     onPressReply={() => quoted && jumpTo(quoted.id)}
                   />
+                  {seenBy ? <SeenByRow readers={seenBy} mine={mine} isDark={isDark} /> : null}
                 </View>
               </Animated.View>
             );

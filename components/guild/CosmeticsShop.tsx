@@ -8,8 +8,8 @@ import { buyCosmetic, equipCosmetic, loadoutOf, type Cosmetic, type CosmeticKind
 import { rankFor, rankIndexOf, rewardPrice } from '@/lib/guilds';
 import { getTheme, typography } from '@/lib/theme';
 import { Check, Coins, Lock, Palette, Trophy } from 'lucide-react-native';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, ScrollView, Text, View } from 'react-native';
 
 type Props = {
   isDark: boolean;
@@ -35,6 +35,12 @@ export function CosmeticsShop({ isDark, index = 0, catalog, owned, coins, lifeti
   const [busyKey, setBusyKey] = useState<string | null>(null);
   // What the preview shows when it differs from what's worn.
   const [preview, setPreview] = useState<{ banner?: string | null; frame?: string | null }>({});
+  const rowRef = useRef<ScrollView>(null);
+
+  // Each tab's list starts at its first item.
+  useEffect(() => {
+    rowRef.current?.scrollTo({ x: 0, animated: false });
+  }, [kind]);
 
   const loadout = loadoutOf(owned);
   const ownedKeys = new Set(owned.map((item) => item.cosmetic_key));
@@ -122,7 +128,13 @@ export function CosmeticsShop({ isDark, index = 0, catalog, owned, coins, lifeti
         />
       </View>
 
-      <View className="mt-3 flex-row flex-wrap justify-between gap-y-3">
+      {/* One swipeable row right under the preview, so the preview stays in view while trying items. */}
+      <ScrollView
+        ref={rowRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        className="-mx-4 mt-3"
+        contentContainerClassName="gap-3 px-4">
         <Tile
           key={CLASSIC}
           isDark={isDark}
@@ -183,10 +195,10 @@ export function CosmeticsShop({ isDark, index = 0, catalog, owned, coins, lifeti
             </Tile>
           );
         })}
-      </View>
+      </ScrollView>
 
       <View className={`mt-3 rounded-xl px-3 py-2 ${mutedPanel}`}>
-        <Text className={`text-[11px] ${mutedText}`}>Tap any item to preview it. Milestone items unlock from the Missions tab.</Text>
+        <Text className={`text-[11px] ${mutedText}`}>Swipe to see more. Tap any item to preview it. Milestone items unlock from the Missions tab.</Text>
       </View>
     </Card>
   );
@@ -216,7 +228,7 @@ function Tile({
   return (
     <AnimatedPressable
       onPress={onPreview}
-      className={`w-[48.5%] rounded-2xl border-2 p-2 ${isDark ? 'bg-[#0F1A2C]' : 'bg-[#F8FAFD]'}`}
+      className={`w-36 rounded-2xl border-2 p-2 ${isDark ? 'bg-[#0F1A2C]' : 'bg-[#F8FAFD]'}`}
       style={{ borderColor: selected ? '#7C3AED' : isDark ? '#22324B' : '#E9EDF5' }}>
       {kind === 'banner' ? (
         <ProfileBanner key="banner" bannerKey={itemKey} height={52} className="rounded-xl" />
@@ -227,15 +239,16 @@ function Tile({
           </AvatarFrame>
         </View>
       )}
-      <Text className={`mt-1.5 text-[13px] font-bold ${primaryText}`} numberOfLines={1}>
+      <Text className={`mt-1.5 text-center text-[13px] font-bold ${primaryText}`} numberOfLines={1}>
         {name}
       </Text>
       {note ? (
-        <Text className={`text-[10px] ${mutedText}`} numberOfLines={2}>
+        <Text className={`text-center text-[10px] ${mutedText}`} numberOfLines={2}>
           {note}
         </Text>
       ) : null}
-      <View className="mt-1.5">{children}</View>
+      {/* mt-auto pins the button to the bottom so buttons line up across a row */}
+      <View className="mt-auto pt-1.5">{children}</View>
     </AnimatedPressable>
   );
 }

@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { withRequestTimeout } from '@/lib/social';
 
-export type Gender = 'male' | 'female';
+export type Gender = 'male' | 'female' | 'other';
 export type ChoiceCategory = 'ride' | 'destination' | 'food';
 
 export type TravelPlan = {
@@ -28,6 +28,7 @@ export const PLAN_CATEGORIES: { key: ChoiceCategory; label: string; options: { v
 export const GENDER_OPTIONS: { value: Gender; label: string }[] = [
   { value: 'male', label: 'Male' },
   { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Others' },
 ];
 
 export const MAX_PICKS_PER_CATEGORY = 2;

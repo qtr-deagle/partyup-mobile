@@ -312,6 +312,22 @@ async function handleLicenseRequest(adminClient: ReturnType<typeof createClient>
       result = { ...result, license_number: null, ai_flag: 'mismatch', ai_error: 'This license is already used by another PartyUp account' };
       await write(result);
     }
+    // A license reused from an already-approved ID (QR scan, no new photos)
+    // is approved here once the QR matches that ID on every check. Uploaded
+    // licenses, and reused ones that don't pass, stay pending for an admin.
+    // See migration 202610070007.
+    if (result.ai_flag === 'passed' && result.ai_qr_match === true) {
+      await adminClient
+        .from('driver_licenses')
+        .update({
+          status: 'approved',
+          reviewed_at: new Date().toISOString(),
+          reviewer_notes: 'Approved automatically: the scanned QR matched the verified ID (license number, name and expiry).',
+        })
+        .eq('user_id', userId)
+        .eq('source', 'id_verification')
+        .eq('status', 'pending');
+    }
     return jsonResponse(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

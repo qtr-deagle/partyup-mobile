@@ -52,3 +52,38 @@ export function formatTimeAgo(value: string): string {
   if (hours < 24) return `${hours}h ago`;
   return `${Math.round(hours / 24)}d ago`;
 }
+
+// Clock times are always 12-hour Manila time ("3:45 PM"), whatever the
+// phone's 24-hour setting or locale. The admin website uses the same rules
+// (PartyUp-main/client/src/lib/datetime.ts).
+const MANILA_TZ = 'Asia/Manila';
+
+function toDate(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : parseTimestamp(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** "3:45 PM" */
+export function formatClockTime(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  return date
+    ? date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: MANILA_TZ })
+    : '';
+}
+
+/** "Oct 6, 2026, 3:45 PM" */
+export function formatDateTime(value: string | Date | null | undefined): string {
+  const date = toDate(value);
+  return date
+    ? date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: MANILA_TZ,
+      })
+    : '';
+}

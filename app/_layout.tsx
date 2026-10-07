@@ -103,6 +103,7 @@ function RootLayoutContent() {
         <Stack.Screen name="guild/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="guild/chat" options={{ headerShown: false }} />
         <Stack.Screen name="guild/partyup" options={{ headerShown: false }} />
+        <Stack.Screen name="guild/requests" options={{ headerShown: false }} />
         <Stack.Screen name="rewards" options={{ headerShown: false }} />
         <Stack.Screen name="support/index" options={{ headerShown: false }} />
         <Stack.Screen name="support/new" options={{ headerShown: false }} />
@@ -116,6 +117,7 @@ function RootLayoutContent() {
         <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="trip/chat/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="trip/join/[code]" options={{ headerShown: false }} />
+        <Stack.Screen name="trip-history" options={{ headerShown: false }} />
       </Stack>
       <VerificationGate />
       <InAppNotifier />

@@ -65,6 +65,7 @@ function formatManilaTime(iso: string) {
     timeZone: 'Asia/Manila',
     dateStyle: 'medium',
     timeStyle: 'short',
+    hour12: true,
   }).format(new Date(iso));
 }
 

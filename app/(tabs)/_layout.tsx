@@ -1,5 +1,7 @@
-import { HapticTab } from '@/components/haptic-tab';
+import { TabButton } from '@/components/tab-button';
+import { TAB_BAR_RADIUS, TabBarBackground, tabBarColors } from '@/components/ui/tab-bar-background';
 import { TabIcon } from '@/components/ui/tab-icon';
+import { ScrollAwareTabBar, TAB_BAR_HEIGHT, TabBarVisibilityProvider, useTabBarBottomGap } from '@/components/ui/tab-bar-visibility';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useLocationHeartbeat } from '@/hooks/use-location-heartbeat';
@@ -16,6 +18,7 @@ export default function TabLayout() {
   const { session, loading, profile, profileReady } = useAuth();
   useLocationHeartbeat();
   const unreadChats = useUnreadChats();
+  const tabBarBottomGap = useTabBarBottomGap();
 
   // Hold rendering until the profile is known so unverified travelers don't
   // see the tabs flash before the root VerificationGate redirects them.
@@ -31,116 +34,126 @@ export default function TabLayout() {
     return <Redirect href="/verification-required" />;
   }
 
-  const activeTintColor = isDark ? '#93C5FD' : '#1E40AF';
-  const inactiveTintColor = isDark ? '#64748B' : '#94A3B8';
-  const tabBarBackgroundColor = isDark ? '#111B2E' : '#FFFFFF';
+  const { active: activeTintColor, inactive: inactiveTintColor, activePill: pillColor } = tabBarColors(isDark);
   const sceneBackgroundColor = isDark ? '#0B1220' : '#F8FAFC';
-  const borderColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.06)';
-  const pillColor = isDark ? 'rgba(59,130,246,0.22)' : 'rgba(30,64,175,0.10)';
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: activeTintColor,
-        tabBarInactiveTintColor: inactiveTintColor,
-        headerShown: false,
-        header: () => null,
-        animation: 'shift',
-        sceneStyle: {
-          paddingTop: insets.top,
-          backgroundColor: sceneBackgroundColor,
-        },
-        tabBarButton: HapticTab,
-        // Floating pill bar, inset from the screen edges and lifted above the
-        // home indicator. It stays in layout flow (not absolute) so screens
-        // don't need extra bottom padding to clear it.
-        tabBarStyle: {
-          backgroundColor: tabBarBackgroundColor,
-          borderTopWidth: 0,
-          borderWidth: 1,
-          borderColor,
-          borderRadius: 26,
-          marginHorizontal: 14,
-          marginBottom: Math.max(insets.bottom, 12),
-          height: 64,
-          paddingTop: 6,
-          paddingBottom: 6,
-          paddingHorizontal: 4,
-          elevation: 10,
-          shadowColor: '#0F172A',
-          shadowOpacity: isDark ? 0.4 : 0.1,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 6 },
-        },
-        tabBarItemStyle: {
-          alignItems: 'center',
-          justifyContent: 'center',
-          paddingTop: 0,
-          paddingBottom: 0,
-        },
-        tabBarLabel: ({ focused, children }) => (
-          <Text
-            numberOfLines={1}
-            style={{
-              fontSize: 10.5,
-              fontWeight: focused ? '700' : '500',
-              lineHeight: 13,
-              marginTop: 3,
-              color: focused ? activeTintColor : inactiveTintColor,
-            }}>
-            {children}
-          </Text>
-        ),
-        tabBarIconStyle: {
-          marginBottom: 0,
-        },
-      }}>
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Home',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Home} color={color} focused={focused} pillColor={pillColor} />,
+    <TabBarVisibilityProvider>
+      <Tabs
+        // Also called as a plain function by the library, so render an element.
+        tabBar={(props) => <ScrollAwareTabBar {...props} />}
+        screenOptions={{
+          tabBarActiveTintColor: activeTintColor,
+          tabBarInactiveTintColor: inactiveTintColor,
+          headerShown: false,
+          header: () => null,
+          animation: 'shift',
+          sceneStyle: {
+            paddingTop: insets.top,
+            backgroundColor: sceneBackgroundColor,
+          },
+          // Rendered as an element: the library calls tabBarButton as a plain
+          // function, which merges its compiler memo cache into the tab item's.
+          tabBarButton: (props) => <TabButton {...props} />,
+          // Floating pill bar over the page (see ScrollAwareTabBar), inset from the
+          // screen edges and lifted above the home indicator. Screens pad their
+          // bottoms with useTabBarSpace() so content can clear it.
+          tabBarHideOnKeyboard: true,
+          tabBarBackground: () => <TabBarBackground isDark={isDark} />,
+          tabBarStyle: {
+            borderTopWidth: 0,
+            borderRadius: TAB_BAR_RADIUS,
+            marginHorizontal: 14,
+            marginBottom: tabBarBottomGap,
+            height: TAB_BAR_HEIGHT,
+            paddingTop: 6,
+            paddingBottom: 6,
+            paddingHorizontal: 4,
+            // iOS gets a soft lift; Android elevation is off since the pill is
+            // drawn in SVG and elevation would cast a square shadow.
+            elevation: 0,
+            shadowColor: '#000000',
+            shadowOpacity: isDark ? 0.5 : 0.22,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 8 },
+          },
+          tabBarItemStyle: {
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingTop: 0,
+            paddingBottom: 0,
+          },
+          tabBarLabel: ({ focused, children }) => (
+            <Text
+              numberOfLines={1}
+              style={{
+                fontSize: 10.5,
+                fontWeight: focused ? '700' : '500',
+                lineHeight: 13,
+                marginTop: 3,
+                color: focused ? activeTintColor : inactiveTintColor,
+              }}
+            >
+              {children}
+            </Text>
+          ),
+          tabBarIconStyle: {
+            marginBottom: 0,
+          },
         }}
-      />
-      <Tabs.Screen
-        name="discover"
-        options={{
-          title: 'Discover',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Compass} color={color} focused={focused} pillColor={pillColor} />,
-        }}
-      />
-      <Tabs.Screen
-        name="carpooling"
-        options={{
-          title: 'Travel',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Briefcase} color={color} focused={focused} pillColor={pillColor} />,
-        }}
-      />
-      <Tabs.Screen
-        name="map"
-        options={{
-          title: 'Map',
-          // Google Maps on Android renders black inside an animated (fading/shifting) scene.
-          animation: 'none',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={Map} color={color} focused={focused} pillColor={pillColor} />,
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarBadge: unreadChats > 0 ? (unreadChats > 99 ? '99+' : unreadChats) : undefined,
-          tabBarBadgeStyle: { backgroundColor: '#EF4444', color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={MessageCircle} color={color} focused={focused} pillColor={pillColor} />,
-        }}
-      />
-      <Tabs.Screen
-        name="profile"
-        options={{
-          title: 'Profile',
-          tabBarIcon: ({ color, focused }) => <TabIcon Icon={UserRound} color={color} focused={focused} pillColor={pillColor} />,
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="index"
+          options={{
+            title: 'Home',
+            tabBarIcon: ({ color, focused }) => <TabIcon Icon={Home} color={color} focused={focused} pillColor={pillColor} />,
+          }}
+        />
+        <Tabs.Screen
+          name="discover"
+          options={{
+            title: 'Discover',
+            tabBarIcon: ({ color, focused }) => <TabIcon Icon={Compass} color={color} focused={focused} pillColor={pillColor} />,
+          }}
+        />
+        <Tabs.Screen
+          name="carpooling"
+          options={{
+            title: 'Travel',
+            tabBarIcon: ({ color, focused }) => <TabIcon Icon={Briefcase} color={color} focused={focused} pillColor={pillColor} />,
+          }}
+        />
+        <Tabs.Screen
+          name="map"
+          options={{
+            title: 'Map',
+            // Google Maps on Android renders black inside an animated (fading/shifting) scene.
+            animation: 'none',
+            tabBarIcon: ({ color, focused }) => <TabIcon Icon={Map} color={color} focused={focused} pillColor={pillColor} />,
+          }}
+        />
+        <Tabs.Screen
+          name="chat"
+          options={{
+            title: 'Chat',
+            tabBarBadge: unreadChats > 0 ? (unreadChats > 99 ? '99+' : unreadChats) : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: '#EF4444',
+              color: '#FFFFFF',
+              fontSize: 11,
+              fontWeight: '700',
+            },
+            tabBarIcon: ({ color, focused }) => <TabIcon Icon={MessageCircle} color={color} focused={focused} pillColor={pillColor} />,
+          }}
+        />
+        <Tabs.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            tabBarIcon: ({ color, focused }) => <TabIcon Icon={UserRound} color={color} focused={focused} pillColor={pillColor} />,
+          }}
+        />
+      </Tabs>
+    </TabBarVisibilityProvider>
   );
 }

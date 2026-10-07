@@ -16,7 +16,8 @@ import Animated from 'react-native-reanimated';
 
 // Home-screen teaser for the guild system: rank, coins and the user's guild,
 // tapping through to the full Guild screen.
-export function GuildSummaryCard({ isDark, delay = 110 }: { isDark: boolean; delay?: number }) {
+// `compact` is the one-row version for the traveler Home screen.
+export function GuildSummaryCard({ isDark, delay = 110, compact = false }: { isDark: boolean; delay?: number; compact?: boolean }) {
   const router = useRouter();
   const { profile } = useAuth();
   const { primaryColor, warningColor, panelBackground, panelBorder, mutedPanel, mutedText, primaryText } = getTheme(isDark);
@@ -54,6 +55,53 @@ export function GuildSummaryCard({ isDark, delay = 110 }: { isDark: boolean; del
     : isLeader
       ? 'Found your guild to start recruiting'
       : 'Join a guild and earn together';
+
+  const celebrationModal = (
+    <RankUpCelebration celebration={celebration} role={profile?.role} displayName={profile?.display_name ?? ''} guildName={guild?.name} onClose={dismiss} />
+  );
+
+  if (compact) {
+    return (
+      <Animated.View entering={riseIn(delay)}>
+        <AnimatedPressable
+          onPress={() => router.push(readyMissions > 0 ? { pathname: '/guild', params: { tab: 'missions' } } : '/guild')}
+          accessibilityRole="button"
+          accessibilityLabel={`Guild: ${guild?.name ?? 'none'}, ${rank.name} rank, ${summary?.coins ?? 0} coins`}
+          className={`flex-row items-center gap-3 rounded-[24px] border p-3.5 ${panelBackground} ${panelBorder}`}>
+          {summary ? (
+            <RankMedal key="medal" rank={rank.name} tier={tier} size={40} />
+          ) : (
+            <View key="medal-placeholder" className={`h-10 w-10 items-center justify-center rounded-full ${isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}`}>
+              <Shield size={18} color={primaryColor} />
+            </View>
+          )}
+          <View className="flex-1">
+            <View className="flex-row items-center gap-1.5">
+              {guild ? <GuildEmblem emblem={guild.emblem} color={guild.color} size={18} /> : null}
+              <Text numberOfLines={1} className={`flex-shrink text-[15px] font-bold ${primaryText}`}>
+                {guild ? guild.name : 'No guild yet'}
+              </Text>
+            </View>
+            <View className={`mt-1.5 h-1.5 overflow-hidden rounded-full ${isDark ? 'bg-[#1E2A40]' : 'bg-[#E6EDF5]'}`}>
+              <View className="h-full rounded-full" style={{ width: `${Math.round(progress * 100)}%`, backgroundColor: rank.color }} />
+            </View>
+          </View>
+          {readyMissions > 0 ? (
+            <View key="missions-ready" className="h-7 min-w-[28px] flex-row items-center justify-center gap-0.5 rounded-full bg-[#FBBF24] px-2">
+              <Target size={12} color="#422006" />
+              <Text className="text-xs font-black text-[#422006]">{readyMissions}</Text>
+            </View>
+          ) : null}
+          <View className="flex-row items-center gap-1">
+            <Coins size={15} color={warningColor} />
+            <Text className={`text-base font-black ${primaryText}`}>{summary?.coins ?? '—'}</Text>
+          </View>
+          <ChevronRight size={18} color={isDark ? '#64748B' : '#A0AABD'} />
+        </AnimatedPressable>
+        {celebrationModal}
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View entering={riseIn(delay)}>
@@ -108,7 +156,7 @@ export function GuildSummaryCard({ isDark, delay = 110 }: { isDark: boolean; del
         </Text>
       </AnimatedPressable>
 
-      <RankUpCelebration celebration={celebration} role={profile?.role} displayName={profile?.display_name ?? ''} guildName={guild?.name} onClose={dismiss} />
+      {celebrationModal}
     </Animated.View>
   );
 }

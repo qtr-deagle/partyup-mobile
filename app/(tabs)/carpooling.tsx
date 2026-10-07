@@ -2,6 +2,7 @@ import { DateTile } from '@/components/carpool/DateTile';
 import { RequestSeatModal } from '@/components/carpool/RequestSeatModal';
 import { TourCard } from '@/components/carpool/TourCard';
 import { enterFromBelow, SkeletonCard } from '@/components/ui/motion';
+import { useHideTabBarOnScroll } from '@/components/ui/tab-bar-visibility';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { formatCurrency, joinTripViaInvite, listMyTrips, type MyTrip } from '@/lib/carpool';
@@ -267,6 +268,7 @@ function TripsWithHistory({
 }
 
 export default function CarpoolingScreen() {
+  const hideTabBarOnScroll = useHideTabBarOnScroll();
   const router = useRouter();
   const [activeView, setActiveView] = useState<TripView>('Carpool');
   const [activeTourView, setActiveTourView] = useState<TourView>('Browse');
@@ -451,7 +453,7 @@ export default function CarpoolingScreen() {
 
   return (
     <>
-    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl} keyboardShouldPersistTaps="handled">
+    <ScrollView className={`flex-1 ${screenBackground}`} refreshControl={refreshControl} keyboardShouldPersistTaps="handled" {...hideTabBarOnScroll}>
       <View className="px-4 pb-2 pt-5">
         <View className="flex-row items-center justify-between">
           <View>

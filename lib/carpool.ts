@@ -345,7 +345,7 @@ export const PLATFORM_FEE_RATE = 0.02;
 
 // Carpool riders pay this on top of their accepted fuel contribution. Must
 // match public.carpool_platform_fee_rate() in the database.
-export const CARPOOL_PLATFORM_FEE_RATE = 0.1;
+export const CARPOOL_PLATFORM_FEE_RATE = 0.02;
 
 export function carpoolFee(contribution: number) {
   return Math.round(contribution * CARPOOL_PLATFORM_FEE_RATE * 100) / 100;

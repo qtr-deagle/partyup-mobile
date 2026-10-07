@@ -3,6 +3,7 @@ import { AvatarFrame } from '@/components/cosmetics/AvatarFrame';
 import { ProfileBanner } from '@/components/cosmetics/ProfileBanner';
 import { UserRankTag } from '@/components/guild/UserRankTag';
 import { enterFromBelow } from '@/components/ui/motion';
+import { useHideTabBarOnScroll } from '@/components/ui/tab-bar-visibility';
 import { useAuth } from '@/hooks/auth-provider';
 import { formatResidence } from '@/lib/bulacan';
 import { uploadAvatar } from '@/lib/avatar';
@@ -113,16 +114,21 @@ function MetaChip({ icon: Icon, label }: { icon: IconType; label: string }) {
   );
 }
 
-function StatTile({ icon: Icon, value, label, tint }: { icon: IconType; value: number; label: string; tint: string }) {
+function StatTile({ icon: Icon, value, label, tint, onPress }: { icon: IconType; value: number; label: string; tint: string; onPress: () => void }) {
   const isDark = useColorScheme() === 'dark';
   return (
-    <View className="flex-1 rounded-[20px] p-3.5" style={{ backgroundColor: isDark ? '#18253C' : '#F7F8FC' }}>
-      <View className="h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: `${tint}1F` }}>
-        <Icon size={18} color={tint} />
+    <TouchableOpacity onPress={onPress} activeOpacity={0.75} accessibilityLabel={`${label}: ${value}`} className="flex-1">
+      <View className="rounded-[20px] p-3.5" style={{ backgroundColor: isDark ? '#18253C' : '#F7F8FC' }}>
+        <View className="flex-row items-start justify-between">
+          <View className="h-9 w-9 items-center justify-center rounded-xl" style={{ backgroundColor: `${tint}1F` }}>
+            <Icon size={18} color={tint} />
+          </View>
+          <ChevronRight size={16} color={isDark ? '#475569' : '#A3AEC2'} />
+        </View>
+        <Text className={`mt-3 text-[24px] font-black tracking-tight ${isDark ? 'text-white' : 'text-[#182847]'}`}>{value}</Text>
+        <Text className={`text-[12.5px] font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-[#67748D]'}`}>{label}</Text>
       </View>
-      <Text className={`mt-3 text-[24px] font-black tracking-tight ${isDark ? 'text-white' : 'text-[#182847]'}`}>{value}</Text>
-      <Text className={`text-[12.5px] font-semibold ${isDark ? 'text-[#94A3B8]' : 'text-[#67748D]'}`}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -169,6 +175,7 @@ function MenuRow({
 }
 
 export default function ProfileScreen() {
+  const hideTabBarOnScroll = useHideTabBarOnScroll();
   const router = useRouter();
   const { profile, session, refreshProfile, signOut } = useAuth();
   const [trustedContacts, setTrustedContacts] = useState<TrustedContact[]>([]);
@@ -272,7 +279,7 @@ export default function ProfileScreen() {
   const VerificationIcon = verificationStyle.icon;
 
   return (
-    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl}>
+    <ScrollView className={`flex-1 ${screenBackground}`} refreshControl={refreshControl} {...hideTabBarOnScroll}>
       <View className="flex-row items-center justify-between px-5 pb-2 pt-4">
         <Text className={`${typography.pageTitle} ${titleColor}`}>Profile</Text>
         <TouchableOpacity
@@ -369,15 +376,15 @@ export default function ProfileScreen() {
 
         {/* Travel stats */}
         <SectionCard index={1}>
-          <SectionTitle title="Travel Experience" />
+          <SectionTitle title="Travel Experience" action="View all" onAction={() => router.push('/trip-history')} />
           <View className="mt-4 gap-2.5">
             <View className="flex-row gap-2.5">
-              <StatTile icon={Flag} value={stats?.trips_completed ?? 0} label="Trips completed" tint="#2747C7" />
-              <StatTile icon={MapPinned} value={stats?.places_visited ?? 0} label="Places visited" tint="#00A56A" />
+              <StatTile icon={Flag} value={stats?.trips_completed ?? 0} label="Trips completed" tint="#2747C7" onPress={() => router.push({ pathname: '/trip-history', params: { filter: 'all' } })} />
+              <StatTile icon={MapPinned} value={stats?.places_visited ?? 0} label="Places visited" tint="#00A56A" onPress={() => router.push({ pathname: '/trip-history', params: { filter: 'places' } })} />
             </View>
             <View className="flex-row gap-2.5">
-              <StatTile icon={Car} value={stats?.carpools_completed ?? 0} label="Carpools" tint="#D88700" />
-              <StatTile icon={Compass} value={stats?.tours_completed ?? 0} label="Tours" tint="#8B5CF6" />
+              <StatTile icon={Car} value={stats?.carpools_completed ?? 0} label="Carpools" tint="#D88700" onPress={() => router.push({ pathname: '/trip-history', params: { filter: 'carpool' } })} />
+              <StatTile icon={Compass} value={stats?.tours_completed ?? 0} label="Tours" tint="#8B5CF6" onPress={() => router.push({ pathname: '/trip-history', params: { filter: 'tour' } })} />
             </View>
           </View>
         </SectionCard>

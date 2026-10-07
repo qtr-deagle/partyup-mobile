@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { MapPin, ShieldAlert } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
 import { Modal, Platform, Text, TouchableOpacity, Vibration, View } from 'react-native';
+import { formatClockTime } from '@/lib/datetime';
 
 type SosNotification = {
   id: string;
@@ -146,7 +147,7 @@ export default function SosAlertOverlay() {
         <Text className="mt-3 text-center text-[16px] leading-6 text-white/90">{current?.message ?? ''}</Text>
         {current && (
           <Text className="mt-2 text-center text-[13px] text-white/70">
-            {new Date(current.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+            {formatClockTime(current.created_at)}
           </Text>
         )}
 

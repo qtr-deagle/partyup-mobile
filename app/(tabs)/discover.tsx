@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { riseIn } from '@/components/ui/motion';
+import { useHideTabBarOnScroll, useShowTabBar, useTabBarSpace } from '@/components/ui/tab-bar-visibility';
 import { getMockTripData } from '@/lib/discover-mock';
 import { createOrGetDirectThread, removeFriend, respondToFriendRequest, searchProfiles, sendFriendRequest, type SearchProfile } from '@/lib/social';
 import { getTheme } from '@/lib/theme';
@@ -34,10 +35,17 @@ const SORT_LABELS: Record<SortOption, string> = {
 };
 
 export default function DiscoverScreen() {
+  const hideTabBarOnScroll = useHideTabBarOnScroll();
   const router = useRouter();
   const isDark = useColorScheme() === 'dark';
   const { profile: myProfile } = useAuth();
   const [mode, setMode] = useState<'swipe' | 'search'>('swipe');
+  const showTabBar = useShowTabBar();
+  const tabBarSpace = useTabBarSpace();
+  // Swipe mode doesn't scroll, so bring the bar back when switching modes.
+  useEffect(() => {
+    showTabBar();
+  }, [mode, showTabBar]);
 
   const screenBackground = isDark ? 'bg-[#0B1220]' : 'bg-[#F6F8FC]';
   const cardBackground = isDark ? 'border-[#22324B] bg-[#111B2E]' : 'border-[#E4EAF2] bg-white';
@@ -361,7 +369,7 @@ export default function DiscoverScreen() {
       {sortMenuVisible ? <Pressable className="absolute inset-0" onPress={() => setSortMenuVisible(false)} /> : null}
 
       {mode === 'swipe' ? (
-        <View className="flex-1 px-4 pb-3">
+        <View className="flex-1 px-4" style={{ paddingBottom: tabBarSpace + 12 }}>
           {swipeError ? <Text className="mb-3 rounded-xl bg-[#FEE2E2] px-4 py-3 text-sm text-[#B91C1C]">{swipeError}</Text> : null}
 
           {swipeLoading && !swipeProfiles.length ? (
@@ -404,7 +412,7 @@ export default function DiscoverScreen() {
           )}
         </View>
       ) : (
-        <ScrollView className="flex-1" contentContainerClassName="pb-28" keyboardShouldPersistTaps="handled" refreshControl={searchRefreshControl}>
+        <ScrollView className="flex-1" keyboardShouldPersistTaps="handled" refreshControl={searchRefreshControl} {...hideTabBarOnScroll}>
           <View className="px-5 pb-4">
             <Pressable onPress={() => searchInputRef.current?.focus()} className={`flex-row items-center gap-3 rounded-2xl px-4 py-3.5 ${chip}`}>
               <Search size={19} color={iconMuted} />

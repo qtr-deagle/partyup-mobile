@@ -214,7 +214,7 @@ export default function EditProfileScreen() {
                 </TouchableOpacity>
             ))}
           </View>
-          <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>Pick one or both. Leave both off if you&apos;re open to anyone.</Text>
+          <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>Pick any that apply. Leave them all off if you&apos;re open to anyone.</Text>
         </Card>
 
         <Card index={3}>

@@ -1,4 +1,4 @@
-import { parseTimestamp } from '@/lib/datetime';
+import { formatClockTime } from '@/lib/datetime';
 import type { ChatMessage, MessageStatus } from '@/lib/social';
 import { Image } from 'expo-image';
 import { AlertCircle, Check, CheckCheck, Clock3, Reply } from 'lucide-react-native';
@@ -8,7 +8,7 @@ export const SEEN_COLOR = '#7DD3FC';
 const PHOTO_WIDTH = 220;
 
 export function formatTime(value: string | null) {
-  return value ? parseTimestamp(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila' }) : '';
+  return formatClockTime(value);
 }
 
 // One-line text for a message when quoted, previewed or listed.

@@ -6,6 +6,7 @@ import { PhotoViewer } from '@/components/chat/PhotoViewer';
 import { GuildEmblem } from '@/components/GuildEmblem';
 import { ReportUserModal } from '@/components/ReportUserModal';
 import { EmptyState, enterFromBelow, PopIn, riseIn, SkeletonRow } from '@/components/ui/motion';
+import { useHideTabBarOnScroll, useHideTabBarWhile } from '@/components/ui/tab-bar-visibility';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
@@ -100,6 +101,7 @@ function groupPreview(group: GroupConversation, myUserId: string | undefined) {
 type ListItem = { kind: 'direct'; conversation: Conversation; pinned: boolean; at: string | null } | { kind: 'group'; group: GroupConversation; pinned: boolean; at: string | null };
 
 export default function ChatScreen() {
+  const hideTabBarOnScroll = useHideTabBarOnScroll();
   const params = useLocalSearchParams<{ threadId?: string }>();
   const router = useRouter();
   const { session } = useAuth();
@@ -109,6 +111,8 @@ export default function ChatScreen() {
   const [groups, setGroups] = useState<GroupConversation[]>([]);
   const [guildChat, setGuildChat] = useState<GuildChatPreview | null>(null);
   const [selected, setSelected] = useState<Conversation | null>(null);
+  // The floating bar would cover the composer in an open conversation.
+  useHideTabBarWhile(Boolean(selected));
   const [messageText, setMessageText] = useState('');
   const [search, setSearch] = useState('');
   const [listFilter, setListFilter] = useState<ListFilter>('all');
@@ -701,7 +705,7 @@ export default function ChatScreen() {
   const rowStyle = (highlight: boolean) => ({ backgroundColor: highlight ? (isDark ? '#14213D' : '#F2F5FF') : 'transparent' });
 
   return (
-    <ScrollView className={`flex-1 ${screenBackground}`} contentContainerClassName="pb-28" refreshControl={refreshControl} keyboardShouldPersistTaps="handled">
+    <ScrollView className={`flex-1 ${screenBackground}`} refreshControl={refreshControl} keyboardShouldPersistTaps="handled" {...hideTabBarOnScroll}>
       <View className="px-4 pb-2 pt-5">
         <View className="flex-row items-end justify-between">
           <Text className={`${typography.pageTitle} ${titleColor}`}>Messages</Text>

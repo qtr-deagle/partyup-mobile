@@ -350,7 +350,15 @@ export function Segmented({
           onPress={() => onChange(option.id)}
           className={`flex-1 flex-row items-center justify-center gap-1.5 rounded-xl ${small ? 'py-1.5' : 'py-2'} ${value === option.id ? (isDark ? 'bg-[#22324B]' : 'bg-white') : ''}`}>
           {option.icon}
-          <Text className={`${small ? 'text-xs' : 'text-sm'} font-bold ${value === option.id ? primaryText : mutedText}`}>{option.label}</Text>
+          {/* Bold via fontFamily only, not `font-bold`: on Android fontWeight on
+              a custom font measures narrower than it draws, so "This week"
+              wrapped and its second line was clipped, leaving just "This". */}
+          <Text
+            numberOfLines={1}
+            style={{ fontFamily: 'Inter_700Bold', fontWeight: 'normal' }}
+            className={`text-center ${small ? 'text-xs' : 'text-sm'} ${value === option.id ? primaryText : mutedText}`}>
+            {option.label}
+          </Text>
         </AnimatedPressable>
       ))}
     </View>

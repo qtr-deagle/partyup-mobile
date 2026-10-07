@@ -75,17 +75,28 @@ const PERIODS: { id: LeaderboardPeriod; label: string }[] = [
   { id: 'all', label: 'All time' },
 ];
 
+// Guild colours are #RRGGBB; appends a 2-digit hex alpha for tints. Anything
+// else (unexpected format) falls back to a neutral translucent slate.
+function withAlpha(color: string | null | undefined, alpha: string) {
+  return color && /^#[0-9a-f]{6}$/i.test(color) ? `${color}${alpha}` : `#64748B${alpha}`;
+}
+
 type Props = {
   isDark: boolean;
   // Switches the Guild screen to its Leaderboard tab (where Join lives).
   onFindGuild: () => void;
   // Lets the Guild screen re-read which guild the user is in.
   onGuildChanged: () => void;
+  // Deep-link target from the leader dashboard: open the reports inbox once
+  // the guild has loaded.
+  focus?: GuildPanelFocus | null;
 };
+
+export type GuildPanelFocus = 'reports';
 
 // The "My Guild" tab: rank, coins, my guild and its members, badges, how to
 // earn, and recent points.
-export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
+export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { profile, refreshProfile } = useAuth();
@@ -125,6 +136,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
   const [openReports, setOpenReports] = useState(0);
   const shareCardRef = useRef<View>(null);
   const seasonsChecked = useRef(false);
+  const focusHandled = useRef(false);
 
   const load = useCallback(async (nextPeriod: LeaderboardPeriod) => {
     setErrorMessage(null);
@@ -449,6 +461,12 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
     }, [loadOpenReports])
   );
 
+  useEffect(() => {
+    if (focus !== 'reports' || focusHandled.current || loading || !canManage) return;
+    focusHandled.current = true;
+    setInboxVisible(true);
+  }, [focus, loading, canManage]);
+
   async function refresh() {
     setRefreshing(true);
     await Promise.all([load(period), loadOpenReports()]);
@@ -483,26 +501,38 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
                 <AnimatedPressable
                   onPress={() => router.push({ pathname: '/guild/[id]', params: { id: guild.id } })}
                   scaleTo={0.98}
-                  className="flex-row items-center gap-3"
+                  accessibilityRole="button"
+                  className="rounded-2xl border p-3"
+                  style={{ backgroundColor: withAlpha(guild.color, '14'), borderColor: withAlpha(guild.color, '59') }}
                   accessibilityLabel={`Open ${guild.name}'s Guild Hall`}>
-                  <GuildEmblem emblem={guild.emblem} color={guild.color} size={56} />
-                  <View className="flex-1">
-                    <Text className={`text-xl font-black ${primaryText}`}>{guild.name}</Text>
-                    {guild.tagline ? <Text className={`text-sm ${mutedText}`}>{guild.tagline}</Text> : null}
-                    <Text className={`mt-1 text-xs font-semibold ${mutedText}`}>
-                      Level {guildLevel(myGuildRow?.lifetime_points ?? 0)} · {members.length}/{guildMemberCap(myGuildRow?.lifetime_points ?? 0)} members
-                      {myStanding >= 0 ? ` · #${myStanding + 1} ${periodLabel}` : ''}
-                    </Text>
-                    <View className="mt-1 flex-row items-center gap-1">
-                      {guild.join_policy === 'approval' ? <Lock size={11} color={isDark ? '#94A3B8' : '#64748B'} /> : <DoorOpen size={11} color={isDark ? '#94A3B8' : '#64748B'} />}
-                      <Text className={`text-xs ${mutedText}`}>
-                        {guild.join_policy === 'approval' ? 'Approval required to join' : 'Open to all travelers'}
-                        {guild.min_rank ? ` · ${guild.min_rank}+ only` : ''}
-                        {guild.areas.length > 0 ? ` · ${formatGuildAreas(guild.areas)}` : ''}
+                  <View className="flex-row items-center gap-3">
+                    <GuildEmblem emblem={guild.emblem} color={guild.color} size={56} />
+                    <View className="flex-1">
+                      <Text className={`text-xl font-black ${primaryText}`}>{guild.name}</Text>
+                      {guild.tagline ? <Text className={`text-sm ${mutedText}`}>{guild.tagline}</Text> : null}
+                      <Text className={`mt-1 text-xs font-semibold ${mutedText}`}>
+                        Level {guildLevel(myGuildRow?.lifetime_points ?? 0)} · {members.length}/{guildMemberCap(myGuildRow?.lifetime_points ?? 0)} members
+                        {myStanding >= 0 ? ` · #${myStanding + 1} ${periodLabel}` : ''}
                       </Text>
+                      <View className="mt-1 flex-row items-center gap-1">
+                        {guild.join_policy === 'approval' ? <Lock size={11} color={isDark ? '#94A3B8' : '#64748B'} /> : <DoorOpen size={11} color={isDark ? '#94A3B8' : '#64748B'} />}
+                        <Text className={`text-xs ${mutedText}`}>
+                          {guild.join_policy === 'approval' ? 'Approval required to join' : 'Open to all travelers'}
+                          {guild.min_rank ? ` · ${guild.min_rank}+ only` : ''}
+                          {guild.areas.length > 0 ? ` · ${formatGuildAreas(guild.areas)}` : ''}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                  <ChevronRight size={18} color={isDark ? '#64748B' : '#94A3B8'} />
+                  {/* Explicit "this opens something" affordance in the guild's colour. */}
+                  <View className="mt-3 flex-row items-center justify-between border-t pt-2.5" style={{ borderTopColor: withAlpha(guild.color, '33') }}>
+                    <Text className="text-sm font-bold" style={{ color: guild.color }}>
+                      Open Guild Hall
+                    </Text>
+                    <View className="h-7 w-7 items-center justify-center rounded-full" style={{ backgroundColor: withAlpha(guild.color, '26') }}>
+                      <ChevronRight size={16} color={guild.color} />
+                    </View>
+                  </View>
                 </AnimatedPressable>
                 <View className="mt-4 flex-row gap-3">
                   <AnimatedPressable
@@ -729,9 +759,34 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged }: Props) {
               </Card>
             ) : null}
 
-            {/* Leader tools: reports inbox and audit log */}
-            {canManage ? (
+            {/* Leader tools: join requests, reports inbox and audit log */}
+            {canManage && guild ? (
               <Card key="guild-tools" index={0}>
+                {/* Always shown, so the leader knows where requests land even
+                    when none are waiting. */}
+                <AnimatedPressable
+                  onPress={() => router.push({ pathname: '/guild/requests', params: { guildId: guild.id } })}
+                  scaleTo={0.98}
+                  className={`mb-3 flex-row items-center gap-3 rounded-2xl p-3 ${mutedPanel}`}
+                  accessibilityLabel={joinRequests.length > 0 ? `Join requests, ${joinRequests.length} waiting` : 'Join requests'}>
+                  <View className="h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: `${primaryColor}1F` }}>
+                    <UserPlus size={18} color={primaryColor} />
+                  </View>
+                  <View className="flex-1">
+                    <Text className={`text-base font-bold ${primaryText}`}>Join Requests</Text>
+                    <Text className={`text-xs ${mutedText}`}>
+                      {joinRequests.length > 0
+                        ? `${joinRequests.length} ${joinRequests.length === 1 ? 'traveler wants' : 'travelers want'} to join`
+                        : 'No one waiting right now'}
+                    </Text>
+                  </View>
+                  {joinRequests.length > 0 ? (
+                    <View className="min-w-[22px] items-center rounded-full bg-[#DC2626] px-1.5 py-0.5">
+                      <Text className="text-[11px] font-black text-white">{joinRequests.length}</Text>
+                    </View>
+                  ) : null}
+                  <ChevronRight size={18} color={isDark ? '#475569' : '#A3AEC2'} />
+                </AnimatedPressable>
                 <View className="flex-row gap-3">
                   <AnimatedPressable
                     onPress={() => setInboxVisible(true)}

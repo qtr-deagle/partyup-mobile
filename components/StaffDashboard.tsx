@@ -1,12 +1,13 @@
 import { GuildSummaryCard } from '@/components/GuildSummaryCard';
 import { riseIn } from '@/components/ui/motion';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
-import { formatTimeAgo } from '@/lib/datetime';
-import type { StaffOverview, StaffSosAlert } from '@/lib/homeDashboard';
+import { formatDateTime, formatTimeAgo } from '@/lib/datetime';
+import type { LeaderGuildSnapshot, StaffOverview, StaffSosAlert } from '@/lib/homeDashboard';
 import { getTheme, typography } from '@/lib/theme';
 import { useRouter } from 'expo-router';
 import {
   BadgeCheck,
+  CalendarDays,
   Car,
   ChevronRight,
   Flag,
@@ -18,6 +19,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Target,
+  Trophy,
   UserPlus,
   Users,
 } from 'lucide-react-native';
@@ -27,12 +29,15 @@ import Animated from 'react-native-reanimated';
 
 type Props = {
   isDark: boolean;
+  // Platform-wide numbers (admins only).
   overview: StaffOverview | null;
+  // The leader's own guild (leaders only; null while loading or with no guild).
+  guildSnapshot?: LeaderGuildSnapshot | null;
   // Verification queues are admin-only; Guild Leaders get guild shortcuts instead.
   isAdmin: boolean;
 };
 
-export default function StaffDashboard({ isDark, overview, isAdmin }: Props) {
+export default function StaffDashboard({ isDark, overview, guildSnapshot = null, isAdmin }: Props) {
   const router = useRouter();
   const { primaryColor, accentColor, destructiveColor, warningColor, panelBackground, panelBorder, mutedPanel, mutedText, primaryText, softBorder } =
     getTheme(isDark);
@@ -165,8 +170,94 @@ export default function StaffDashboard({ isDark, overview, isAdmin }: Props) {
       </Animated.View>
       ) : null}
 
-      {/* Platform snapshot */}
+      {/* Guild snapshot (leaders): their own guild's numbers and what's waiting on them */}
+      {!isAdmin && guildSnapshot ? (
       <Animated.View
+        key="guild-snapshot"
+        entering={riseIn(170)}
+        className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
+        <View className="flex-row items-center justify-between">
+          <Text className={`${typography.sectionTitle} ${primaryText}`}>Guild Snapshot</Text>
+          <Text numberOfLines={1} className={`ml-3 flex-shrink text-sm font-semibold ${mutedText}`}>
+            {guildSnapshot.name}
+          </Text>
+        </View>
+        <View className="mt-4 flex-row flex-wrap justify-between gap-y-3">
+          <StatTile
+            icon={<Users size={16} color={primaryColor} />}
+            label="Members"
+            value={guildSnapshot.member_cap ? `${guildSnapshot.member_count}/${guildSnapshot.member_cap}` : guildSnapshot.member_count}
+            mutedPanel={mutedPanel}
+            primaryText={primaryText}
+            mutedText={mutedText}
+          />
+          <StatTile
+            icon={<Target size={16} color={primaryColor} />}
+            label="Points this month"
+            value={guildSnapshot.points_this_month.toLocaleString()}
+            mutedPanel={mutedPanel}
+            primaryText={primaryText}
+            mutedText={mutedText}
+          />
+          <StatTile
+            icon={<Trophy size={16} color={warningColor} />}
+            label="Guild rank this month"
+            value={`#${guildSnapshot.month_rank} of ${guildSnapshot.guild_count}`}
+            onPress={() => router.push({ pathname: '/guild', params: { tab: 'leaderboard' } })}
+            mutedPanel={mutedPanel}
+            primaryText={primaryText}
+            mutedText={mutedText}
+          />
+          <StatTile
+            icon={<CalendarDays size={16} color={accentColor} />}
+            label="Upcoming PartyUps"
+            value={guildSnapshot.upcoming_partyups}
+            mutedPanel={mutedPanel}
+            primaryText={primaryText}
+            mutedText={mutedText}
+          />
+        </View>
+
+        <View className="mt-3 gap-3">
+          <QueueRow
+            isDark={isDark}
+            icon={<UserPlus size={18} color={primaryColor} />}
+            label="Join requests"
+            count={guildSnapshot.pending_join_requests}
+            onPress={() => router.push({ pathname: '/guild/requests', params: { guildId: guildSnapshot.guild_id } })}
+            mutedPanel={mutedPanel}
+            primaryText={primaryText}
+            mutedText={mutedText}
+            highlight={warningColor}
+          />
+          <QueueRow
+            isDark={isDark}
+            icon={<Flag size={18} color={primaryColor} />}
+            label="Open guild reports"
+            count={guildSnapshot.open_reports}
+            onPress={() => router.push({ pathname: '/guild', params: { focus: 'reports' } })}
+            mutedPanel={mutedPanel}
+            primaryText={primaryText}
+            mutedText={mutedText}
+            highlight={destructiveColor}
+          />
+        </View>
+
+        {guildSnapshot.next_partyup_at ? (
+          <View className={`mt-3 flex-row items-center gap-2 rounded-2xl p-4 ${mutedPanel}`}>
+            <CalendarDays size={16} color={accentColor} />
+            <Text numberOfLines={1} className={`flex-1 text-sm ${mutedText}`}>
+              Next: <Text className={`font-semibold ${primaryText}`}>{guildSnapshot.next_partyup_title}</Text> · {formatDateTime(guildSnapshot.next_partyup_at)}
+            </Text>
+          </View>
+        ) : null}
+      </Animated.View>
+      ) : null}
+
+      {/* Platform snapshot (admins only; leaders see their guild above) */}
+      {isAdmin ? (
+      <Animated.View
+        key="platform-snapshot"
         entering={riseIn(200)}
         className={`rounded-[24px] border p-4 ${panelBackground} ${panelBorder}`}>
         <Text className={`${typography.sectionTitle} ${primaryText}`}>Platform Snapshot</Text>
@@ -231,6 +322,7 @@ export default function StaffDashboard({ isDark, overview, isAdmin }: Props) {
           </View>
         </View>
       </Animated.View>
+      ) : null}
 
       {/* Quick actions */}
       <Animated.View entering={riseIn(260)} className="flex-row flex-wrap justify-between gap-y-4">
@@ -348,25 +440,34 @@ function StatTile({
   icon,
   label,
   value,
+  onPress,
   mutedPanel,
   primaryText,
   mutedText,
 }: {
   icon: ReactNode;
   label: string;
-  value: number | undefined;
+  value: number | string | undefined;
+  onPress?: () => void;
   mutedPanel: string;
   primaryText: string;
   mutedText: string;
 }) {
-  return (
-    <View className={`w-[48%] rounded-2xl p-4 ${mutedPanel}`}>
+  const content = (
+    <>
       <View className="flex-row items-center gap-1.5">
         {icon}
         <Text className={`text-xs ${mutedText}`}>{label}</Text>
       </View>
       <Text className={`mt-2 ${typography.valueLarge} ${primaryText}`}>{value ?? '—'}</Text>
-    </View>
+    </>
+  );
+  return onPress ? (
+    <AnimatedPressable onPress={onPress} className={`w-[48%] rounded-2xl p-4 ${mutedPanel}`}>
+      {content}
+    </AnimatedPressable>
+  ) : (
+    <View className={`w-[48%] rounded-2xl p-4 ${mutedPanel}`}>{content}</View>
   );
 }
 

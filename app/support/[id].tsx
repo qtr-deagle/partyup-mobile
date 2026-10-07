@@ -2,7 +2,7 @@ import { ScreenHeader } from '@/components/ui/screen-header';
 import { enterFromBelow } from '@/components/ui/motion';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
-import { parseTimestamp } from '@/lib/datetime';
+import { formatDateTime, parseTimestamp } from '@/lib/datetime';
 import {
   closeTicket,
   getTicket,
@@ -152,7 +152,7 @@ export default function TicketScreen() {
                   </View>
                 ) : null}
                 <Text className={`text-[15px] leading-5 ${message.from_staff ? primaryText : 'text-white'}`}>{message.body}</Text>
-                <Text className={`mt-1 text-[10px] ${message.from_staff ? mutedText : 'text-white/70'}`}>{parseTimestamp(message.created_at).toLocaleString()}</Text>
+                <Text className={`mt-1 text-[10px] ${message.from_staff ? mutedText : 'text-white/70'}`}>{formatDateTime(message.created_at)}</Text>
               </Animated.View>
             ))}
             {ticket.status === 'open' && !messages.some((message) => message.from_staff) ? (

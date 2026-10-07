@@ -411,6 +411,12 @@ export async function getThreadReceipts(threadId: string, otherUserId: string) {
   return { data: { readAt: data?.last_read_at ?? null, deliveredAt: data?.last_delivered_at ?? null } as ThreadReceipts, error };
 }
 
+// Everyone's read mark in a group thread, for the "seen by" avatars.
+export async function getThreadReadMarks(threadId: string) {
+  const { data, error } = await supabase.from('chat_participants').select('user_id, last_read_at').eq('thread_id', threadId);
+  return { data: (data ?? []) as { user_id: string; last_read_at: string | null }[], error };
+}
+
 export function messageStatus(createdAt: string, receipts: ThreadReceipts): MessageStatus {
   const sentAt = parseTimestamp(createdAt).getTime();
   if (receipts.readAt && parseTimestamp(receipts.readAt).getTime() >= sentAt) return 'seen';

@@ -201,3 +201,48 @@ export async function getStaffOverview() {
     return { data: null, error: error instanceof Error ? error : new Error('Unable to load staff overview.') };
   }
 }
+
+// The calling guild leader's own guild (get_leader_guild_snapshot): size,
+// this month's points and rank, and what's waiting on them. Null when the
+// leader has no guild yet.
+export type LeaderGuildSnapshot = {
+  guild_id: string;
+  name: string;
+  member_count: number;
+  member_cap: number | null;
+  points_this_month: number;
+  month_rank: number;
+  guild_count: number;
+  open_reports: number;
+  pending_join_requests: number;
+  upcoming_partyups: number;
+  next_partyup_title: string | null;
+  next_partyup_at: string | null;
+};
+
+export async function getLeaderGuildSnapshot() {
+  try {
+    const { data, error } = await withRequestTimeout(supabase.rpc('get_leader_guild_snapshot'), 'Loading your guild');
+    if (error) throw error;
+    const row = ((data as Record<string, unknown>[] | null) ?? [])[0];
+    if (!row) return { data: null, error: null };
+    const n = (key: string) => Number(row[key] ?? 0);
+    const snapshot: LeaderGuildSnapshot = {
+      guild_id: row.guild_id as string,
+      name: row.name as string,
+      member_count: n('member_count'),
+      member_cap: row.member_cap == null ? null : n('member_cap'),
+      points_this_month: n('points_this_month'),
+      month_rank: n('month_rank'),
+      guild_count: n('guild_count'),
+      open_reports: n('open_reports'),
+      pending_join_requests: n('pending_join_requests'),
+      upcoming_partyups: n('upcoming_partyups'),
+      next_partyup_title: (row.next_partyup_title as string | null) ?? null,
+      next_partyup_at: (row.next_partyup_at as string | null) ?? null,
+    };
+    return { data: snapshot, error: null };
+  } catch (error) {
+    return { data: null, error: error instanceof Error ? error : new Error('Unable to load your guild.') };
+  }
+}
