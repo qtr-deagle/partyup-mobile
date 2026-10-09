@@ -9,9 +9,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { Crown, ImagePlus, ShieldAlert, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { confirmDiscard, useDraft } from '@/hooks/use-unsaved-changes';
+import { showAlert } from '@/lib/dialog';
 export type ReportableMember = { user_id: string; display_name: string; is_leader?: boolean };
 
 type Props = {
@@ -68,9 +71,35 @@ export function GuildReportModal({ visible, onClose, isDark, guildId, guildName,
     setErrorMessage(null);
   }
 
-  function handleClose() {
+  // Typed details/photos survive an accidental close: ask first, and keep a
+  // draft per guild (and per message when reporting one) until sent.
+  const dirty = !!details.trim() || evidenceUris.length > 0;
+  const draft = useDraft(
+    visible ? `guild-report:${guildId}:${chatMessage?.id ?? 'general'}` : null,
+    { category, memberId, details, evidenceUris, anonymous },
+    { isEmpty: () => !dirty }
+  );
+
+  function restoreDraft() {
+    const saved = draft.restore();
+    if (!saved) return;
+    setCategory(saved.category);
+    if (!chatMessage) setMemberId(saved.memberId);
+    setDetails(saved.details);
+    setEvidenceUris(saved.evidenceUris ?? []);
+    setAnonymous(saved.anonymous);
+  }
+
+  function finish() {
     reset();
     onClose();
+  }
+
+  function handleClose() {
+    confirmDiscard(dirty, () => {
+      draft.clear();
+      finish();
+    }, { message: "Your report isn't sent yet. Discard it?" });
   }
 
   async function handlePickImages() {
@@ -115,13 +144,14 @@ export function GuildReportModal({ visible, onClose, isDark, guildId, guildName,
       setErrorMessage(error.message);
       return;
     }
-    Alert.alert(
+    showAlert(
       'Report sent',
       data?.escalation_reason === 'safety'
         ? 'Your Guild Leader and the PartyUp team were both alerted.'
         : "Your Guild Leader will review it. We'll let you know when it's handled."
     );
-    handleClose();
+    draft.clear();
+    finish();
   }
 
   // The leader handles guild reports, so a problem with them becomes a
@@ -129,7 +159,8 @@ export function GuildReportModal({ visible, onClose, isDark, guildId, guildName,
   function reportLeader() {
     const leader = others.find((member) => member.user_id === memberId);
     if (!leader) return;
-    handleClose();
+    // The typed details stay saved as this guild's report draft.
+    finish();
     router.push({
       pathname: '/support/new',
       params: { category: 'guild_leader', userId: leader.user_id, userName: leader.display_name, guildId, guildName: guildName ?? '' },
@@ -151,6 +182,11 @@ export function GuildReportModal({ visible, onClose, isDark, guildId, guildName,
           </View>
 
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            {draft.offer ? (
+              <View className="mt-4">
+                <DraftBanner savedAt={draft.offer.savedAt} preview={draft.offer.value.details.slice(0, 40) || null} isDark={isDark} onContinue={restoreDraft} onStartFresh={draft.dismiss} />
+              </View>
+            ) : null}
             {errorMessage ? (
               <View className="mt-4 rounded-xl bg-[#FEE2E2] px-4 py-3">
                 <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>

@@ -1,4 +1,5 @@
 import { GuildEmblem } from '@/components/GuildEmblem';
+import { confirmDiscard } from '@/hooks/use-unsaved-changes';
 import { GuildColorPicker } from '@/components/guild/GuildColorPicker';
 import { RankMedal } from '@/components/guild/RankMedal';
 import { riseIn } from '@/components/ui/motion';
@@ -92,6 +93,26 @@ export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onC
   const canSubmit = trimmed.length >= 3 && trimmed.length <= 30 && colorOk && !busy;
   const minRankPoints = minRank ? RANKS.find((rank) => rank.name === minRank)?.min : null;
 
+  // Ask before closing when something differs from how the form opened.
+  const dirty =
+    JSON.stringify([name, tagline, emblem, color, joinPolicy, minRank, description, areas, focus]) !==
+    JSON.stringify([
+      guild?.name ?? '',
+      guild?.tagline ?? '',
+      guild?.emblem ?? 'shield',
+      guild?.color ?? GUILD_COLORS[0],
+      guild?.join_policy ?? 'approval',
+      guild?.min_rank ?? null,
+      guild?.description ?? '',
+      guild?.areas ?? [],
+      guild?.focus ?? [],
+    ]);
+
+  function handleClose() {
+    if (busy) return;
+    confirmDiscard(dirty, onClose, { message: guild ? "Your changes to the guild won't be saved." : "Your new guild isn't founded yet. Discard it?" });
+  }
+
   function toggleFocus(id: GuildFocus) {
     setFocus((current) => (current.includes(id) ? current.filter((item) => item !== id) : current.length >= GUILD_FOCUS_MAX ? current : [...current, id]));
   }
@@ -107,7 +128,7 @@ export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onC
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={handleClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 items-center justify-center bg-black/45 px-4">
         <Animated.View
           entering={riseIn(0, 380)}
@@ -117,7 +138,7 @@ export function GuildFormModal({ visible, isDark, guild, busy, errorMessage, onC
               <Text className={`text-headline-24 font-bold ${primary}`}>{guild ? 'Edit Guild' : 'Found Your Guild'}</Text>
               <Text className={`mt-1 text-[14px] ${secondary}`}>Pick a name travelers will want to rally behind.</Text>
             </View>
-            <TouchableOpacity onPress={onClose} className={`h-9 w-9 items-center justify-center rounded-full ${chip}`} accessibilityLabel="Close">
+            <TouchableOpacity onPress={handleClose} className={`h-9 w-9 items-center justify-center rounded-full ${chip}`} accessibilityLabel="Close">
               <X size={18} color={isDark ? '#CBD5E1' : '#6B7590'} />
             </TouchableOpacity>
           </View>

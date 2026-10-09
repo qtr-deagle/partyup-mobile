@@ -415,6 +415,16 @@ verify_jwt = false
 [functions.send-sos-push]
 verify_jwt = false
 
+# Called daily by the database (pg_cron + pg_net) to purge accounts whose
+# 30-day deletion grace period has ended; auth is the shared x-push-secret.
+[functions.purge-deleted-accounts]
+verify_jwt = false
+
+# Called by the database (pg_net) when an account deletion is scheduled or
+# cancelled; auth is the shared x-push-secret.
+[functions.send-account-email]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

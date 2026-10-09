@@ -69,7 +69,7 @@ export function TimePickerModal({ visible, title, value, isDark, onClose, onSele
           drag detection) needs its own root here or the wheels never receive drag gestures. */}
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-          <Pressable style={StyleSheet.absoluteFillObject} className="bg-black/55" onPress={onClose} />
+          <Pressable style={StyleSheet.absoluteFill} className="bg-black/55" onPress={onClose} />
           <View style={{ backgroundColor: sheetBackground, paddingBottom: insets.bottom + 36 }} className="rounded-t-[32px] px-5 pt-5 shadow-2xl">
             <View className="mb-1 items-center">
               <View className="h-1.5 w-12 rounded-full" style={{ backgroundColor: isDark ? '#334155' : '#E2E7F0' }} />

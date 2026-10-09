@@ -79,7 +79,14 @@ export default function GuildScreen() {
           <ActivityIndicator color={primaryColor} />
         </View>
       ) : tab === 'mine' ? (
-        <MyGuildPanel key="mine" isDark={isDark} focus={focus} onFindGuild={() => setTab('leaderboard')} onGuildChanged={() => void loadMembership()} />
+        <MyGuildPanel
+          key="mine"
+          isDark={isDark}
+          focus={focus}
+          onFindGuild={() => setTab('leaderboard')}
+          onGuildChanged={() => void loadMembership()}
+          onOpenMissions={() => setTab('missions')}
+        />
       ) : tab === 'missions' ? (
         <MissionsPanel key="missions" isDark={isDark} onFindGuild={() => setTab('leaderboard')} onChanged={() => void loadMissionCount()} />
       ) : tab === 'leaderboard' ? (

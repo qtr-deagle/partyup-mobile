@@ -4,20 +4,24 @@ import { TimePickerModal } from '@/components/carpool/TimePickerModal';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState, SkeletonCard, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { useDraft, useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes';
 import { useAuth } from '@/hooks/auth-provider';
+import { hasPhone } from '@/lib/phone';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { CARPOOL_PLATFORM_FEE_RATE, createTrip, formatMeetupLabel, type MeetupLocation, type RouteStop, type TripVisibility } from '@/lib/carpool';
 import {
   getMyDriverLicense,
   hasVerifiedIdLicense,
   isLicenseValid,
+  isRegistrationExpired,
   listMyApprovedVehicles,
   type DriverLicense,
   type Vehicle,
 } from '@/lib/vehicles';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { Calendar, Car, Clock, Flag, Globe, IdCard, Lock, MapPin, NotebookPen, Plus, Route, ShieldAlert, Trash2, Users, Wallet, X } from 'lucide-react-native';
-import { useCallback, useState, type ReactNode } from 'react';
+import { Calendar, Car, Clock, Flag, Minus, Globe, IdCard, Lock, MapPin, NotebookPen, Phone, Plus, Route, ShieldAlert, Trash2, Users, Wallet, X } from 'lucide-react-native';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -43,7 +47,8 @@ function formatTimeLabel(date: Date | null) {
 }
 
 // Driver + at least one rider.
-const MIN_TOTAL_SEATS = 2;
+// Cars added before seat counts were recorded (seat_capacity null) can offer up to this many riders.
+const LEGACY_MAX_RIDER_SEATS = 14;
 
 // Must match the 8-stop cap in create_trip().
 const MAX_ROUTE_STOPS = 8;
@@ -56,24 +61,31 @@ function toLocation(draft: MeetupDraft): MeetupLocation | null {
   return { municipality: draft.municipality, landmark: draft.landmark.trim(), latitude: draft.pin.latitude, longitude: draft.pin.longitude };
 }
 
-function seatSummary(seatsText: string) {
-  const total = Number.parseInt(seatsText, 10);
-  if (!seatsText || Number.isNaN(total)) {
-    return 'Including you as the driver. Leave blank for no limit.';
-  }
-  if (total < MIN_TOTAL_SEATS) {
-    return 'Needs at least 2: you + 1 rider.';
-  }
-  const riders = total - 1;
-  return `You + ${riders} rider${riders === 1 ? '' : 's'}`;
-}
-
 function mergeDate(current: Date | null, datePart: Date) {
   const next = new Date(datePart);
   if (current) {
     next.setHours(current.getHours(), current.getMinutes());
   }
   return next;
+}
+
+type CarpoolDraft = {
+  title: string;
+  origin: MeetupDraft;
+  destination: MeetupDraft;
+  meetup: MeetupDraft;
+  routeStops: MeetupDraft[];
+  startAt: string | null;
+  includeEnd: boolean;
+  endAt: string | null;
+  visibility: TripVisibility;
+  vehicleId: string | null;
+  riderSeats: number;
+  notes: string;
+};
+
+function meetupTouched(draft: MeetupDraft) {
+  return !!(draft.municipality || draft.pin || draft.landmark.trim());
 }
 
 function SectionTitle({ icon, title, isDark }: { icon: ReactNode; title: string; isDark: boolean }) {
@@ -105,6 +117,7 @@ export default function CreateTripScreen() {
   const [approvedVehicles, setApprovedVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const selectedVehicle = approvedVehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null;
   // Carpool drivers need a valid driver's license on file.
   const [license, setLicense] = useState<DriverLicense | null>(null);
   const [idIsLicense, setIdIsLicense] = useState(false);
@@ -146,11 +159,75 @@ export default function CreateTripScreen() {
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
   const [visibility, setVisibility] = useState<TripVisibility>('public');
-  const [seatsTotal, setSeatsTotal] = useState('');
+  // Rider seats, driver excluded (trips.seats_total). Starts at the car's maximum.
+  const maxRiderSeats = selectedVehicle?.seat_capacity ? selectedVehicle.seat_capacity - 1 : LEGACY_MAX_RIDER_SEATS;
+  const [riderSeats, setRiderSeats] = useState(4);
+  // A restored draft's seat count wins over the car's default once its car is selected.
+  const restoredSeats = useRef<{ vehicleId: string | null; seats: number } | null>(null);
+  useEffect(() => {
+    const max = selectedVehicle?.seat_capacity ? selectedVehicle.seat_capacity - 1 : LEGACY_MAX_RIDER_SEATS;
+    if (restoredSeats.current && restoredSeats.current.vehicleId === (selectedVehicle?.id ?? null)) {
+      setRiderSeats(Math.min(restoredSeats.current.seats, max));
+      restoredSeats.current = null;
+      return;
+    }
+    setRiderSeats(selectedVehicle?.seat_capacity ? selectedVehicle.seat_capacity - 1 : 4);
+  }, [selectedVehicle?.id, selectedVehicle?.seat_capacity]);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { style: shakeStyle, shake } = useShake();
+
+  // Unsaved work: warn on leave, and keep a draft on the device.
+  const dirty =
+    !!title.trim() ||
+    meetupTouched(origin) ||
+    meetupTouched(destination) ||
+    meetupTouched(meetup) ||
+    routeStops.length > 0 ||
+    !!startDate ||
+    !!endDate ||
+    !!notes.trim();
+  const { allowLeave } = useUnsavedChangesGuard(dirty, { message: "Your carpool isn't posted yet. We'll keep a draft, but leaving now closes the form." });
+  const draftValue: CarpoolDraft = {
+    title,
+    origin,
+    destination,
+    meetup,
+    routeStops,
+    startAt: startDate?.toISOString() ?? null,
+    includeEnd,
+    endAt: endDate?.toISOString() ?? null,
+    visibility,
+    vehicleId: selectedVehicleId,
+    riderSeats,
+    notes,
+  };
+  const draft = useDraft<CarpoolDraft>(guildId ? `carpool:guild:${guildId}` : 'carpool', draftValue, { enabled: isVerified, isEmpty: () => !dirty });
+
+  function restoreDraft() {
+    const saved = draft.restore();
+    if (!saved) return;
+    setTitle(saved.title);
+    setOrigin(saved.origin);
+    setDestination(saved.destination);
+    setMeetup(saved.meetup);
+    setRouteStops(saved.routeStops ?? []);
+    setStartDate(saved.startAt ? new Date(saved.startAt) : null);
+    setIncludeEnd(saved.includeEnd);
+    setEndDate(saved.endAt ? new Date(saved.endAt) : null);
+    setVisibility(saved.visibility);
+    setNotes(saved.notes);
+    if (saved.vehicleId && approvedVehicles.some((vehicle) => vehicle.id === saved.vehicleId)) {
+      restoredSeats.current = { vehicleId: saved.vehicleId, seats: saved.riderSeats };
+      if (saved.vehicleId === selectedVehicleId) {
+        setRiderSeats(Math.min(saved.riderSeats, maxRiderSeats));
+        restoredSeats.current = null;
+      } else {
+        setSelectedVehicleId(saved.vehicleId);
+      }
+    }
+  }
 
   function fail(message: string) {
     setErrorMessage(message);
@@ -208,21 +285,16 @@ export default function CreateTripScreen() {
       stops.push({ label: formatMeetupLabel(location), municipality: location.municipality, lat: location.latitude, lng: location.longitude });
     }
 
-    if (!selectedVehicleId) {
+    if (!selectedVehicleId || !selectedVehicle) {
       fail('Select a vehicle for this trip.');
       return;
     }
-
-    // The form asks for total seats including the driver (what people naturally
-    // count), but trips.seats_total is rider seats -- the DB computes
-    // seats_available as seats_total minus accepted riders, driver excluded.
-    const totalSeatsText = seatsTotal.trim();
-    const totalSeats = totalSeatsText ? Number.parseInt(totalSeatsText, 10) : null;
-    if (totalSeatsText && (!/^\d{1,2}$/.test(totalSeatsText) || totalSeats === null || totalSeats < MIN_TOTAL_SEATS)) {
-      fail(`Total seats must be ${MIN_TOTAL_SEATS} to 99, including you as the driver.`);
+    if (isRegistrationExpired(selectedVehicle)) {
+      fail(`The registration of your ${selectedVehicle.make} ${selectedVehicle.model} expired. Renew it in My Vehicles first.`);
       return;
     }
-    const riderSeats = totalSeats !== null ? totalSeats - 1 : null;
+
+    // The stepper keeps riderSeats within 1..the car's limit; the DB enforces it too.
 
     if (includeEnd && endDate && endDate.getTime() < startDate.getTime()) {
       fail('Return / end time must be after your departure time.');
@@ -239,7 +311,7 @@ export default function CreateTripScreen() {
       startAt: startDate.toISOString(),
       endAt: includeEnd && endDate ? endDate.toISOString() : null,
       visibility,
-      seatsTotal: riderSeats,
+      seatsTotal: Math.min(riderSeats, maxRiderSeats),
       notes: notes.trim() || null,
       destinationLat: destinationLocation.latitude,
       destinationLng: destinationLocation.longitude,
@@ -258,6 +330,8 @@ export default function CreateTripScreen() {
       return;
     }
 
+    draft.clear();
+    allowLeave();
     router.replace({ pathname: '/trip/[id]', params: { id: (data as { id: string }).id, celebrate: 'created' } });
   }
 
@@ -288,6 +362,18 @@ export default function CreateTripScreen() {
                 </Text>
               </AnimatedPressable>
             ) : undefined
+          }
+        />
+      ) : !hasPhone(profile?.phone) ? (
+        <EmptyState
+          key="no-phone"
+          icon={<Phone size={34} color="#2A55D4" />}
+          title="Add your mobile number"
+          message="Organizers need a mobile number on file so the safety team can reach you during the trip."
+          action={
+            <AnimatedPressable onPress={() => router.push('/edit-profile')} className="rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+              <Text className="text-base font-bold text-white">Add Mobile Number</Text>
+            </AnimatedPressable>
           }
         />
       ) : vehiclesLoading ? (
@@ -340,6 +426,15 @@ export default function CreateTripScreen() {
       <>
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
+        {draft.offer ? (
+          <DraftBanner
+            savedAt={draft.offer.savedAt}
+            preview={draft.offer.value.title || null}
+            isDark={isDark}
+            onContinue={restoreDraft}
+            onStartFresh={draft.dismiss}
+          />
+        ) : null}
         <Card index={0} className="gap-4">
           <SectionTitle isDark={isDark} icon={<MapPin size={16} color="#2A55D4" />} title="Route" />
           <View className="-mt-3">
@@ -429,7 +524,11 @@ export default function CreateTripScreen() {
                   <Car size={16} color={selected ? '#FFFFFF' : '#8A93A6'} />
                   <Text className={`text-[15px] font-semibold ${selected ? 'text-white' : primary}`}>
                     {vehicle.make} {vehicle.model}
+                    {vehicle.seat_capacity ? ` · ${vehicle.seat_capacity} seats` : ''}
                   </Text>
+                  {isRegistrationExpired(vehicle) ? (
+                    <Text className={`text-[12px] font-bold ${selected ? 'text-white/80' : 'text-[#B91C1C]'}`}>Registration expired</Text>
+                  ) : null}
                 </AnimatedPressable>
               );
             })}
@@ -540,17 +639,38 @@ export default function CreateTripScreen() {
         <Card index={5} className="gap-4">
           <SectionTitle isDark={isDark} icon={<Wallet size={16} color="#2A55D4" />} title="Seats & fuel sharing" />
           <View className="-mt-3">
-            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>TOTAL SEATS (OPTIONAL)</Text>
-            <TextInput
-              className={`rounded-2xl border px-4 py-4 text-base ${border} ${inputBg} ${inputText}`}
-              placeholder="e.g., 4"
-              placeholderTextColor={placeholderColor}
-              keyboardType="number-pad"
-              maxLength={2}
-              value={seatsTotal}
-              onChangeText={(text) => setSeatsTotal(text.replace(/\D/g, '').slice(0, 2))}
-            />
-            <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>{seatSummary(seatsTotal)}</Text>
+            <Text className={`mb-2 text-[13px] font-bold ${secondary}`}>SEATS FOR RIDERS</Text>
+            <View className={`flex-row items-center gap-3 rounded-2xl border px-4 py-3 ${border} ${inputBg}`}>
+              <Users size={18} color="#8A93A6" />
+              <View className="flex-1">
+                <Text className={`text-[15px] font-bold ${primary}`}>
+                  {riderSeats} rider{riderSeats === 1 ? '' : 's'} + you
+                </Text>
+                <Text className={`text-[12px] leading-4 ${secondary}`}>
+                  {selectedVehicle?.seat_capacity
+                    ? `${selectedVehicle.make} ${selectedVehicle.model} · ${selectedVehicle.seat_capacity} seats${riderSeats < maxRiderSeats ? ` · ${maxRiderSeats - riderSeats} kept free` : ''}`
+                    : 'Set how many riders can join'}
+                </Text>
+              </View>
+              <AnimatedPressable
+                onPress={() => setRiderSeats((current) => Math.max(1, current - 1))}
+                disabled={riderSeats <= 1}
+                accessibilityLabel="Fewer rider seats"
+                className={`h-10 w-10 items-center justify-center rounded-full ${isDark ? 'bg-[#22324B]' : 'bg-white'} ${riderSeats <= 1 ? 'opacity-40' : ''}`}>
+                <Minus size={18} color={isDark ? '#E2E8F0' : '#1B2340'} />
+              </AnimatedPressable>
+              <Text className={`w-7 text-center text-[20px] font-black ${primary}`}>{riderSeats}</Text>
+              <AnimatedPressable
+                onPress={() => setRiderSeats((current) => Math.min(maxRiderSeats, current + 1))}
+                disabled={riderSeats >= maxRiderSeats}
+                accessibilityLabel="More rider seats"
+                className={`h-10 w-10 items-center justify-center rounded-full ${isDark ? 'bg-[#22324B]' : 'bg-white'} ${riderSeats >= maxRiderSeats ? 'opacity-40' : ''}`}>
+                <Plus size={18} color={isDark ? '#E2E8F0' : '#1B2340'} />
+              </AnimatedPressable>
+            </View>
+            {riderSeats >= maxRiderSeats && selectedVehicle?.seat_capacity ? (
+              <Text className={`mt-1.5 text-[12px] leading-4 ${secondary}`}>That&apos;s every seat in your car.</Text>
+            ) : null}
           </View>
 
           <View className={`rounded-2xl border px-4 py-3.5 ${isDark ? 'border-[#22324B] bg-[#18253C]' : 'border-[#D7DFEE] bg-[#F4F7FF]'}`}>

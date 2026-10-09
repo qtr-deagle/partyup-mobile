@@ -4,6 +4,8 @@ import MeetupLocationPicker, { EMPTY_MEETUP, type MeetupDraft } from '@/componen
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { riseIn, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { useDraft, useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createGuildPartyup } from '@/lib/guilds';
 import { feedback } from '@/lib/sounds';
@@ -71,6 +73,24 @@ export default function GuildPartyupCreateScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Unsaved work: warn on leave, and keep a draft per guild.
+  const dirty = !!title.trim() || !!(place.municipality || place.pin || place.landmark.trim()) || !!meetAt || !!notes.trim();
+  const { allowLeave } = useUnsavedChangesGuard(dirty, { message: "Your PartyUp isn't posted yet. Leave anyway?" });
+  const draft = useDraft(
+    guildId ? `guild-partyup:${guildId}` : null,
+    { title, place, meetAt: meetAt?.toISOString() ?? null, notes },
+    { isEmpty: () => !dirty }
+  );
+
+  function restoreDraft() {
+    const saved = draft.restore();
+    if (!saved) return;
+    setTitle(saved.title);
+    setPlace(saved.place);
+    setMeetAt(saved.meetAt ? new Date(saved.meetAt) : null);
+    setNotes(saved.notes);
+  }
+
   function fail(message: string) {
     setErrorMessage(message);
     feedback.error();
@@ -99,6 +119,8 @@ export default function GuildPartyupCreateScreen() {
     if (error) return fail(error.message);
 
     feedback.success();
+    draft.clear();
+    allowLeave();
     router.back();
   }
 
@@ -111,6 +133,15 @@ export default function GuildPartyupCreateScreen() {
         contentContainerClassName="gap-4 px-4 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
         keyboardShouldPersistTaps="handled">
+        {draft.offer ? (
+          <DraftBanner
+            savedAt={draft.offer.savedAt}
+            preview={draft.offer.value.title || null}
+            isDark={isDark}
+            onContinue={restoreDraft}
+            onStartFresh={draft.dismiss}
+          />
+        ) : null}
         <Animated.View entering={riseIn(0, 380)} className="overflow-hidden rounded-3xl p-5">
           <Svg style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100">
             <Defs>

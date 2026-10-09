@@ -12,6 +12,8 @@ export type ActiveTripSummary = {
   is_driver: boolean;
   buddy_user_id: string | null;
   buddy_display_name: string | null;
+  // Not returned by the RPC; looked up below. Only carpools need a rider to start.
+  trip_type?: 'carpool' | 'tour';
 };
 
 export type SafetyOverview = {
@@ -36,7 +38,12 @@ export async function getActiveTripSummary() {
     return { data: null, error };
   }
   const rows = (data ?? []) as ActiveTripSummary[];
-  return { data: rows[0] ?? null, error: null };
+  const trip = rows[0] ?? null;
+  if (trip) {
+    const { data: typeRow } = await supabase.from('trips').select('trip_type').eq('id', trip.trip_id).maybeSingle();
+    trip.trip_type = typeRow?.trip_type ?? undefined;
+  }
+  return { data: trip, error: null };
 }
 
 export async function getSafetyOverview() {

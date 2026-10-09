@@ -1,4 +1,5 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { confirmDiscard } from '@/hooks/use-unsaved-changes';
 import { riseIn, SuccessOverlay } from '@/components/ui/motion';
 import { Card } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
@@ -30,6 +31,16 @@ export function BecomeLeaderCard({ isDark, index = 0 }: { isDark: boolean; index
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+
+  // Keeps the typed name and pitch on an accidental close; asks before discarding.
+  function closeForm() {
+    if (busy) return;
+    confirmDiscard(!!guildName.trim() || !!pitch.trim(), () => {
+      setFormVisible(false);
+      setGuildName('');
+      setPitch('');
+    }, { message: "Your application isn't sent yet. Discard it?" });
+  }
   const clearSent = useCallback(() => setSent(false), []);
 
   const load = useCallback(async () => {
@@ -181,7 +192,7 @@ export function BecomeLeaderCard({ isDark, index = 0 }: { isDark: boolean; index
         )}
       </Card>
 
-      <Modal visible={formVisible} transparent animationType="fade" onRequestClose={() => setFormVisible(false)}>
+      <Modal visible={formVisible} transparent animationType="fade" onRequestClose={closeForm}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 items-center justify-center bg-black/45 px-4">
           <Animated.View entering={riseIn(0, 380)} className={`max-h-[90%] w-full max-w-[440px] rounded-[28px] px-4 py-5 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
             <View className="flex-row items-start justify-between gap-4 pb-3">
@@ -189,7 +200,7 @@ export function BecomeLeaderCard({ isDark, index = 0 }: { isDark: boolean; index
                 <Text className={`text-headline-24 font-bold ${primary}`}>Leader application</Text>
                 <Text className={`mt-1 text-[14px] ${secondary}`}>Tell the PartyUp team about the guild you want to build.</Text>
               </View>
-              <TouchableOpacity onPress={() => setFormVisible(false)} className={`h-9 w-9 items-center justify-center rounded-full ${chip}`} accessibilityLabel="Close">
+              <TouchableOpacity onPress={closeForm} className={`h-9 w-9 items-center justify-center rounded-full ${chip}`} accessibilityLabel="Close">
                 <X size={18} color={isDark ? '#CBD5E1' : '#6B7590'} />
               </TouchableOpacity>
             </View>

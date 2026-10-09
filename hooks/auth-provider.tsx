@@ -18,6 +18,8 @@ export type UserProfile = {
   date_of_birth: string | null;
   interests: string[];
   phone: string | null;
+  // Last time the number was changed (not first added); 7-day cooldown, see migration 202610090006.
+  phone_changed_at: string | null;
   city: string | null;
   country: string | null;
   gcash_handle: string | null;
@@ -28,6 +30,9 @@ export type UserProfile = {
   warning_alerts_enabled: boolean;
   emergency_sos_enabled: boolean;
   terms_accepted_at: string | null;
+  // Set while a requested account deletion is in its 30-day grace period.
+  deletion_requested_at: string | null;
+  deletion_scheduled_for: string | null;
   created_at: string;
   updated_at: string;
 };

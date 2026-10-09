@@ -15,8 +15,9 @@ import { Image } from 'expo-image';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Check, Clock, MapPin, Navigation, PartyPopper, Users } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Text, View } from 'react-native';
 
+import { showAlert } from '@/lib/dialog';
 type Props = {
   guildId: string;
   guildName: string;
@@ -68,7 +69,7 @@ export function GuildPartyups({ guildId, guildName, color, isDark, canCreate, in
     if (error) {
       setBusyId(null);
       feedback.error();
-      Alert.alert(failTitle, error.message);
+      showAlert(failTitle, error.message);
       return;
     }
     feedback.success();
@@ -81,14 +82,14 @@ export function GuildPartyups({ guildId, guildName, color, isDark, canCreate, in
       void run(partyup.id, () => joinGuildPartyup(partyup.id), 'Unable to join');
       return;
     }
-    Alert.alert('Not going anymore?', `You'll be taken off the going list for "${partyup.title}".`, [
+    showAlert('Not going anymore?', `You'll be taken off the going list for "${partyup.title}".`, [
       { text: 'Stay', style: 'cancel' },
       { text: "I can't go", style: 'destructive', onPress: () => void run(partyup.id, () => leaveGuildPartyup(partyup.id), 'Unable to leave') },
     ]);
   }
 
   function confirmCancel(partyup: GuildPartyup) {
-    Alert.alert('Cancel this PartyUp?', `Everyone going to "${partyup.title}" will be notified.`, [
+    showAlert('Cancel this PartyUp?', `Everyone going to "${partyup.title}" will be notified.`, [
       { text: 'Keep it', style: 'cancel' },
       { text: 'Cancel PartyUp', style: 'destructive', onPress: () => void run(partyup.id, () => cancelGuildPartyup(partyup.id), 'Unable to cancel') },
     ]);

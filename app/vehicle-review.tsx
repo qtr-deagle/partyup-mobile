@@ -17,10 +17,13 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { BadgeCheck, Check, ShieldQuestion, X } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeOutLeft, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
+import ReasonChips from '@/components/ReasonChips';
+import { composeReason, EMPTY_REASON, REASON_PRESETS, type ReasonValue } from '@/lib/reasonPresets';
 function VehicleImage({
   path,
   label,
@@ -88,7 +91,7 @@ export default function VehicleReviewScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectNotes, setRejectNotes] = useState('');
+  const [rejectReason, setRejectReason] = useState<ReasonValue>(EMPTY_REASON);
 
   // Verification reviews are an admin job.
   const isStaff = profile?.role === 'admin';
@@ -118,24 +121,24 @@ export default function VehicleReviewScreen() {
     const { error } = await reviewVehicleVerification(id, 'approved');
     setBusyId(null);
     if (error) {
-      Alert.alert('Unable to approve', error.message);
+      showAlert('Unable to approve', error.message);
       return;
     }
     setPending((current) => current.filter((row) => row.id !== id));
   }
 
   function startReject(id: string) {
-    setRejectNotes('');
+    setRejectReason(EMPTY_REASON);
     setRejectingId(id);
   }
 
   async function confirmReject() {
     if (!rejectingId) return;
     setBusyId(rejectingId);
-    const { error } = await reviewVehicleVerification(rejectingId, 'rejected', rejectNotes.trim() || undefined);
+    const { error } = await reviewVehicleVerification(rejectingId, 'rejected', composeReason(REASON_PRESETS.vehicleReject, rejectReason));
     setBusyId(null);
     if (error) {
-      Alert.alert('Unable to reject', error.message);
+      showAlert('Unable to reject', error.message);
       return;
     }
     setPending((current) => current.filter((row) => row.id !== rejectingId));
@@ -232,19 +235,23 @@ export default function VehicleReviewScreen() {
 
               {rejectingId === row.id ? (
                 <View className="gap-2">
-                  <TextInput
-                    className={`rounded-2xl px-4 py-3 text-sm ${inputBg} ${primary}`}
-                    placeholder="Reason for rejection (optional)"
-                    placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
-                    value={rejectNotes}
-                    onChangeText={setRejectNotes}
-                    multiline
+                  <ReasonChips
+                    presets={REASON_PRESETS.vehicleReject}
+                    value={rejectReason}
+                    onChange={setRejectReason}
+                    isDark={isDark}
+                    label="Reason for rejection"
+                    required
+                    audience="The owner"
                   />
                   <View className="flex-row gap-2">
                     <AnimatedPressable onPress={() => setRejectingId(null)} className={`flex-1 items-center rounded-2xl border py-3 ${border}`}>
                       <Text className={`font-bold ${primary}`}>Cancel</Text>
                     </AnimatedPressable>
-                    <AnimatedPressable onPress={() => void confirmReject()} disabled={busyId === row.id} className="flex-1 items-center rounded-2xl bg-[#E32727] py-3">
+                    <AnimatedPressable
+                      onPress={() => void confirmReject()}
+                      disabled={busyId === row.id || !composeReason(REASON_PRESETS.vehicleReject, rejectReason)}
+                      className={`flex-1 items-center rounded-2xl py-3 ${composeReason(REASON_PRESETS.vehicleReject, rejectReason) ? 'bg-[#E32727]' : 'bg-[#E32727]/40'}`}>
                       {busyId === row.id ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-bold text-white">Confirm Reject</Text>}
                     </AnimatedPressable>
                   </View>

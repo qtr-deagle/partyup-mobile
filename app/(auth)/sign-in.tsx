@@ -4,6 +4,7 @@ import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail } from 'lucide-react-n
 import { useEffect, useRef, useState } from 'react';
 import { Keyboard, KeyboardAvoidingView, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
+import LegalModal, { type LegalDoc } from '@/components/LegalModal';
 import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
 import { riseIn, useShake } from '@/components/ui/motion';
 import { rateLimitWaitSeconds } from '@/lib/rateLimit';
@@ -21,6 +22,7 @@ export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [needsEmailCode, setNeedsEmailCode] = useState(false);
@@ -133,20 +135,21 @@ export default function SignInScreen() {
       <KeyboardAvoidingView behavior="padding" className="flex-1">
         {/* Fixed while the keyboard is closed; scrollable while it's open so
             the fields and buttons it covers can still be reached. */}
-        <ScrollView ref={scrollRef} scrollEnabled={keyboardVisible || contentOverflows} onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)} onContentSizeChange={(_width, height) => setContentHeight(height)} contentContainerClassName="flex-grow" bounces={false} overScrollMode="never" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Animated.View entering={riseIn(0, 450)} className="items-center px-7 pb-5" style={{ paddingTop: insets.top + 12 }}>
+        <ScrollView ref={scrollRef} scrollEnabled={keyboardVisible || contentOverflows} onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)} onContentSizeChange={(_width, height) => setContentHeight(height)} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }} bounces={false} overScrollMode="never" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <View className="w-full max-w-[420px] self-center">
+          <Animated.View entering={riseIn(0, 450)} className="items-center pb-5">
             <AuthLogo />
-            <Text className="mt-4 text-headline-24 font-bold text-[#273142]">
-              {needsEmailCode ? 'Check your inbox' : 'Welcome back'}
-            </Text>
-            <Text className="mt-1 text-center text-[14px] leading-[21px] text-[#697386]">
-              {needsEmailCode ? 'One quick step before you hop in.' : 'Sign in to find your next travel buddy.'}
-            </Text>
+            {needsEmailCode ? (
+              <>
+                <Text className="mt-4 text-headline-24 font-bold text-[#273142]">Check your inbox</Text>
+                <Text className="mt-1 text-center text-[14px] leading-[21px] text-[#697386]">One quick step before you hop in.</Text>
+              </>
+            ) : null}
           </Animated.View>
 
           {/* Separate layers: the entering animation and the shake both drive transform. */}
-          <Animated.View entering={riseIn(120, 500)} className="flex-grow">
-            <View className="flex-1 rounded-t-[32px] bg-white px-6 pt-6 shadow-lg shadow-black/10" style={{ paddingBottom: insets.bottom + 16 }}>
+          <Animated.View entering={riseIn(120, 500)}>
+            <View className="rounded-[28px] bg-white px-6 py-6 shadow-lg shadow-black/10">
               <Animated.View style={shakeStyle}>
                 {needsEmailCode ? (
                   <View>
@@ -229,14 +232,17 @@ export default function SignInScreen() {
                 <Text className="text-[15px] font-semibold text-[#2445B8]">Create an account</Text>
               </TouchableOpacity>
 
-              <View className="flex-1" />
-              <Text className="mt-3 px-3 text-center text-[11px] leading-4 text-[#9AA3B1]">
-                By signing in, you agree to our Terms of Service and Privacy Policy
-              </Text>
             </View>
+            <Text className="mt-4 px-3 text-center text-[11px] leading-4 text-[#9AA3B1]">
+              By signing in, you agree to our{' '}
+              <Text className="font-semibold text-[#2445B8]" onPress={() => setLegalDoc('terms')}>Terms of Service</Text> and{' '}
+              <Text className="font-semibold text-[#2445B8]" onPress={() => setLegalDoc('privacy')}>Privacy Policy</Text>
+            </Text>
           </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
+      <LegalModal visible={legalDoc !== null} doc={legalDoc ?? 'terms'} onClose={() => setLegalDoc(null)} />
     </View>
   );
 }

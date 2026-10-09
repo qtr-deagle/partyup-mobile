@@ -4,9 +4,10 @@ import { BULACAN_CENTERS, BULACAN_MUNICIPALITIES, OUTSIDE_BULACAN, type BulacanM
 import * as Location from 'expo-location';
 import { ChevronDown, Crosshair, MapPin, Search, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 export type MeetupDraft = {
   municipality: string | null;
   landmark: string;
@@ -96,10 +97,10 @@ export default function MeetupLocationPicker({ label, value, onChange, isDark, l
       if (results[0]) {
         setFocus({ latitude: results[0].latitude, longitude: results[0].longitude, zoom: 17 });
       } else {
-        Alert.alert('Place not found', 'Try a nearby landmark or street, or drag the map to the spot.');
+        showAlert('Place not found', 'Try a nearby landmark or street, or drag the map to the spot.');
       }
     } catch {
-      Alert.alert('Search unavailable', 'Drag the map to the meetup spot instead.');
+      showAlert('Search unavailable', 'Drag the map to the meetup spot instead.');
     } finally {
       setSearching(false);
     }
@@ -110,13 +111,13 @@ export default function MeetupLocationPicker({ label, value, onChange, isDark, l
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Location permission needed', 'Allow location access, or drag the map to the meetup spot.');
+        showAlert('Location permission needed', 'Allow location access, or drag the map to the meetup spot.');
         return;
       }
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       setFocus({ latitude: position.coords.latitude, longitude: position.coords.longitude, zoom: 18 });
     } catch {
-      Alert.alert('Location unavailable', 'Drag the map to the meetup spot instead.');
+      showAlert('Location unavailable', 'Drag the map to the meetup spot instead.');
     } finally {
       setLocating(false);
     }

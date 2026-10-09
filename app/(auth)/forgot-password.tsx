@@ -44,7 +44,9 @@ const TITLES: Record<Step, string> = {
 export default function ForgotPasswordScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ email?: string }>();
+  // signedIn=1: opened from Settings by a signed-in user, who stays signed in on the way out.
+  const params = useLocalSearchParams<{ email?: string; signedIn?: string }>();
+  const fromSettings = params.signedIn === '1';
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState(params.email ?? '');
   const [otpCode, setOtpCode] = useState('');
@@ -129,11 +131,11 @@ export default function ForgotPasswordScreen() {
 
   // Abandoning the password step must not leave the recovery session signed in.
   const leave = useCallback(async () => {
-    if (step === 'password') {
+    if (step === 'password' && !fromSettings) {
       await supabase.auth.signOut();
     }
     router.back();
-  }, [router, step]);
+  }, [fromSettings, router, step]);
 
   function handleBack() {
     setErrorMessage(null);
@@ -176,6 +178,10 @@ export default function ForgotPasswordScreen() {
     }
 
     feedback.success();
+    if (fromSettings) {
+      router.back();
+      return;
+    }
     router.replace('/(tabs)');
   }
 
@@ -239,6 +245,8 @@ export default function ForgotPasswordScreen() {
                   onBlur={() => setFocusedField(null)}
                   onSubmitEditing={handleSendCode}
                   returnKeyType="send"
+                  // From Settings the code must go to the signed-in account, or verifying it would switch accounts.
+                  editable={!fromSettings}
                 />
               </View>
             </View>
@@ -352,13 +360,13 @@ export default function ForgotPasswordScreen() {
               onPress={handleResetPassword}
               disabled={submitting || !canSubmitPassword}
               className={`mt-4 h-[42px] justify-center rounded-[9px] ${canSubmitPassword ? 'bg-[#2445B8]' : 'bg-[#A9B6E0]'}`}>
-              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-[16px] font-bold text-white">Reset Password & Log In</Text>}
+              {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-[16px] font-bold text-white">{fromSettings ? 'Save New Password' : 'Reset Password & Log In'}</Text>}
             </TouchableOpacity>
           )}
 
           <TouchableOpacity onPress={() => void leave()} className="mt-4">
             <Text className="text-center text-[12px] text-[#697386]">
-              Remembered it? <Text className="font-semibold text-[#7DA3FF]">Back to sign in</Text>
+              Remembered it? <Text className="font-semibold text-[#7DA3FF]">{fromSettings ? 'Go back' : 'Back to sign in'}</Text>
             </Text>
           </TouchableOpacity>
         </Animated.View>

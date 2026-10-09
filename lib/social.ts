@@ -3,15 +3,30 @@ import { supabase } from '@/lib/supabase';
 
 const REQUEST_TIMEOUT_MS = 10000;
 
+const NETWORK_ERROR = /network request failed|failed to fetch|network error/i;
+const OFFLINE_MESSAGE = "You're offline. Check your connection and try again.";
+
 export async function withRequestTimeout<T>(request: PromiseLike<T>, label: string) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       request,
       new Promise<T>((_, reject) => {
         timeoutId = setTimeout(() => reject(new Error(`${label} timed out. Check your connection and try again.`)), REQUEST_TIMEOUT_MS);
       }),
     ]);
+    // supabase-js reports a dropped connection as { error: { message: 'TypeError: Network request failed' } }
+    // instead of throwing; screens show error.message as-is, so make it readable.
+    const error = (result as { error?: { message?: string } } | null)?.error;
+    if (error && typeof error.message === 'string' && NETWORK_ERROR.test(error.message)) {
+      error.message = OFFLINE_MESSAGE;
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof Error && NETWORK_ERROR.test(error.message)) {
+      throw new Error(OFFLINE_MESSAGE);
+    }
+    throw error;
   } finally {
     if (timeoutId) {
       clearTimeout(timeoutId);
@@ -336,21 +351,26 @@ export async function setReaction(messageId: string, userId: string, emoji: Reac
   return supabase.from('chat_message_reactions').upsert({ message_id: messageId, user_id: userId, emoji }, { onConflict: 'message_id,user_id' });
 }
 
-export async function setChatMuted(threadId: string, muted: boolean) {
-  return supabase.rpc('set_chat_muted', { p_thread_id: threadId, p_muted: muted });
+/** `until` = when a timed mute ends; null mutes until turned back on. */
+export async function setChatMuted(threadId: string, muted: boolean, until: Date | null = null) {
+  return supabase.rpc('set_chat_muted', { p_thread_id: threadId, p_muted: muted, p_until: muted && until ? until.toISOString() : null });
 }
 
 export async function setChatPinned(threadId: string, pinned: boolean) {
   return supabase.rpc('set_chat_pinned', { p_thread_id: threadId, p_pinned: pinned });
 }
 
-// A carpool or tour group chat, for the Messages list.
+// A carpool/tour group chat or a friend group, for the Messages list.
 export type GroupConversation = {
   thread_id: string;
-  trip_id: string;
+  /** 'trip' = carpool/tour chat; 'friends' = a group someone started with friends. */
+  kind: 'trip' | 'friends';
+  trip_id: string | null;
   title: string;
-  trip_type: 'carpool' | 'tour';
-  trip_status: string;
+  trip_type: 'carpool' | 'tour' | null;
+  trip_status: string | null;
+  group_emoji: string | null;
+  group_color: string | null;
   member_count: number;
   last_message: string | null;
   last_message_type: ChatMessage['message_type'] | null;
@@ -372,15 +392,73 @@ export async function listGroupConversations() {
   }
 }
 
+// ---- Friend group chats (migration 202610090011) ----
+
+export type FriendGroupMember = { user_id: string; display_name: string; avatar_url: string | null; role: 'admin' | 'member' };
+
+export type FriendGroup = {
+  thread_id: string;
+  title: string;
+  emoji: string | null;
+  color: string | null;
+  created_by: string;
+  my_role: 'admin' | 'member';
+  members: FriendGroupMember[];
+};
+
+export const GROUP_COLORS = ['#284BD6', '#7C3AED', '#DB2777', '#E11D48', '#EA580C', '#D97706', '#059669', '#0891B2'];
+export const GROUP_EMOJIS = ['🚗', '🏖️', '⛰️', '🍜', '🎉', '✈️', '🏕️', '🎒', '☕', '🎶', '🌊', '⚽'];
+
+export async function createFriendGroup(input: { title: string; memberIds: string[]; emoji: string | null; color: string | null }) {
+  return withRequestTimeout(
+    supabase.rpc('create_friend_group', { p_title: input.title, p_member_ids: input.memberIds, p_emoji: input.emoji, p_color: input.color }),
+    'Creating group'
+  ) as unknown as Promise<{ data: string | null; error: Error | null }>;
+}
+
+export async function getFriendGroup(threadId: string) {
+  try {
+    const { data, error } = await withRequestTimeout(supabase.rpc('get_friend_group', { p_thread_id: threadId }), 'Loading group');
+    return { data: (data ?? null) as FriendGroup | null, error };
+  } catch (error) {
+    return { data: null, error: error as Error };
+  }
+}
+
+export async function updateFriendGroup(threadId: string, input: { title: string; emoji: string | null; color: string | null }) {
+  return withRequestTimeout(
+    supabase.rpc('update_friend_group', { p_thread_id: threadId, p_title: input.title, p_emoji: input.emoji, p_color: input.color }),
+    'Saving group'
+  );
+}
+
+export async function addFriendGroupMembers(threadId: string, memberIds: string[]) {
+  return withRequestTimeout(supabase.rpc('add_friend_group_members', { p_thread_id: threadId, p_member_ids: memberIds }), 'Adding people');
+}
+
+export async function removeFriendGroupMember(threadId: string, userId: string) {
+  return withRequestTimeout(supabase.rpc('remove_friend_group_member', { p_thread_id: threadId, p_user_id: userId }), 'Removing member');
+}
+
+export async function setFriendGroupAdmin(threadId: string, userId: string, admin: boolean) {
+  return withRequestTimeout(supabase.rpc('set_friend_group_admin', { p_thread_id: threadId, p_user_id: userId, p_admin: admin }), 'Updating admin');
+}
+
+export async function leaveFriendGroup(threadId: string) {
+  return withRequestTimeout(supabase.rpc('leave_friend_group', { p_thread_id: threadId }), 'Leaving group');
+}
+
 export async function getTripChatThread(tripId: string) {
   const { data, error } = await withRequestTimeout(supabase.rpc('get_trip_chat_thread', { p_trip_id: tripId }), 'Opening trip chat');
   return { data: (data ?? null) as string | null, error };
 }
 
-// My own mute/pin settings for a thread.
+// My own mute/pin settings for a thread. An expired timed mute counts as unmuted.
 export async function getChatPrefs(threadId: string, userId: string) {
-  const { data, error } = await supabase.from('chat_participants').select('muted, pinned_at').eq('thread_id', threadId).eq('user_id', userId).maybeSingle();
-  return { data: { muted: Boolean(data?.muted), pinned: Boolean(data?.pinned_at) }, error };
+  const { data, error } = await supabase.from('chat_participants').select('muted, muted_until, pinned_at').eq('thread_id', threadId).eq('user_id', userId).maybeSingle();
+  const mutedUntil = (data?.muted_until as string | null) ?? null;
+  const muted = Boolean(data?.muted) && (!mutedUntil || new Date(mutedUntil).getTime() > Date.now());
+  return { data: { muted, mutedUntil: muted ? mutedUntil : null, pinned: Boolean(data?.pinned_at) }, error };
 }
 
 export async function clearChatForMe(threadId: string) {

@@ -1,9 +1,10 @@
 import type { GroupMember } from '@/components/chat/GroupInfoSheet';
 import { riseIn } from '@/components/ui/motion';
 import { Image } from 'expo-image';
-import { Alert, Pressable, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { showAlert } from '@/lib/dialog';
 const SIZE = 14;
 const MAX_SHOWN = 5;
 
@@ -16,7 +17,7 @@ export function SeenByRow({ readers, mine, isDark }: { readers: GroupMember[]; m
   return (
     <Animated.View key={readers.map((reader) => reader.userId).join(',')} entering={riseIn(0, 260)} className={`mt-1 ${mine ? 'self-end' : 'self-start ml-1'}`}>
       <Pressable
-        onPress={() => Alert.alert('Seen by', readers.map((reader) => reader.name).join('\n'))}
+        onPress={() => showAlert('Seen by', readers.map((reader) => reader.name).join('\n'))}
         hitSlop={8}
         accessibilityLabel={`Seen by ${readers.map((reader) => reader.name).join(', ')}`}
       >

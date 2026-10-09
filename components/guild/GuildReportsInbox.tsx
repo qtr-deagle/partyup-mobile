@@ -1,4 +1,6 @@
 import { Segmented } from '@/components/guild/LeaderboardPanel';
+import ReasonChips from '@/components/ReasonChips';
+import { composeReason, EMPTY_REASON, REASON_PRESETS, type ReasonPreset, type ReasonValue } from '@/lib/reasonPresets';
 import { EmptyState, enterFromBelow } from '@/components/ui/motion';
 import { formatDateTime, parseTimestamp } from '@/lib/datetime';
 import {
@@ -14,10 +16,11 @@ import { getTheme } from '@/lib/theme';
 import { Image } from 'expo-image';
 import { CheckCircle2, Flag, Send, X, XCircle } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -29,10 +32,10 @@ type Props = {
 
 type Action = 'resolved' | 'dismissed' | 'escalate';
 
-const ACTION_COPY: Record<Action, { title: string; placeholder: string; confirm: string }> = {
-  resolved: { title: 'Mark as resolved', placeholder: 'What did you do? (optional, the reporter sees this)', confirm: 'Resolve' },
-  dismissed: { title: 'Dismiss report', placeholder: 'Why? (optional, the reporter sees this)', confirm: 'Dismiss' },
-  escalate: { title: 'Escalate to PartyUp admins', placeholder: 'Anything admins should know? (optional)', confirm: 'Escalate' },
+const ACTION_COPY: Record<Action, { title: string; confirm: string; presets: ReasonPreset[]; audience: string }> = {
+  resolved: { title: 'Mark as resolved', confirm: 'Resolve', presets: REASON_PRESETS.guildReportResolve, audience: 'The reporter' },
+  dismissed: { title: 'Dismiss report', confirm: 'Dismiss', presets: REASON_PRESETS.guildReportDismiss, audience: 'The reporter' },
+  escalate: { title: 'Escalate to PartyUp admins', confirm: 'Escalate', presets: REASON_PRESETS.guildReportEscalate, audience: 'PartyUp admins' },
 };
 
 // The Guild Leader's list of guild reports: resolve, dismiss or escalate.
@@ -44,7 +47,7 @@ export function GuildReportsInbox({ visible, onClose, isDark, guildId, onChanged
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tab, setTab] = useState<'open' | 'handled'>('open');
   const [acting, setActing] = useState<{ id: string; action: Action } | null>(null);
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState<ReasonValue>(EMPTY_REASON);
   const [busy, setBusy] = useState(false);
   // A ref so an inline onChanged from the parent doesn't re-trigger loading.
   const onChangedRef = useRef(onChanged);
@@ -87,14 +90,16 @@ export function GuildReportsInbox({ visible, onClose, isDark, guildId, onChanged
   async function confirmAction() {
     if (!acting) return;
     setBusy(true);
-    const { error } = acting.action === 'escalate' ? await escalateGuildReport(acting.id, note) : await resolveGuildReport(acting.id, acting.action, note);
+    // Optional; the server caps notes at 500 characters.
+    const text = composeReason(ACTION_COPY[acting.action].presets, note).slice(0, 500);
+    const { error } = acting.action === 'escalate' ? await escalateGuildReport(acting.id, text) : await resolveGuildReport(acting.id, acting.action, text);
     setBusy(false);
     if (error) {
-      Alert.alert('Could not update the report', error.message);
+      showAlert('Could not update the report', error.message);
       return;
     }
     setActing(null);
-    setNote('');
+    setNote(EMPTY_REASON);
     await load();
   }
 
@@ -190,15 +195,17 @@ export function GuildReportsInbox({ visible, onClose, isDark, guildId, onChanged
                   ) : acting?.id === report.id ? (
                     <View key="acting" className="mt-3">
                       <Text className={`text-sm font-bold ${primaryText}`}>{ACTION_COPY[acting.action].title}</Text>
-                      <TextInput
-                        className={`mt-2 min-h-[64px] rounded-xl border px-3 py-2 text-sm ${softBorder} ${primaryText}`}
-                        placeholder={ACTION_COPY[acting.action].placeholder}
-                        placeholderTextColor={isDark ? '#64748B' : '#94A3B8'}
-                        multiline
-                        maxLength={500}
-                        value={note}
-                        onChangeText={setNote}
-                      />
+                      <View className="mt-2">
+                        <ReasonChips
+                          presets={ACTION_COPY[acting.action].presets}
+                          value={note}
+                          onChange={setNote}
+                          isDark={isDark}
+                          label="Note (optional)"
+                          audience={ACTION_COPY[acting.action].audience}
+                          maxLength={500}
+                        />
+                      </View>
                       <View className="mt-2 flex-row gap-2">
                         <TouchableOpacity onPress={() => setActing(null)} disabled={busy} className={`flex-1 items-center rounded-xl border py-2.5 ${softBorder}`}>
                           <Text className={`text-sm font-bold ${primaryText}`}>Cancel</Text>
@@ -214,9 +221,9 @@ export function GuildReportsInbox({ visible, onClose, isDark, guildId, onChanged
                     </View>
                   ) : (
                     <View key="actions" className="mt-3 flex-row gap-2">
-                      <ActionButton label="Resolve" icon={<CheckCircle2 size={14} color="#059669" />} border={softBorder} textClass={primaryText} onPress={() => { setNote(''); setActing({ id: report.id, action: 'resolved' }); }} />
-                      <ActionButton label="Dismiss" icon={<XCircle size={14} color={isDark ? '#94A3B8' : '#64748B'} />} border={softBorder} textClass={primaryText} onPress={() => { setNote(''); setActing({ id: report.id, action: 'dismissed' }); }} />
-                      <ActionButton label="Escalate" icon={<Send size={14} color="#DC2626" />} border={softBorder} textClass="text-[#DC2626]" onPress={() => { setNote(''); setActing({ id: report.id, action: 'escalate' }); }} />
+                      <ActionButton label="Resolve" icon={<CheckCircle2 size={14} color="#059669" />} border={softBorder} textClass={primaryText} onPress={() => { setNote(EMPTY_REASON); setActing({ id: report.id, action: 'resolved' }); }} />
+                      <ActionButton label="Dismiss" icon={<XCircle size={14} color={isDark ? '#94A3B8' : '#64748B'} />} border={softBorder} textClass={primaryText} onPress={() => { setNote(EMPTY_REASON); setActing({ id: report.id, action: 'dismissed' }); }} />
+                      <ActionButton label="Escalate" icon={<Send size={14} color="#DC2626" />} border={softBorder} textClass="text-[#DC2626]" onPress={() => { setNote(EMPTY_REASON); setActing({ id: report.id, action: 'escalate' }); }} />
                     </View>
                   )}
                 </Animated.View>

@@ -162,7 +162,10 @@ export async function seedTrips(ids, vehicleIds, guildIds = {}) {
       const userId = ids[key];
       if (!userId) continue;
       const pickup = r.pickup ? PLACES[r.pickup] : null;
-      const fee = r.offer ? Math.round(r.offer * 0.1 * 100) / 100 : null;
+      // 2% PartyUp fee on top of the fuel contribution (public.carpool_platform_fee_rate()).
+      const fee = r.offer ? Math.round(r.offer * 0.02 * 100) / 100 : null;
+      // Payments are PayMongo-only; seeded ones get a fake test intent id.
+      const intentId = r.payment === 'paid' || r.payment === 'pending' ? `pi_seed_${Math.floor(1e9 + random() * 9e9)}` : null;
       const amount = isCarpool ? (r.offer ? r.offer + fee : null) : trip.price;
       const accepted = r.status === 'accepted';
       const member = await run(`trip ${trip.ref} rider ${key}`, admin.from('trip_members').insert({
@@ -171,7 +174,7 @@ export async function seedTrips(ids, vehicleIds, guildIds = {}) {
         pickup_label: pickup?.label ?? null, pickup_lat: pickup?.lat ?? null, pickup_lng: pickup?.lng ?? null,
         offered_amount: isCarpool ? (r.offer ?? null) : null, platform_fee: isCarpool ? fee : null,
         payment_amount: accepted ? amount : null, payment_status: accepted ? (r.payment ?? 'unpaid') : 'unpaid',
-        payment_reference: r.payment === 'paid' || r.payment === 'pending' ? `GCASH-${Math.floor(1e9 + random() * 9e9)}` : null,
+        payment_channel: intentId ? 'gateway' : 'manual', payment_intent_id: intentId,
         payment_reported_at: r.payment === 'paid' || r.payment === 'pending' ? hoursAgo(24 * 3) : null,
         payment_confirmed_at: r.payment === 'paid' ? hoursAgo(24 * 2) : null,
       }).select('id').single());
@@ -179,8 +182,8 @@ export async function seedTrips(ids, vehicleIds, guildIds = {}) {
       if (member?.id && (r.payment === 'paid' || r.payment === 'pending')) {
         await run(`payment ${trip.ref} ${key}`, admin.from('payment_history').insert({
           user_id: userId, trip_id: tripId, trip_member_id: member.id, amount, currency: 'PHP', status: r.payment,
-          reference: `GCASH-${Math.floor(1e9 + random() * 9e9)}`, gateway: 'manual',
-          confirmed_by: r.payment === 'paid' ? creatorId : null, notes: `Contribution for ${trip.title}`,
+          gateway: 'paymongo', gateway_payment_intent_id: intentId,
+          notes: `Contribution for ${trip.title}`,
         }));
       }
     }

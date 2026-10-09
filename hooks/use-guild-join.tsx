@@ -1,8 +1,9 @@
 import { SuccessOverlay } from '@/components/ui/motion';
 import { cancelJoinRequest, getMyJoinRequest, joinGuild, type GuildEmblem, type JoinPolicy, type MyJoinRequest } from '@/lib/guilds';
 import { useCallback, useState } from 'react';
-import { Alert } from 'react-native';
 
+
+import { showAlert } from '@/lib/dialog';
 // What the join flow needs to know about a guild (a leaderboard row or a
 // full Guild Hall both fit).
 export type JoinableGuild = {
@@ -31,7 +32,7 @@ export function useGuildJoin({ onJoined, onRequested }: { onJoined: () => void; 
   function requestJoin(guild: JoinableGuild) {
     const needsApproval = guild.join_policy === 'approval';
     const replacing = myRequest && myRequest.guild_id !== guild.guild_id ? ` This replaces your pending request to ${myRequest.guild_name}.` : '';
-    Alert.alert(
+    showAlert(
       needsApproval ? `Ask to join ${guild.name}?` : `Join ${guild.name}?`,
       needsApproval
         ? `${guild.leader_name} reviews requests for this guild. You'll get +10 pts once you're accepted.${replacing}`
@@ -45,7 +46,7 @@ export function useGuildJoin({ onJoined, onRequested }: { onJoined: () => void; 
             const { data, error } = await joinGuild(guild.guild_id);
             setJoiningId(null);
             if (error) {
-              Alert.alert(needsApproval ? 'Could not send request' : 'Could not join', error.message);
+              showAlert(needsApproval ? 'Could not send request' : 'Could not join', error.message);
               return;
             }
             if (data === 'requested') {
@@ -70,7 +71,7 @@ export function useGuildJoin({ onJoined, onRequested }: { onJoined: () => void; 
 
   function cancelRequest() {
     if (!myRequest) return;
-    Alert.alert(`Cancel your request to ${myRequest.guild_name}?`, 'You can ask again or pick another guild any time.', [
+    showAlert(`Cancel your request to ${myRequest.guild_name}?`, 'You can ask again or pick another guild any time.', [
       { text: 'Keep it', style: 'cancel' },
       {
         text: 'Cancel request',
@@ -80,7 +81,7 @@ export function useGuildJoin({ onJoined, onRequested }: { onJoined: () => void; 
           const { error } = await cancelJoinRequest();
           setJoiningId(null);
           if (error) {
-            Alert.alert('Could not cancel', error.message);
+            showAlert('Could not cancel', error.message);
             return;
           }
           setMyRequest(null);

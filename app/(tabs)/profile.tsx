@@ -43,9 +43,10 @@ import {
   Users,
 } from 'lucide-react-native';
 import { useCallback, useState, type ComponentType } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { showAlert } from '@/lib/dialog';
 type IconType = ComponentType<{ size?: number; color?: string; fill?: string }>;
 
 function formatRelativeDate(iso: string) {
@@ -201,7 +202,7 @@ export default function ProfileScreen() {
   async function handleChangeAvatar() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Permission needed', 'Photo library access is needed to set a profile photo.');
+      showAlert('Permission needed', 'Photo library access is needed to set a profile photo.');
       return;
     }
 
@@ -217,7 +218,7 @@ export default function ProfileScreen() {
     const { error } = await uploadAvatar(result.assets[0].uri);
     if (error) {
       feedback.error();
-      Alert.alert('Upload failed', error.message);
+      showAlert('Upload failed', error.message);
     } else {
       await refreshProfile();
       feedback.success();

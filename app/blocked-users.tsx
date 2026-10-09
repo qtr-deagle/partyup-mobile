@@ -2,6 +2,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState, SkeletonRow } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { listBlockedUsers, unblockUser, type BlockedUser } from '@/lib/blocking';
 import { useFocusEffect } from 'expo-router';
 import { ShieldOff, UserX } from 'lucide-react-native';
@@ -38,6 +39,7 @@ export default function BlockedUsersScreen() {
       void load();
     }, [load])
   );
+  const { refreshControl } = usePullToRefresh(load);
 
   async function handleUnblock(userId: string) {
     setBusyId(userId);
@@ -55,7 +57,8 @@ export default function BlockedUsersScreen() {
       <ScreenHeader title="Blocked Users" subtitle={!loading && blocked.length ? `${blocked.length} blocked` : undefined} />
 
       <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pt-5"
-        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}>
+        contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}
+        refreshControl={refreshControl}>
         {errorMessage ? (
           <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
             <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>

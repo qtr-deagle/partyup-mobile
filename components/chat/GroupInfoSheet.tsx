@@ -1,4 +1,6 @@
+import { ToggleSwitch } from '@/components/ChatInfoSheet';
 import { riseIn } from '@/components/ui/motion';
+import { mutedUntilLabel } from '@/lib/chatMute';
 import { Image } from 'expo-image';
 import { Bell, BellOff, ChevronRight, ExternalLink, Pin, PinOff } from 'lucide-react-native';
 import type { ReactNode } from 'react';
@@ -18,6 +20,8 @@ type Props = {
   members: GroupMember[];
   photos: { key: string; url: string }[];
   muted: boolean;
+  /** When a timed mute ends; null while muted means until turned back on. */
+  mutedUntil?: string | null;
   pinned: boolean;
   pinnable: boolean;
   onToggleMute: () => void;
@@ -26,10 +30,14 @@ type Props = {
   onOpenMember: (member: GroupMember) => void;
   // e.g. "View trip details" / "View guild".
   link?: { label: string; onPress: () => void };
+  // Extra rows, e.g. friend groups: Edit group, Add people, Leave group.
+  extraActions?: InfoAction[];
 };
 
+export type InfoAction = { key: string; icon: ReactNode; label: string; onPress: () => void; destructive?: boolean };
+
 // "Chat info" for a guild or trip group chat.
-export function GroupInfoSheet({ visible, onClose, isDark, avatar, title, subtitle, members, photos, muted, pinned, pinnable, onToggleMute, onTogglePin, onOpenPhoto, onOpenMember, link }: Props) {
+export function GroupInfoSheet({ visible, onClose, isDark, avatar, title, subtitle, members, photos, muted, mutedUntil, pinned, pinnable, onToggleMute, onTogglePin, onOpenPhoto, onOpenMember, link, extraActions = [] }: Props) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const tile = Math.floor((windowWidth - 32 - 8) / 3);
@@ -67,11 +75,44 @@ export function GroupInfoSheet({ visible, onClose, isDark, avatar, title, subtit
                   </>
                 ) : null}
 
+                {extraActions.filter((action) => !action.destructive).length ? (
+                  <>
+                    <Text className={heading}>Group</Text>
+                    <View className={`overflow-hidden rounded-2xl ${group}`}>
+                      {extraActions.filter((action) => !action.destructive).map((action, index, list) => (
+                        <Row key={action.key} icon={action.icon} label={action.label} textClass={primary} divider={divider} onPress={action.onPress} chevron last={index === list.length - 1} />
+                      ))}
+                    </View>
+                  </>
+                ) : null}
+
                 <Text className={heading}>Actions</Text>
                 <View className={`overflow-hidden rounded-2xl ${group}`}>
-                  <Row icon={muted ? <Bell size={18} color={iconColor} /> : <BellOff size={18} color={iconColor} />} label={muted ? 'Unmute notifications' : 'Mute notifications'} textClass={primary} divider={divider} onPress={onToggleMute} last={!pinnable && !link} />
-                  {pinnable ? <Row icon={pinned ? <PinOff size={18} color={iconColor} /> : <Pin size={18} color={iconColor} />} label={pinned ? 'Unpin chat' : 'Pin chat'} textClass={primary} divider={divider} onPress={onTogglePin} last={!link} /> : null}
-                  {link ? <Row icon={<ExternalLink size={18} color={iconColor} />} label={link.label} textClass={primary} divider={divider} onPress={link.onPress} last /> : null}
+                  <Row
+                    icon={muted ? <BellOff size={18} color={iconColor} /> : <Bell size={18} color={iconColor} />}
+                    label="Mute notifications"
+                    detail={muted ? mutedUntilLabel(mutedUntil) : undefined}
+                    secondaryClass={secondary}
+                    textClass={primary}
+                    divider={divider}
+                    onPress={onToggleMute}
+                    trailing={<ToggleSwitch value={muted} onChange={onToggleMute} isDark={isDark} />}
+                    last={!pinnable && !link}
+                  />
+                  {pinnable ? (
+                    <Row
+                      icon={pinned ? <Pin size={18} color={iconColor} /> : <PinOff size={18} color={iconColor} />}
+                      label="Pin chat"
+                      detail={pinned ? 'Kept at the top of your chats' : undefined}
+                      secondaryClass={secondary}
+                      textClass={primary}
+                      divider={divider}
+                      onPress={onTogglePin}
+                      trailing={<ToggleSwitch value={pinned} onChange={onTogglePin} isDark={isDark} />}
+                      last={!link}
+                    />
+                  ) : null}
+                  {link ? <Row icon={<ExternalLink size={18} color={iconColor} />} label={link.label} textClass={primary} divider={divider} onPress={link.onPress} chevron last /> : null}
                 </View>
 
                 <Text className={heading}>{members.length} {members.length === 1 ? 'member' : 'members'}</Text>
@@ -91,6 +132,14 @@ export function GroupInfoSheet({ visible, onClose, isDark, avatar, title, subtit
                     </TouchableOpacity>
                   ))}
                 </View>
+
+                {extraActions.filter((action) => action.destructive).length ? (
+                  <View className={`mt-4 overflow-hidden rounded-2xl ${group}`}>
+                    {extraActions.filter((action) => action.destructive).map((action, index, list) => (
+                      <Row key={action.key} icon={action.icon} label={action.label} textClass="text-[#E32727]" divider={divider} onPress={action.onPress} last={index === list.length - 1} />
+                    ))}
+                  </View>
+                ) : null}
               </Pressable>
             </ScrollView>
           </Animated.View>
@@ -100,12 +149,40 @@ export function GroupInfoSheet({ visible, onClose, isDark, avatar, title, subtit
   );
 }
 
-function Row({ icon, label, textClass, divider, onPress, last }: { icon: ReactNode; label: string; textClass: string; divider: string; onPress: () => void; last?: boolean }) {
+// A chevron only on rows that open something (a screen or sheet); toggles
+// show a switch, one-off actions (Leave group) show nothing.
+function Row({
+  icon,
+  label,
+  detail,
+  textClass,
+  secondaryClass,
+  divider,
+  onPress,
+  trailing,
+  chevron,
+  last,
+}: {
+  icon: ReactNode;
+  label: string;
+  detail?: string;
+  textClass: string;
+  secondaryClass?: string;
+  divider: string;
+  onPress: () => void;
+  trailing?: ReactNode;
+  chevron?: boolean;
+  last?: boolean;
+}) {
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.6} className={`flex-row items-center gap-3 px-4 py-3 ${last ? '' : `border-b ${divider}`}`}>
       {icon}
-      <Text className={`flex-1 text-sm font-medium ${textClass}`}>{label}</Text>
-      <ChevronRight size={18} color="#94A3B8" />
+      <View className="flex-1">
+        <Text className={`text-sm font-medium ${textClass}`}>{label}</Text>
+        {detail ? <Text className={`mt-0.5 text-xs ${secondaryClass ?? ''}`}>{detail}</Text> : null}
+      </View>
+      {trailing}
+      {chevron ? <ChevronRight size={18} color="#94A3B8" /> : null}
     </TouchableOpacity>
   );
 }

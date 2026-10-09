@@ -1,4 +1,5 @@
 import { ScreenHeader } from '@/components/ui/screen-header';
+import { usePersistentText } from '@/hooks/use-unsaved-changes';
 import { enterFromBelow } from '@/components/ui/motion';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
@@ -20,10 +21,11 @@ import { Image } from 'expo-image';
 import { useLocalSearchParams } from 'expo-router';
 import { LifeBuoy, Send } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 // One support ticket: the conversation with the PartyUp team, live.
 export default function TicketScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,7 +38,8 @@ export default function TicketScreen() {
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
+  // Unsent reply is kept per ticket.
+  const [draft, setDraft] = usePersistentText(id ? `ticket-reply:${id}` : null);
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -79,7 +82,7 @@ export default function TicketScreen() {
     const { error } = await replyToTicket(ticket.id, draft);
     setSending(false);
     if (error) {
-      Alert.alert('Could not send', error.message);
+      showAlert('Could not send', error.message);
       return;
     }
     setDraft('');
@@ -88,14 +91,14 @@ export default function TicketScreen() {
 
   function confirmClose() {
     if (!ticket) return;
-    Alert.alert('Close this ticket?', 'You can reply later to reopen it.', [
+    showAlert('Close this ticket?', 'You can reply later to reopen it.', [
       { text: 'Keep open', style: 'cancel' },
       {
         text: 'Close ticket',
         style: 'destructive',
         onPress: async () => {
           const { error } = await closeTicket(ticket.id);
-          if (error) Alert.alert('Could not close', error.message);
+          if (error) showAlert('Could not close', error.message);
           else await reload();
         },
       },

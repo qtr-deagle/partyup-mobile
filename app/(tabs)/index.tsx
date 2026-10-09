@@ -2,6 +2,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { routeForNotification } from '@/components/InAppNotifier';
 import { GuildSummaryCard } from '@/components/GuildSummaryCard';
 import NotificationModal from '@/components/NotificationModal';
+import PhoneRequiredModal from '@/components/PhoneRequiredModal';
 import { HomeQuickActions } from '@/components/home/HomeQuickActions';
 import { StatusChips, toneColors, type StatusTone } from '@/components/home/StatusChips';
 import StaffDashboard from '@/components/StaffDashboard';
@@ -15,7 +16,7 @@ import { useTrustAward } from '@/hooks/use-trust-award';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { startTrip } from '@/lib/carpool';
-import { formatCountdown, formatTimeAgo, parseTimestamp } from '@/lib/datetime';
+import { describeCountdown, formatTimeAgo, parseTimestamp } from '@/lib/datetime';
 import {
   getActiveTripSummary,
   getLeaderGuildSnapshot,
@@ -29,19 +30,21 @@ import {
 import { isLocationTrackingActive, requestLocationPermissions, startBackgroundLocationTracking, upsertCurrentLocation } from '@/lib/location';
 import { listNotifications, markNotificationRead, type AppNotification } from '@/lib/notifications';
 import { listIncomingFriendRequests, type IncomingFriendRequest } from '@/lib/social';
+import { hasPhone } from '@/lib/phone';
 import { feedback } from '@/lib/sounds';
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import * as Location from 'expo-location';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
-import { Bell, CarFront, ChevronRight, Info, MapPin, MessageCircle, Navigation, ShieldAlert, UserPlus, Users } from 'lucide-react-native';
+import { Bell, CarFront, ChevronRight, Clock, Info, MapPin, MessageCircle, Navigation, ShieldAlert, UserPlus, Users } from 'lucide-react-native';
 import type { ComponentType } from 'react';
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { showAlert } from '@/lib/dialog';
 const TRIP_STATUS_LABELS: Record<ActiveTripSummary['status'], string> = {
   draft: 'Draft',
   open: 'Open for riders',
@@ -80,6 +83,9 @@ const ACTIVITY_STYLE: Record<AppNotification['type'], { icon: ComponentType<{ si
   system: { icon: Info, color: '#64748B' },
 };
 
+// Asked at most once per app launch per account; "Later" shouldn't nag on every Home visit.
+const phonePromptShownFor = new Set<string>();
+
 export default function HomeScreen() {
   const hideTabBarOnScroll = useHideTabBarOnScroll();
   const router = useRouter();
@@ -88,9 +94,27 @@ export default function HomeScreen() {
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [warningModeVisible, setWarningModeVisible] = useState(false);
   const [trustModalVisible, setTrustModalVisible] = useState(false);
+  const [phonePromptVisible, setPhonePromptVisible] = useState(false);
+  // Re-renders the pickup countdown every 30s so "45 mins" keeps counting down.
+  const [clockTick, setClockTick] = useState(() => Date.now());
+  // Mobile numbers became required for trips; existing travelers add theirs here.
+  const missingPhone = !!profile && profile.role !== 'admin' && !hasPhone(profile.phone);
+  useEffect(() => {
+    if (missingPhone && profile && !phonePromptShownFor.has(profile.id)) {
+      phonePromptShownFor.add(profile.id);
+      setPhonePromptVisible(true);
+    }
+  }, [missingPhone, profile]);
   const [incomingRequests, setIncomingRequests] = useState<IncomingFriendRequest[]>([]);
   const [dbNotifications, setDbNotifications] = useState<AppNotification[]>([]);
   const [activeTrip, setActiveTrip] = useState<ActiveTripSummary | null>(null);
+  const activeTripStartAt = activeTrip?.start_at ?? null;
+  useEffect(() => {
+    if (!activeTripStartAt) return;
+    setClockTick(Date.now()); // the clock was idle while there was no trip
+    const timer = setInterval(() => setClockTick(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [activeTripStartAt]);
   const [safety, setSafety] = useState<SafetyOverview | null>(null);
   const [staffOverview, setStaffOverview] = useState<StaffOverview | null>(null);
   const [guildSnapshot, setGuildSnapshot] = useState<LeaderGuildSnapshot | null>(null);
@@ -225,9 +249,16 @@ export default function HomeScreen() {
       setNotificationVisible(false);
       router.push(href);
     } else {
-      Alert.alert(notification.title, notification.message);
+      showAlert(notification.title, notification.message);
     }
   };
+
+  function confirmStartTrip() {
+    showAlert('Start this trip now?', 'Everyone on this trip will be notified that it has started. Make sure your companions are with you before you go.', [
+      { text: 'Not yet', style: 'cancel' },
+      { text: 'Start trip', onPress: () => void handleStartTrip() },
+    ]);
+  }
 
   async function handleStartTrip() {
     if (!activeTrip) return;
@@ -236,7 +267,7 @@ export default function HomeScreen() {
     setStartingTrip(false);
     if (error) {
       feedback.error();
-      Alert.alert('Unable to start trip', error.message);
+      showAlert('Unable to start trip', error.message);
       return;
     }
     feedback.success();
@@ -252,7 +283,7 @@ export default function HomeScreen() {
     const permissions = await requestLocationPermissions();
     if (!permissions.foreground) {
       setSharingLocation(false);
-      Alert.alert('Location permission needed', 'Enable location access in Settings to share your position.');
+      showAlert('Location permission needed', 'Enable location access in Settings to share your position.');
       return;
     }
     try {
@@ -272,7 +303,8 @@ export default function HomeScreen() {
   }
 
   const firstName = profile?.display_name?.trim().split(/\s+/)[0] ?? '';
-  const countdownLabel = activeTrip ? formatCountdown(activeTrip.start_at) : null;
+  const countdown = activeTrip ? describeCountdown(activeTrip.start_at, new Date(clockTick)) : null;
+  const countdownLabel = countdown?.value ?? null;
   const isVerified = safety?.verification_status === 'approved';
   const trustScore = safety?.trust_score ?? 0;
   const trustAward = useTrustAward(userId, safety ? safety.trust_score : null);
@@ -385,10 +417,17 @@ export default function HomeScreen() {
               </View>
 
               {/* The countdown is the one thing to see first; destination sits under it. */}
-              {countdownLabel ? (
+              {countdown ? (
                 <View key="trip-countdown" className="mt-4">
-                  <Text className="text-xs font-semibold uppercase tracking-wider text-white/70">Pickup in</Text>
-                  <Text className="text-[44px] font-bold leading-[52px] text-white">{countdownLabel}</Text>
+                  <Text className="text-xs font-semibold uppercase tracking-wider text-white/70">{countdown.lead}</Text>
+                  <View className="flex-row items-baseline gap-2">
+                    <Text className="text-[44px] font-bold leading-[52px] text-white">{countdown.value}</Text>
+                    {countdown.unit ? <Text className="text-[22px] font-semibold text-white/85">{countdown.unit}</Text> : null}
+                  </View>
+                  <View className={`mt-1 flex-row items-center gap-1.5 self-start rounded-full px-2.5 py-1 ${countdown.soon ? 'bg-[#FBBF24]' : 'bg-white/15'}`}>
+                    <Clock size={13} color={countdown.soon ? '#1E293B' : '#FFFFFF'} />
+                    <Text className={`text-[13px] font-semibold ${countdown.soon ? 'text-[#1E293B]' : 'text-white'}`}>{countdown.when}</Text>
+                  </View>
                 </View>
               ) : null}
               <View className={`flex-row items-center gap-2 ${countdownLabel ? 'mt-1' : 'mt-4'}`}>
@@ -403,10 +442,15 @@ export default function HomeScreen() {
               </View>
             </AnimatedPressable>
 
-            {activeTrip.is_driver && activeTrip.status !== 'ongoing' ? (
+            {activeTrip.is_driver && activeTrip.status !== 'ongoing' && !activeTrip.buddy_user_id && activeTrip.trip_type !== 'tour' ? (
+              <View key="waiting-for-riders" className="mt-4 flex-row items-center justify-center gap-2 rounded-2xl bg-white/15 px-4 py-3.5">
+                <Users size={16} color="#FFFFFF" />
+                <Text className="text-[15px] font-semibold text-white">Waiting for riders to start</Text>
+              </View>
+            ) : activeTrip.is_driver && activeTrip.status !== 'ongoing' ? (
               <AnimatedPressable
                 key="start-trip"
-                onPress={() => void handleStartTrip()}
+                onPress={confirmStartTrip}
                 disabled={startingTrip}
                 className="mt-4 flex-row items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3.5">
                 {startingTrip ? <ActivityIndicator color="#1E40AF" /> : <><Navigation size={16} color="#1E40AF" /><Text className="text-[15px] font-semibold text-[#1E40AF]">Start Trip</Text></>}
@@ -511,6 +555,7 @@ export default function HomeScreen() {
         onMarkAllRead={handleMarkAllRead}
       />
       <TrustScoreModal visible={trustModalVisible} onClose={() => setTrustModalVisible(false)} isDark={isDark} />
+      <PhoneRequiredModal visible={phonePromptVisible} onClose={() => setPhonePromptVisible(false)} isDark={isDark} />
       <TrustAwardCelebration visible={trustAward.celebrating} onClose={trustAward.dismiss} />
       <WarningModeModal
         visible={warningModeVisible}

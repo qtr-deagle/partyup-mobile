@@ -13,10 +13,11 @@ import {
 } from '@/lib/warningMode';
 import { Clock, ShieldCheck, Siren } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 function formatClock(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
@@ -69,7 +70,7 @@ export default function WarningModeBanner() {
         void escalateWarningSession(sessionId).then(({ error }) => {
           if (error) {
             feedback.error();
-            Alert.alert('Unable to send SOS', `${error.message} The server will still send it within about a minute.`);
+            showAlert('Unable to send SOS', `${error.message} The server will still send it within about a minute.`);
           } else {
             feedback.notify();
           }
@@ -90,7 +91,7 @@ export default function WarningModeBanner() {
     setBusy(false);
     if (error) {
       feedback.error();
-      Alert.alert("Couldn't cancel Warning Mode", `${error.message} Check your connection and try again.`);
+      showAlert("Couldn't cancel Warning Mode", `${error.message} Check your connection and try again.`);
       return;
     }
     feedback.success();
@@ -100,7 +101,7 @@ export default function WarningModeBanner() {
     if (!sessionId) {
       return;
     }
-    Alert.alert('Send SOS now?', 'This immediately alerts your trusted circle with your live location.', [
+    showAlert('Send SOS now?', 'This immediately alerts your trusted circle with your live location.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Send SOS',
@@ -111,7 +112,7 @@ export default function WarningModeBanner() {
           setBusy(false);
           if (error) {
             feedback.error();
-            Alert.alert('Unable to send SOS', error.message);
+            showAlert('Unable to send SOS', error.message);
             return;
           }
           feedback.notify();

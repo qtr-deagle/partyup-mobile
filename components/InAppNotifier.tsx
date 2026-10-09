@@ -123,9 +123,9 @@ export default function InAppNotifier() {
         void (async () => {
           const [{ data: sender }, { data: me }] = await Promise.all([
             supabase.from('profiles').select('display_name, avatar_url').eq('id', row.sender_id).maybeSingle(),
-            supabase.from('chat_participants').select('muted').eq('thread_id', row.thread_id).eq('user_id', userId).maybeSingle(),
+            supabase.from('chat_participants').select('muted, muted_until').eq('thread_id', row.thread_id).eq('user_id', userId).maybeSingle(),
           ]);
-          if (me?.muted) return;
+          if (me?.muted && (!me.muted_until || new Date(me.muted_until).getTime() > Date.now())) return;
           enqueue({
             key: `m:${row.id}`,
             kind: 'message',

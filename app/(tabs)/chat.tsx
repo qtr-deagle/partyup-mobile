@@ -1,4 +1,5 @@
 import { ChatInfoSheet } from '@/components/ChatInfoSheet';
+import { usePersistentText } from '@/hooks/use-unsaved-changes';
 import { Composer, QUICK_REACTION } from '@/components/chat/Composer';
 import { MessageActionsSheet } from '@/components/chat/MessageActionsSheet';
 import { formatTime, MessageBubble, messageSummary, StatusTick } from '@/components/chat/MessageBubble';
@@ -18,7 +19,9 @@ import { pickChatPhoto, type PickedPhoto } from '@/lib/chat-media';
 import { getGuildChatPreview, type GuildChatPreview } from '@/lib/guilds';
 import {
   clearChatForMe,
+  createOrGetDirectThread,
   ensureAcceptedDirectThreads,
+  getChatPrefs,
   getThreadReceipts,
   listDirectConversations,
   listGroupConversations,
@@ -28,22 +31,29 @@ import {
   setChatPinned,
   type ChatMessage,
   type Conversation,
+  type FriendConnection,
   type GroupConversation,
   type MessageStatus,
   type ThreadReceipts,
 } from '@/lib/social';
+import { askMuteDuration } from '@/lib/chatMute';
 import { feedback } from '@/lib/sounds';
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { Image } from 'expo-image';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, BellOff, Car, Info, Map as MapIcon, MessageCircle, Pin, Search, ShieldCheck } from 'lucide-react-native';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ArrowLeft, Bell, BellOff, Car, Info, Map as MapIcon, MessageCircle, Pin, PinOff, Search, ShieldCheck, SquarePen } from 'lucide-react-native';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { GroupAvatar } from '@/components/chat/FriendGroupParts';
+import { DaySeparator, dayKey } from '@/components/chat/ChatTimeline';
+import { NewChatSheet } from '@/components/chat/NewChatSheet';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 // How long a "typing…" signal lasts without a refresh from the other side.
 const TYPING_TIMEOUT_MS = 4000;
 const TYPING_RESEND_MS = 2500;
@@ -90,6 +100,13 @@ function conversationPreview(conversation: Conversation, mine: boolean) {
   return conversation.last_message_deleted ? text : `${mine ? 'You: ' : ''}${text}`;
 }
 
+// Trip chats live under the trip; friend groups have their own screen.
+function groupRoute(group: GroupConversation) {
+  return group.kind === 'trip' && group.trip_id
+    ? ({ pathname: '/trip/chat/[id]', params: { id: group.trip_id } } as const)
+    : ({ pathname: '/chat/group/[id]', params: { id: group.thread_id } } as const);
+}
+
 function groupPreview(group: GroupConversation, myUserId: string | undefined) {
   if (!group.last_message_at) return 'Say hi to the group 👋';
   const mine = group.last_message_sender_id === myUserId;
@@ -113,7 +130,8 @@ export default function ChatScreen() {
   const [selected, setSelected] = useState<Conversation | null>(null);
   // The floating bar would cover the composer in an open conversation.
   useHideTabBarWhile(Boolean(selected));
-  const [messageText, setMessageText] = useState('');
+  // Unsent text is kept per conversation (it used to carry over into the next chat).
+  const [messageText, setMessageText] = usePersistentText(selected?.thread_id ? `chat:${selected.thread_id}` : null);
   const [search, setSearch] = useState('');
   const [listFilter, setListFilter] = useState<ListFilter>('all');
   const [loading, setLoading] = useState(true);
@@ -125,6 +143,7 @@ export default function ChatScreen() {
   const lastTypingSent = useRef(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
+  const [newChatVisible, setNewChatVisible] = useState(false);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatSearch, setChatSearch] = useState('');
   const [reportModalVisible, setReportModalVisible] = useState(false);
@@ -132,7 +151,7 @@ export default function ChatScreen() {
   const [actionTarget, setActionTarget] = useState<ScreenMessage | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   // Mute/pin changes made here win over the (slower) list refresh.
-  const [prefOverrides, setPrefOverrides] = useState<Record<string, { muted?: boolean; pinned?: boolean }>>({});
+  const [prefOverrides, setPrefOverrides] = useState<Record<string, { muted?: boolean; mutedUntil?: string | null; pinned?: boolean }>>({});
   // Last ?threadId applied, so a later push for a different chat still opens it.
   const appliedThreadParam = useRef<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -143,7 +162,10 @@ export default function ChatScreen() {
   const keyboardHeight = useKeyboardHeight();
   // The keyboard also covers the tab bar (same height as in (tabs)/_layout), so
   // only the part above it needs padding to lift the message box into view.
-  const keyboardPadding = Math.max(keyboardHeight - (58 + Math.max(insets.bottom, 8)), 0);
+  // An open conversation hides the tab bar (useHideTabBarWhile), so the screen
+  // reaches the bottom edge: lift the composer by the keyboard, or by the
+  // Android nav bar / home indicator when the keyboard is closed (same as GroupChatView).
+  const keyboardPadding = keyboardHeight;
   useEffect(() => {
     if (keyboardHeight > 0) scrollRef.current?.scrollToEnd({ animated: true });
   }, [keyboardHeight]);
@@ -166,10 +188,13 @@ export default function ChatScreen() {
   const prefsOf = useCallback(
     (conversation: Conversation) => ({
       muted: prefOverrides[conversation.thread_id]?.muted ?? conversation.muted,
+      mutedUntil: prefOverrides[conversation.thread_id]?.mutedUntil ?? null,
       pinned: prefOverrides[conversation.thread_id]?.pinned ?? conversation.pinned,
     }),
     [prefOverrides],
   );
+
+  const openGroup = useCallback((group: GroupConversation) => router.push(groupRoute(group)), [router]);
 
   const loadConversations = useCallback(async () => {
     setLoading(true);
@@ -197,7 +222,7 @@ export default function ChatScreen() {
           const matchingGroup = groupResult.data.find((group) => group.thread_id === params.threadId);
           if (matchingConversation) setSelected(matchingConversation);
           // Not a direct chat: pushes for group chats land here too.
-          else if (matchingGroup) router.push({ pathname: '/trip/chat/[id]', params: { id: matchingGroup.trip_id } });
+          else if (matchingGroup) openGroup(matchingGroup);
           else if (guildResult.data?.thread_id === params.threadId) router.push('/guild/chat');
         }
       }
@@ -206,7 +231,7 @@ export default function ChatScreen() {
     } finally {
       setLoading(false);
     }
-  }, [params.threadId, router, myUserId]);
+  }, [params.threadId, router, myUserId, openGroup]);
   const { refreshControl } = usePullToRefresh(loadConversations);
 
   useEffect(() => {
@@ -228,6 +253,20 @@ export default function ChatScreen() {
 
   // Coming back from a group chat screen clears its unread badge.
   useFocusEffect(refreshLists);
+
+  // The list only says muted or not; fetch when a timed mute ends for the open chat.
+  useEffect(() => {
+    if (!selected?.thread_id || !myUserId || !selected.muted) return;
+    const threadId = selected.thread_id;
+    let active = true;
+    void getChatPrefs(threadId, myUserId).then((result) => {
+      if (!active || result.error) return;
+      setPrefOverrides((all) => (all[threadId]?.mutedUntil !== undefined ? all : { ...all, [threadId]: { ...all[threadId], mutedUntil: result.data.mutedUntil } }));
+    });
+    return () => {
+      active = false;
+    };
+  }, [selected?.thread_id, selected?.muted, myUserId]);
 
   // Tell the in-app notifier which chat is on screen so it stays quiet for it.
   useEffect(() => {
@@ -252,42 +291,63 @@ export default function ChatScreen() {
 
   // Typing, presence and the other person's delivered/seen marks. Messages
   // themselves come through useThreadMessages.
+  // Keyed on the ids, not the `selected` object: the conversation list
+  // refreshes often and hands back a new object for the same chat, which used
+  // to tear the channel down and rejoin it mid-removal (render error
+  // "cannot add postgres_changes callbacks ... after subscribe()").
+  const selectedThreadId = selected?.thread_id ?? null;
+  const selectedOtherUserId = selected?.other_user_id ?? null;
   useEffect(() => {
-    if (!selected || !myUserId) return;
+    if (!selectedThreadId || !selectedOtherUserId || !myUserId) return;
     let active = true;
-    const threadId = selected.thread_id;
-    void getThreadReceipts(threadId, selected.other_user_id).then((result) => {
+    const threadId = selectedThreadId;
+    void getThreadReceipts(threadId, selectedOtherUserId).then((result) => {
       if (active && !result.error) setReceipts(result.data);
     });
 
-    const channel = supabase
-      .channel(`chat:${threadId}`, { config: { presence: { key: myUserId } } })
+    // Receipts: postgres_changes on a channel with a unique, local-only name.
+    const receiptsChannel = supabase
+      .channel(uniqueChannelName(`chat-receipts:${threadId}`))
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'chat_participants', filter: `thread_id=eq.${threadId}` }, (payload) => {
         const row = payload.new as { user_id: string; last_read_at: string | null; last_delivered_at: string | null };
         if (row.user_id !== myUserId) setReceipts({ readAt: row.last_read_at, deliveredAt: row.last_delivered_at });
       })
-      .on('broadcast', { event: 'typing' }, ({ payload }) => {
-        if (payload?.user_id === myUserId) return;
-        if (typingTimer.current) clearTimeout(typingTimer.current);
-        setOtherTyping(Boolean(payload?.typing));
-        if (payload?.typing) typingTimer.current = setTimeout(() => setOtherTyping(false), TYPING_TIMEOUT_MS);
-      })
-      .on('presence', { event: 'sync' }, () => {
-        setOtherHere(Object.keys(channel.presenceState()).some((key) => key !== myUserId));
-      })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') void channel.track({ online_at: new Date().toISOString() });
-      });
-    channelRef.current = channel;
+      .subscribe();
+
+    // Typing + presence must share one name across both phones. A previous
+    // instance may still be closing, so wait for it before joining again.
+    let liveChannel: ReturnType<typeof supabase.channel> | null = null;
+    const topic = `chat:${threadId}`;
+    const stale = supabase.getChannels().filter((existing) => existing.topic === `realtime:${topic}`);
+    void Promise.all(stale.map((existing) => supabase.removeChannel(existing))).then(() => {
+      if (!active) return;
+      const channel = supabase
+        .channel(topic, { config: { presence: { key: myUserId } } })
+        .on('broadcast', { event: 'typing' }, ({ payload }) => {
+          if (payload?.user_id === myUserId) return;
+          if (typingTimer.current) clearTimeout(typingTimer.current);
+          setOtherTyping(Boolean(payload?.typing));
+          if (payload?.typing) typingTimer.current = setTimeout(() => setOtherTyping(false), TYPING_TIMEOUT_MS);
+        })
+        .on('presence', { event: 'sync' }, () => {
+          setOtherHere(Object.keys(channel.presenceState()).some((key) => key !== myUserId));
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') void channel.track({ online_at: new Date().toISOString() });
+        });
+      liveChannel = channel;
+      channelRef.current = channel;
+    });
 
     return () => {
       active = false;
       channelRef.current = null;
       lastTypingSent.current = 0;
       if (typingTimer.current) clearTimeout(typingTimer.current);
-      void supabase.removeChannel(channel);
+      void supabase.removeChannel(receiptsChannel);
+      if (liveChannel) void supabase.removeChannel(liveChannel);
     };
-  }, [selected, myUserId]);
+  }, [selectedThreadId, selectedOtherUserId, myUserId]);
 
   function broadcastTyping(typing: boolean) {
     void channelRef.current?.send({ type: 'broadcast', event: 'typing', payload: { user_id: myUserId, typing } });
@@ -322,6 +382,47 @@ export default function ChatScreen() {
     setSelected(conversation);
   }
 
+  // From the compose sheet: open (or start) the DM with a friend.
+  async function openDirectWith(friend: FriendConnection) {
+    const thread = await createOrGetDirectThread(friend.user_id);
+    if (thread.error || !thread.data) {
+      setErrorMessage(thread.error?.message ?? 'Could not open the chat.');
+      return;
+    }
+    const result = await listDirectConversations();
+    if (!result.error) setConversations(result.data);
+    const conversation = result.data.find((item) => item.thread_id === String(thread.data));
+    if (conversation) openConversation(conversation);
+  }
+
+  // Swipe actions on list rows. DMs use the same overrides as the chat menu;
+  // groups update in place until the next refresh.
+  function toggleRowPref(threadId: string, kind: 'muted' | 'pinned', current: boolean, isDirect: boolean, name = 'this chat') {
+    // Muting asks how long first; unmuting and pinning apply right away.
+    if (kind === 'muted' && !current) {
+      askMuteDuration(name, (until) => applyRowPref(threadId, kind, current, isDirect, until));
+      return;
+    }
+    applyRowPref(threadId, kind, current, isDirect, null);
+  }
+
+  function applyRowPref(threadId: string, kind: 'muted' | 'pinned', current: boolean, isDirect: boolean, until: Date | null) {
+    const next = !current;
+    feedback.select();
+    const mutedUntil = kind === 'muted' && next && until ? until.toISOString() : null;
+    if (isDirect) setPrefOverrides((all) => ({ ...all, [threadId]: { ...all[threadId], [kind]: next, ...(kind === 'muted' ? { mutedUntil } : {}) } }));
+    else setGroups((all) => all.map((group) => (group.thread_id === threadId ? { ...group, [kind]: next } : group)));
+    void (kind === 'muted' ? setChatMuted(threadId, next, until) : setChatPinned(threadId, next)).then(({ error }) => {
+      if (error) {
+        setErrorMessage(error.message);
+        if (isDirect) setPrefOverrides((all) => ({ ...all, [threadId]: { ...all[threadId], [kind]: current } }));
+        else setGroups((all) => all.map((group) => (group.thread_id === threadId ? { ...group, [kind]: current } : group)));
+      } else if (!isDirect) {
+        refreshLists();
+      }
+    });
+  }
+
   function closeConversation() {
     setSelected(null);
     setChatSearchOpen(false);
@@ -340,7 +441,7 @@ export default function ChatScreen() {
     if (!selected) return;
     const target = selected;
     setMenuVisible(false);
-    Alert.alert(`Block ${target.display_name}?`, "You won't see them in Discover, nearby travelers, or search, and any friend connection will be removed.", [
+    showAlert(`Block ${target.display_name}?`, "You won't see them in Discover, nearby travelers, or search, and any friend connection will be removed.", [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Block',
@@ -361,7 +462,7 @@ export default function ChatScreen() {
     if (!selected) return;
     const target = selected;
     setMenuVisible(false);
-    Alert.alert(`Unfriend ${target.display_name}?`, 'You can send them a friend request again later.', [
+    showAlert(`Unfriend ${target.display_name}?`, 'You can send them a friend request again later.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Unfriend',
@@ -382,7 +483,7 @@ export default function ChatScreen() {
     if (!selected) return;
     const target = selected;
     setMenuVisible(false);
-    Alert.alert('Delete this chat?', `This removes the conversation with ${target.display_name} for you only. They'll still see it.`, [
+    showAlert('Delete this chat?', `This removes the conversation with ${target.display_name} for you only. They'll still see it.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -401,15 +502,7 @@ export default function ChatScreen() {
 
   function togglePref(kind: 'muted' | 'pinned') {
     if (!selected) return;
-    const threadId = selected.thread_id;
-    const next = !prefsOf(selected)[kind];
-    feedback.select();
-    setPrefOverrides((current) => ({ ...current, [threadId]: { ...current[threadId], [kind]: next } }));
-    void (kind === 'muted' ? setChatMuted(threadId, next) : setChatPinned(threadId, next)).then(({ error }) => {
-      if (!error) return;
-      setErrorMessage(error.message);
-      setPrefOverrides((current) => ({ ...current, [threadId]: { ...current[threadId], [kind]: !next } }));
-    });
+    toggleRowPref(selected.thread_id, kind, prefsOf(selected)[kind], true, selected.display_name);
   }
 
   function queue(body: string, photo?: PickedPhoto) {
@@ -445,7 +538,7 @@ export default function ChatScreen() {
 
   function confirmUnsend(message: ScreenMessage) {
     setActionTarget(null);
-    Alert.alert('Unsend message?', 'It will be removed for everyone in this chat.', [
+    showAlert('Unsend message?', 'It will be removed for everyone in this chat.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Unsend',
@@ -555,6 +648,11 @@ export default function ChatScreen() {
             const quoted = message.reply_to_id ? thread.messagesById.get(message.reply_to_id) ?? null : null;
             // Messenger-style: spell out the status under my latest message only.
             const showStatusLabel = !searchTerm && mine && index === lastMineIndex && status;
+            const previous = shownMessages[index - 1];
+            const next = shownMessages[index + 1];
+            const newDay = !previous || dayKey(previous.created_at) !== dayKey(message.created_at);
+            // Back-to-back messages from the same person sit closer together.
+            const groupedWithNext = !!next && next.sender_id === message.sender_id && dayKey(next.created_at) === dayKey(message.created_at) && new Date(next.created_at).getTime() - new Date(message.created_at).getTime() < 3 * 60_000;
             return (
               <Animated.View
                 key={message.localKey ?? message.id}
@@ -563,7 +661,12 @@ export default function ChatScreen() {
                 onLayout={(event) => {
                   messageOffsets.current[message.id] = event.nativeEvent.layout.y;
                 }}
-                className={`mb-2.5 ${mine ? 'items-end' : 'items-start'}`}>
+                className={`${groupedWithNext ? 'mb-1' : 'mb-3'} ${mine ? 'items-end' : 'items-start'}`}>
+                {newDay && !searchTerm ? (
+                  <View className="self-stretch">
+                    <DaySeparator value={message.created_at} isDark={isDark} />
+                  </View>
+                ) : null}
                 <MessageBubble
                   message={message}
                   mine={mine}
@@ -612,6 +715,7 @@ export default function ChatScreen() {
           reply={replyTo ? { label: `Replying to ${replyTo.sender_id === myUserId ? 'yourself' : firstName}`, summary: messageSummary(replyTo) } : null}
           onCancelReply={() => setReplyTo(null)}
           inputRef={inputRef}
+          bottomPadding={keyboardHeight > 0 ? 8 : insets.bottom + 8}
         />
         <ChatInfoSheet
           visible={menuVisible}
@@ -623,6 +727,7 @@ export default function ChatScreen() {
           messageCount={messages.filter((message) => !message.pending && !message.deleted_at).length}
           firstMessageAt={messages[0]?.created_at ?? null}
           muted={prefs.muted}
+          mutedUntil={prefs.mutedUntil}
           pinned={prefs.pinned}
           photos={thread.sharedPhotos}
           onViewProfile={openProfile}
@@ -703,17 +808,40 @@ export default function ChatScreen() {
     { key: 'groups', label: 'Groups' },
   ];
   const rowStyle = (highlight: boolean) => ({ backgroundColor: highlight ? (isDark ? '#14213D' : '#F2F5FF') : 'transparent' });
+  // "Pinned" over pinned chats, "Recent" where the rest start (only when both exist).
+  const hasPinned = listItems.some((item) => item.pinned);
+  const sectionLabelAt = (index: number) => {
+    if (!hasPinned) return null;
+    const item = listItems[index];
+    const previous = listItems[index - 1];
+    if (index === 0 && item.pinned) return <SectionLabel label="Pinned" isDark={isDark} />;
+    if (!item.pinned && (!previous || previous.pinned)) return <SectionLabel label="Recent" isDark={isDark} />;
+    return null;
+  };
 
   return (
     <ScrollView className={`flex-1 ${screenBackground}`} refreshControl={refreshControl} keyboardShouldPersistTaps="handled" {...hideTabBarOnScroll}>
       <View className="px-4 pb-2 pt-5">
         <View className="flex-row items-end justify-between">
           <Text className={`${typography.pageTitle} ${titleColor}`}>Messages</Text>
-          {totalUnread ? (
-            <View className="mb-1 rounded-full bg-[#284BD6] px-2.5 py-1">
-              <Text className="text-[12px] font-black text-white">{totalUnread} new</Text>
-            </View>
-          ) : null}
+          <View className="mb-1 flex-row items-center gap-2">
+            {totalUnread ? (
+              <View className="rounded-full bg-[#284BD6] px-2.5 py-1">
+                <Text className="text-[12px] font-black text-white">{totalUnread} new</Text>
+              </View>
+            ) : null}
+            <TouchableOpacity
+              onPress={() => {
+                feedback.select();
+                setNewChatVisible(true);
+              }}
+              accessibilityLabel="New message or group"
+              activeOpacity={0.8}
+              className="h-10 w-10 items-center justify-center rounded-full"
+              style={{ backgroundColor: softFill }}>
+              <SquarePen size={19} color={isDark ? '#E2E8F0' : '#182847'} />
+            </TouchableOpacity>
+          </View>
         </View>
         <View className="mt-4 flex-row items-center gap-2.5 rounded-2xl px-4 py-3" style={{ backgroundColor: softFill }}>
           <Search size={18} color="#7A859D" />
@@ -802,33 +930,50 @@ export default function ChatScreen() {
 
       <View className="gap-1 px-2 pt-3">
         {listItems.map((item, index) => {
+          const sectionLabel = sectionLabelAt(index);
           if (item.kind === 'group') {
             const { group } = item;
             const unread = group.unread_count > 0;
+            const isFriends = group.kind === 'friends';
             const isTour = group.trip_type === 'tour';
-            const color = isTour ? '#0E9F6E' : '#2A55D4';
+            const color = isFriends ? (group.group_color ?? '#284BD6') : isTour ? '#0E9F6E' : '#2A55D4';
             const Icon = isTour ? MapIcon : Car;
             return (
               <Animated.View key={group.thread_id} entering={enterFromBelow(index)}>
+                {sectionLabel}
+                <SwipeRow
+                  isDark={isDark}
+                  pinned={group.pinned}
+                  muted={group.muted}
+                  onTogglePin={() => toggleRowPref(group.thread_id, 'pinned', group.pinned, false)}
+                  onToggleMute={() => toggleRowPref(group.thread_id, 'muted', group.muted, false, group.title)}>
                 <TouchableOpacity
                   onPress={() => {
                     feedback.select();
-                    router.push({ pathname: '/trip/chat/[id]', params: { id: group.trip_id } });
+                    openGroup(group);
                   }}
                   accessibilityLabel={`Open ${group.title} group chat`}
                   activeOpacity={0.7}
                   className="flex-row items-center gap-3 rounded-2xl px-2.5 py-3"
                   style={rowStyle(unread && !group.muted)}>
-                  <View className="h-[54px] w-[54px] items-center justify-center rounded-[18px]" style={{ backgroundColor: `${color}1F` }}>
-                    <Icon size={24} color={color} />
-                  </View>
+                  {isFriends ? (
+                    <GroupAvatar emoji={group.group_emoji} color={group.group_color} size={54} />
+                  ) : (
+                    <View className="h-[54px] w-[54px] items-center justify-center rounded-[18px]" style={{ backgroundColor: `${color}1F` }}>
+                      <Icon size={24} color={color} />
+                    </View>
+                  )}
                   <View className="flex-1">
                     <View className="flex-row items-center justify-between">
                       <View className="flex-1 flex-row items-center gap-1.5">
                         <Text numberOfLines={1} className={`shrink text-base ${unread ? 'font-bold' : 'font-semibold'} ${textPrimary}`}>{group.title}</Text>
-                        <View className="rounded px-1.5 py-0.5" style={{ backgroundColor: `${color}22` }}>
-                          <Text className="text-[9px] font-black" style={{ color }}>{isTour ? 'TOUR' : 'CARPOOL'}</Text>
-                        </View>
+                        {isFriends ? (
+                          <Text className={`text-xs ${textSecondary}`}>· {group.member_count}</Text>
+                        ) : (
+                          <View className="rounded px-1.5 py-0.5" style={{ backgroundColor: `${color}22` }}>
+                            <Text className="text-[9px] font-black" style={{ color }}>{isTour ? 'TOUR' : 'CARPOOL'}</Text>
+                          </View>
+                        )}
                         {group.muted ? <BellOff size={13} color={iconMuted} /> : null}
                         {group.pinned ? <Pin size={13} color={iconMuted} /> : null}
                       </View>
@@ -844,6 +989,7 @@ export default function ChatScreen() {
                     </PopIn>
                   ) : null}
                 </TouchableOpacity>
+                </SwipeRow>
               </Animated.View>
             );
           }
@@ -857,6 +1003,13 @@ export default function ChatScreen() {
             : null;
           return (
             <Animated.View key={conversation.thread_id} entering={enterFromBelow(index)}>
+              {sectionLabel}
+              <SwipeRow
+                isDark={isDark}
+                pinned={pinned}
+                muted={muted}
+                onTogglePin={() => toggleRowPref(conversation.thread_id, 'pinned', pinned, true)}
+                onToggleMute={() => toggleRowPref(conversation.thread_id, 'muted', muted, true, conversation.display_name)}>
               <TouchableOpacity onPress={() => openConversation(conversation)} activeOpacity={0.7} className="flex-row items-center gap-3 rounded-2xl px-2.5 py-3" style={rowStyle(unread && !muted)}>
                 <Avatar name={conversation.display_name} url={conversation.avatar_url} size={54} />
                 <View className="flex-1">
@@ -881,6 +1034,7 @@ export default function ChatScreen() {
                   </PopIn>
                 ) : null}
               </TouchableOpacity>
+              </SwipeRow>
             </Animated.View>
           );
         })}
@@ -888,9 +1042,76 @@ export default function ChatScreen() {
           <Text className={`pt-8 text-center text-sm ${textSecondary}`}>No chats match “{search.trim()}”.</Text>
         ) : null}
         {!query && listFilter !== 'all' && listItems.length === 0 && !showGuildInList && (conversations.length > 0 || groups.length > 0) ? (
-          <Text className={`pt-8 text-center text-sm ${textSecondary}`}>{listFilter === 'unread' ? "You're all caught up 🎉" : 'No group chats yet. Join a trip to get one.'}</Text>
+          <Text className={`pt-8 text-center text-sm ${textSecondary}`}>{listFilter === 'unread' ? "You're all caught up 🎉" : 'No group chats yet. Tap the pencil to start one with friends.'}</Text>
         ) : null}
       </View>
+      <NewChatSheet
+        visible={newChatVisible}
+        isDark={isDark}
+        onClose={() => setNewChatVisible(false)}
+        onOpenDirect={(friend) => void openDirectWith(friend)}
+        onGroupCreated={(threadId) => {
+          refreshLists();
+          router.push({ pathname: '/chat/group/[id]', params: { id: threadId } });
+        }}
+      />
     </ScrollView>
+  );
+}
+
+function SectionLabel({ label, isDark }: { label: string; isDark: boolean }) {
+  return (
+    <Text className="mb-1 ml-3 mt-2 text-[11px] font-bold uppercase tracking-wider" style={{ color: isDark ? '#64748B' : '#94A3B8' }}>
+      {label}
+    </Text>
+  );
+}
+
+// Swipe a chat left for Pin and Mute, like Messenger.
+function SwipeRow({
+  isDark,
+  pinned,
+  muted,
+  onTogglePin,
+  onToggleMute,
+  children,
+}: {
+  isDark: boolean;
+  pinned: boolean;
+  muted: boolean;
+  onTogglePin: () => void;
+  onToggleMute: () => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<SwipeableMethods>(null);
+  const action = (label: string, icon: ReactNode, background: string, onPress: () => void) => (
+    <TouchableOpacity
+      onPress={() => {
+        ref.current?.close();
+        onPress();
+      }}
+      activeOpacity={0.85}
+      accessibilityLabel={label}>
+      <View className="h-full w-[76px] items-center justify-center gap-1" style={{ backgroundColor: background }}>
+        {icon}
+        <Text className="text-[11px] font-bold text-white">{label}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+  return (
+    <ReanimatedSwipeable
+      ref={ref}
+      friction={2}
+      rightThreshold={40}
+      overshootRight={false}
+      containerStyle={{ borderRadius: 16 }}
+      renderRightActions={() => (
+        <View className="flex-row overflow-hidden rounded-r-2xl">
+          {action(pinned ? 'Unpin' : 'Pin', pinned ? <PinOff size={19} color="#FFFFFF" /> : <Pin size={19} color="#FFFFFF" />, '#284BD6', onTogglePin)}
+          {action(muted ? 'Unmute' : 'Mute', muted ? <Bell size={19} color="#FFFFFF" /> : <BellOff size={19} color="#FFFFFF" />, isDark ? '#475569' : '#64748B', onToggleMute)}
+        </View>
+      )}>
+      <View style={{ backgroundColor: isDark ? '#0B1220' : '#FFFFFF' }}>{children}</View>
+    </ReanimatedSwipeable>
   );
 }

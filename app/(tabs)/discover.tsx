@@ -15,8 +15,9 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { ArrowUpDown, Check, ClipboardList, RefreshCw, Search, SlidersHorizontal, Sparkles, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Animated from 'react-native-reanimated';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
+import { showAlert } from '@/lib/dialog';
 type ConnectOutcome = 'sent' | 'friends' | 'alreadySent' | 'alreadyFriends';
 
 const CONNECT_POPUP_TEXT: Record<ConnectOutcome, { title: string; body: (name: string) => string }> = {
@@ -97,7 +98,7 @@ export default function DiscoverScreen() {
     setErrorMessage(null);
     const profile = profiles.find((item) => item.id === profileId);
     if (profile?.request_status === 'accepted') {
-      Alert.alert('Remove friend?', `Remove ${profile.display_name} from your friends?`, [
+      showAlert('Remove friend?', `Remove ${profile.display_name} from your friends?`, [
         { text: 'Cancel', style: 'cancel', onPress: () => setRequestingId(null) },
         { text: 'Remove', style: 'destructive', onPress: () => void removeFriendAndUpdate(profileId) },
       ]);
@@ -105,7 +106,7 @@ export default function DiscoverScreen() {
     }
     if (profile?.request_status === 'outgoing_pending' && profile.request_id) {
       const requestId = profile.request_id;
-      Alert.alert('Cancel friend request?', `Cancel your request to ${profile.display_name}?`, [
+      showAlert('Cancel friend request?', `Cancel your request to ${profile.display_name}?`, [
         { text: 'Keep request', style: 'cancel', onPress: () => setRequestingId(null) },
         { text: 'Cancel request', style: 'destructive', onPress: () => void cancelRequestAndUpdate(profileId, requestId) },
       ]);

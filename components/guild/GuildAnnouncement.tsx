@@ -1,4 +1,5 @@
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { confirmDiscard } from '@/hooks/use-unsaved-changes';
 import { riseIn } from '@/components/ui/motion';
 import { setGuildAnnouncement, type Guild } from '@/lib/guilds';
 import { Megaphone, Pencil, X } from 'lucide-react-native';
@@ -36,6 +37,13 @@ export function GuildAnnouncement({ guild, isDark, canEdit, onSaved }: Props) {
 
   const primary = isDark ? 'text-white' : 'text-[#182847]';
   const secondary = isDark ? 'text-[#94A3B8]' : 'text-[#67748D]';
+
+  function closeEditor() {
+    if (busy) return;
+    confirmDiscard(text.trim() !== (guild.announcement ?? '').trim(), () => setEditing(false), {
+      message: "Your announcement changes aren't posted yet. Discard them?",
+    });
+  }
 
   function open() {
     setText(guild.announcement ?? '');
@@ -89,7 +97,7 @@ export function GuildAnnouncement({ guild, isDark, canEdit, onSaved }: Props) {
         </AnimatedPressable>
       )}
 
-      <Modal visible={editing} transparent animationType="fade" onRequestClose={() => setEditing(false)}>
+      <Modal visible={editing} transparent animationType="fade" onRequestClose={closeEditor}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1 items-center justify-center bg-black/45 px-4">
           <Animated.View entering={riseIn(0, 350)} className={`w-full max-w-[440px] rounded-[28px] p-5 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
             <View className="flex-row items-center justify-between">
@@ -97,7 +105,7 @@ export function GuildAnnouncement({ guild, isDark, canEdit, onSaved }: Props) {
                 <Megaphone size={20} color={guild.color} />
                 <Text className={`text-lg font-black ${primary}`}>Guild announcement</Text>
               </View>
-              <TouchableOpacity onPress={() => setEditing(false)} accessibilityLabel="Close" hitSlop={10}>
+              <TouchableOpacity onPress={closeEditor} accessibilityLabel="Close" hitSlop={10}>
                 <X size={20} color={isDark ? '#94A3B8' : '#67748D'} />
               </TouchableOpacity>
             </View>

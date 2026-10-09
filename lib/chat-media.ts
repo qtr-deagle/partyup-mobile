@@ -3,8 +3,9 @@ import { supabase } from '@/lib/supabase';
 import { toByteArray } from 'base64-js';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { Alert } from 'react-native';
 
+
+import { showAlert } from '@/lib/dialog';
 const BUCKET = 'chat-media';
 const MAX_SIDE = 1280;
 const SIGNED_URL_SECONDS = 60 * 60;
@@ -15,7 +16,7 @@ export type PickedPhoto = { uri: string; width: number; height: number };
 export async function pickChatPhoto(source: 'camera' | 'library'): Promise<PickedPhoto | null> {
   const permission = source === 'camera' ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) {
-    Alert.alert('Permission needed', source === 'camera' ? 'Camera access is needed to take a photo.' : 'Photo library access is needed to send a photo.');
+    showAlert('Permission needed', source === 'camera' ? 'Camera access is needed to take a photo.' : 'Photo library access is needed to send a photo.');
     return null;
   }
 

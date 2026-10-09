@@ -20,10 +20,12 @@ import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { AlertTriangle, Bell, BellOff, CheckCircle2, Clock, Info, Mail, MapPin, Phone, Plus, RotateCcw, Shield, ShieldAlert, ShieldCheck, Trash2, UserPlus, Users, X, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, Switch, Text, TextInput, TouchableOpacity, View, type ViewStyle } from 'react-native';
 import Animated, { FadeIn, FadeInRight } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { confirmDiscard } from '@/hooks/use-unsaved-changes';
+import { showAlert } from '@/lib/dialog';
 const EMERGENCY_INFO_MAX = 200;
 
 export default function TrustedCircleScreen() {
@@ -128,7 +130,18 @@ export default function TrustedCircleScreen() {
   }
 
   function closeAddModal() {
-    setAddVisible(false);
+    // A picked friend, relationship or typed info: ask before throwing it away.
+    const dirty = !!selectedFriendId || !!relationship || !!emergencyInfo.trim();
+    confirmDiscard(dirty, () => setAddVisible(false), { message: "This contact isn't added yet. Discard it?" });
+  }
+
+  // Android back on the details step goes back to the friend list first.
+  function handleAddBack() {
+    if (step === 2) {
+      setStep(1);
+      return;
+    }
+    closeAddModal();
   }
 
   function goToStepTwo() {
@@ -179,7 +192,7 @@ export default function TrustedCircleScreen() {
   }
 
   function confirmRemove(contact: TrustedContact) {
-    Alert.alert('Remove contact?', `Remove ${contact.display_name} from your trusted circle?`, [
+    showAlert('Remove contact?', `Remove ${contact.display_name} from your trusted circle?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => void removeContact(contact) },
     ]);
@@ -451,7 +464,7 @@ export default function TrustedCircleScreen() {
         </Animated.View>
       </ScrollView>
 
-      <Modal visible={addVisible} transparent animationType="fade" onRequestClose={closeAddModal}>
+      <Modal visible={addVisible} transparent animationType="fade" onRequestClose={handleAddBack}>
         <View className="flex-1 items-center justify-center bg-black/45 px-4">
           <Animated.View entering={riseIn(0, 380)} className={`w-full max-w-[440px] rounded-[28px] px-4 py-5 shadow-lg shadow-black/25 ${isDark ? 'bg-[#111B2E]' : 'bg-white'}`}>
             <View className={`flex-row items-start justify-between gap-4 border-b pb-4 ${border}`}>

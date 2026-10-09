@@ -1,4 +1,5 @@
 import { riseIn } from '@/components/ui/motion';
+import { confirmDiscard } from '@/hooks/use-unsaved-changes';
 import { submitUserRating } from '@/lib/ratings';
 import { feedback } from '@/lib/sounds';
 import { Image } from 'expo-image';
@@ -53,6 +54,12 @@ export function TripReviewsModal({ visible, onClose, isDark, tripId, tripTitle, 
 
   const current = members[step];
 
+  // Stars or a comment on the current companion: ask before closing.
+  function handleClose() {
+    if (submitting) return;
+    confirmDiscard(rating > 0 || !!comment.trim(), onClose, { message: "This rating isn't submitted yet. Close anyway?" });
+  }
+
   function advance(didRate: boolean) {
     if (step + 1 >= members.length) {
       if (didRate || ratedAny) {
@@ -83,9 +90,9 @@ export function TripReviewsModal({ visible, onClose, isDark, tripId, tripTitle, 
   }
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={handleClose} statusBarTranslucent>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
-        <Pressable className="flex-1 justify-end bg-black/55" onPress={onClose}>
+        <Pressable className="flex-1 justify-end bg-black/55" onPress={handleClose}>
           {visible && current ? (
             <Animated.View
               key="trip-reviews-sheet"
@@ -104,7 +111,7 @@ export function TripReviewsModal({ visible, onClose, isDark, tripId, tripTitle, 
                       Review your companions — totally optional · {step + 1} of {members.length}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={onClose} accessibilityLabel="Close" className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: closeButtonBg }}>
+                  <TouchableOpacity onPress={handleClose} accessibilityLabel="Close" className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: closeButtonBg }}>
                     <X size={18} color={mutedText} />
                   </TouchableOpacity>
                 </View>
@@ -159,7 +166,11 @@ export function TripReviewsModal({ visible, onClose, isDark, tripId, tripTitle, 
                   onChangeText={setComment}
                 />
 
-                <View className="mt-5 flex-row gap-2">
+                <Text className="mt-4 text-center text-[12px]" style={{ color: mutedText }}>
+                  Ratings are final and can&apos;t be changed after you submit.
+                </Text>
+
+                <View className="mt-3 flex-row gap-2">
                   <TouchableOpacity onPress={() => advance(false)} disabled={submitting} className="flex-1 items-center rounded-2xl border py-4" style={{ borderColor: border }}>
                     <Text className="text-base font-bold" style={{ color: mutedText }}>
                       Skip

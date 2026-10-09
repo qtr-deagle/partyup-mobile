@@ -20,9 +20,10 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { AlertTriangle, Bell, BellOff, Check, Clock, MessageCircle, Plus, Search, Shield, Trash2, UserMinus, UserPlus, X, XCircle } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 type Tab = 'friends' | 'trusted';
 
 export default function FriendsScreen() {
@@ -125,14 +126,14 @@ export default function FriendsScreen() {
   }
 
   function promptSayHi(connection: FriendConnection) {
-    Alert.alert('You are now friends! 🎉', `Say hi to ${connection.display_name}?`, [
+    showAlert('You are now friends! 🎉', `Say hi to ${connection.display_name}?`, [
       { text: 'Later', style: 'cancel' },
       { text: 'Say hi', onPress: () => void messageFriend(connection) },
     ]);
   }
 
   function confirmUnfriend(connection: FriendConnection) {
-    Alert.alert('Remove friend?', `Remove ${connection.display_name} from your friends?`, [
+    showAlert('Remove friend?', `Remove ${connection.display_name} from your friends?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => void unfriend(connection) },
     ]);
@@ -175,7 +176,7 @@ export default function FriendsScreen() {
   }
 
   function confirmRemoveTrustedContact(contact: TrustedContact) {
-    Alert.alert('Remove contact?', `Remove ${contact.display_name} from your trusted circle?`, [
+    showAlert('Remove contact?', `Remove ${contact.display_name} from your trusted circle?`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: () => void removeTrustedContactRow(contact) },
     ]);

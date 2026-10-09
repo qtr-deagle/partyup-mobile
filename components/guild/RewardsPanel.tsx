@@ -27,9 +27,10 @@ import { getTheme, typography } from '@/lib/theme';
 import { useFocusEffect } from 'expo-router';
 import { Coins, Gift, Lock, Percent } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 const STATUS_LABEL: Record<RewardRedemption['status'], string> = {
   pending: 'Waiting for an admin',
   fulfilled: 'Fulfilled',
@@ -92,7 +93,7 @@ export function RewardsPanel() {
   }
 
   function confirmRedeem(reward: GuildReward) {
-    Alert.alert(`Redeem ${reward.title}?`, `This spends ${rewardPrice(reward.cost, lifetime, guildLevel)} coins. An admin will fulfill it, and you'll be refunded if it's declined.`, [
+    showAlert(`Redeem ${reward.title}?`, `This spends ${rewardPrice(reward.cost, lifetime, guildLevel)} coins. An admin will fulfill it, and you'll be refunded if it's declined.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Redeem',
@@ -101,10 +102,10 @@ export function RewardsPanel() {
           const { error } = await redeemReward(reward.id);
           setBusyId(null);
           if (error) {
-            Alert.alert('Could not redeem', error.message);
+            showAlert('Could not redeem', error.message);
             return;
           }
-          Alert.alert('Request sent', "We'll notify you when an admin fulfills it.");
+          showAlert('Request sent', "We'll notify you when an admin fulfills it.");
           await load();
         },
       },

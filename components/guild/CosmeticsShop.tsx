@@ -9,8 +9,9 @@ import { rankFor, rankIndexOf, rewardPrice } from '@/lib/guilds';
 import { getTheme, typography } from '@/lib/theme';
 import { Check, Coins, Lock, Palette, Trophy } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 
+import { showAlert } from '@/lib/dialog';
 type Props = {
   isDark: boolean;
   index?: number;
@@ -54,7 +55,7 @@ export function CosmeticsShop({ isDark, index = 0, catalog, owned, coins, lifeti
     const { error } = await equipCosmetic(itemKind, key);
     setBusyKey(null);
     if (error) {
-      Alert.alert('Could not change style', error.message);
+      showAlert('Could not change style', error.message);
       return;
     }
     setPreview({});
@@ -62,7 +63,7 @@ export function CosmeticsShop({ isDark, index = 0, catalog, owned, coins, lifeti
   }
 
   function confirmBuy(item: Cosmetic, price: number) {
-    Alert.alert(`Buy ${item.name}?`, `This spends ${price} coins and puts it on your profile right away.`, [
+    showAlert(`Buy ${item.name}?`, `This spends ${price} coins and puts it on your profile right away.`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Buy',
@@ -71,7 +72,7 @@ export function CosmeticsShop({ isDark, index = 0, catalog, owned, coins, lifeti
           const { error } = await buyCosmetic(item.key);
           if (error) {
             setBusyKey(null);
-            Alert.alert('Could not buy', error.message);
+            showAlert('Could not buy', error.message);
             return;
           }
           await wear(item.kind, item.key);

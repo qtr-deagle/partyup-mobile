@@ -6,6 +6,7 @@ import { GuildAnnouncement } from '@/components/guild/GuildAnnouncement';
 import { GuildAuditLogModal } from '@/components/guild/GuildAuditLogModal';
 import { GuildReportModal } from '@/components/guild/GuildReportModal';
 import { GuildReportsInbox } from '@/components/guild/GuildReportsInbox';
+import { CommandCenter, LeaderHero, LeaderMissionsCard } from '@/components/guild/LeaderHQ';
 import { Segmented } from '@/components/guild/LeaderboardPanel';
 import { MedalShareCard, shareMedalCard } from '@/components/guild/MedalShareCard';
 import { RankMedal } from '@/components/guild/RankMedal';
@@ -64,16 +65,20 @@ import {
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { getTheme, typography } from '@/lib/theme';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Award, Check, ChevronRight, Coins, Crown, DoorOpen, Flag, LifeBuoy, Lock, Mail, MessageCircle, MoreVertical, Pencil, ScrollText, Search, Share2, Shield, Trophy, UserMinus, UserPlus, Users, X } from 'lucide-react-native';
+import { Award, Check, ChevronRight, Coins, Crown, DoorOpen, Flag, LifeBuoy, Lock, Mail, MessageCircle, MoreVertical, Search, Share2, Shield, Trophy, UserMinus, UserPlus, Users, X } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 const PERIODS: { id: LeaderboardPeriod; label: string }[] = [
   { id: 'week', label: 'This week' },
   { id: 'month', label: 'This month' },
   { id: 'all', label: 'All time' },
 ];
+
+// Fits the Leader HQ stat tiles.
+const PERIOD_SHORT: Record<LeaderboardPeriod, string> = { week: 'Week', month: 'Month', all: 'All' };
 
 // Guild colours are #RRGGBB; appends a 2-digit hex alpha for tints. Anything
 // else (unexpected format) falls back to a neutral translucent slate.
@@ -87,6 +92,8 @@ type Props = {
   onFindGuild: () => void;
   // Lets the Guild screen re-read which guild the user is in.
   onGuildChanged: () => void;
+  // Switches the Guild screen to its Missions tab (leader missions card).
+  onOpenMissions: () => void;
   // Deep-link target from the leader dashboard: open the reports inbox once
   // the guild has loaded.
   focus?: GuildPanelFocus | null;
@@ -96,7 +103,7 @@ export type GuildPanelFocus = 'reports';
 
 // The "My Guild" tab: rank, coins, my guild and its members, badges, how to
 // earn, and recent points.
-export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Props) {
+export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, onOpenMissions, focus }: Props) {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { profile, refreshProfile } = useAuth();
@@ -134,6 +141,8 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
   const [inboxVisible, setInboxVisible] = useState(false);
   const [auditVisible, setAuditVisible] = useState(false);
   const [openReports, setOpenReports] = useState(0);
+  // Bumped on pull-to-refresh so the leader missions card reloads too.
+  const [refreshKey, setRefreshKey] = useState(0);
   const shareCardRef = useRef<View>(null);
   const seasonsChecked = useRef(false);
   const focusHandled = useRef(false);
@@ -198,7 +207,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
   // Reporting the leader goes to PartyUp support instead, since the leader
   // is the one who handles guild reports.
   function memberMenu(member: GuildMemberStanding) {
-    Alert.alert(member.display_name, member.is_leader ? 'Guild Leader' : undefined, [
+    showAlert(member.display_name, member.is_leader ? 'Guild Leader' : undefined, [
       member.is_leader
         ? {
             text: 'Report to PartyUp',
@@ -216,7 +225,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
 
   function confirmLeave() {
     if (!guild) return;
-    Alert.alert(`Leave ${guild.name}?`, 'Points you already earned stay with you and with the guild.', [
+    showAlert(`Leave ${guild.name}?`, 'Points you already earned stay with you and with the guild.', [
       { text: 'Stay', style: 'cancel' },
       {
         text: 'Leave',
@@ -226,7 +235,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
           const { error } = await leaveGuild();
           setBusyId(null);
           if (error) {
-            Alert.alert('Could not leave', error.message);
+            showAlert('Could not leave', error.message);
             return;
           }
           await load(period);
@@ -237,7 +246,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
   }
 
   function confirmRemove(member: GuildMemberStanding) {
-    Alert.alert(`Remove ${member.display_name}?`, 'They will be notified and can join another guild.', [
+    showAlert(`Remove ${member.display_name}?`, 'They will be notified and can join another guild.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
@@ -247,7 +256,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
           const { error } = await removeGuildMember(member.user_id);
           setBusyId(null);
           if (error) {
-            Alert.alert('Could not remove', error.message);
+            showAlert('Could not remove', error.message);
             return;
           }
           setMembers((current) => current.filter((row) => row.user_id !== member.user_id));
@@ -258,7 +267,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
 
   // Leader actions on a member: hand over leadership, or remove.
   function manageMember(member: GuildMemberStanding) {
-    Alert.alert(member.display_name, 'Member', [
+    showAlert(member.display_name, 'Member', [
       { text: 'Make leader', onPress: () => confirmHandOver(member) },
       { text: 'Remove from guild', style: 'destructive', onPress: () => confirmRemove(member) },
       { text: 'Cancel', style: 'cancel' },
@@ -270,12 +279,12 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
     await refreshProfile();
     await load(period);
     onGuildChanged();
-    Alert.alert(`${successorName} leads ${guild?.name ?? 'the guild'} now`, "You're still a member, and your points and rank stay with you.");
+    showAlert(`${successorName} leads ${guild?.name ?? 'the guild'} now`, "You're still a member, and your points and rank stay with you.");
   }
 
   function confirmHandOver(member: GuildMemberStanding) {
     if (!guild) return;
-    Alert.alert(
+    showAlert(
       `Make ${member.display_name} the leader?`,
       `They take over ${guild.name}, and you become a regular member (traveler). Only an admin can make you a Guild Leader again.`,
       [
@@ -288,7 +297,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
             const { error } = await transferGuildLeadership(member.user_id);
             setBusyId(null);
             if (error) {
-              Alert.alert('Could not hand over', error.message);
+              showAlert('Could not hand over', error.message);
               return;
             }
             await afterHandOver(member.display_name);
@@ -300,7 +309,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
 
   function confirmStepDown() {
     if (!guild) return;
-    Alert.alert(
+    showAlert(
       'Step down as leader?',
       `Your top member by points takes over ${guild.name}, and you stay on as a member (traveler). To pick someone else, tap their name and choose "Make leader".`,
       [
@@ -313,7 +322,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
             const { data, error } = await stepDownAsLeader();
             setBusyId(null);
             if (error) {
-              Alert.alert('Could not step down', error.message);
+              showAlert('Could not step down', error.message);
               return;
             }
             await afterHandOver(data ?? 'Your top member');
@@ -328,7 +337,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
     const { error } = await respondJoinRequest(request.id, accept);
     setBusyId(null);
     if (error) {
-      Alert.alert(accept ? 'Could not accept' : 'Could not decline', error.message);
+      showAlert(accept ? 'Could not accept' : 'Could not decline', error.message);
       await load(period);
       return;
     }
@@ -337,7 +346,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
   }
 
   function confirmDecline(request: GuildJoinRequest) {
-    Alert.alert(`Decline ${request.display_name}?`, "They'll be told this time didn't work out and can ask another guild.", [
+    showAlert(`Decline ${request.display_name}?`, "They'll be told this time didn't work out and can ask another guild.", [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Decline', style: 'destructive', onPress: () => void answerRequest(request, false) },
     ]);
@@ -348,7 +357,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
     const { error } = await respondGuildInvite(invite.id, accept);
     setBusyId(null);
     if (error) {
-      Alert.alert(accept ? 'Could not join' : 'Could not decline', error.message);
+      showAlert(accept ? 'Could not join' : 'Could not decline', error.message);
       await load(period);
       return;
     }
@@ -358,19 +367,19 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
     }
     await load(period);
     onGuildChanged();
-    Alert.alert(`Welcome to ${invite.guild_name}!`, 'You earned +10 points for joining.');
+    showAlert(`Welcome to ${invite.guild_name}!`, 'You earned +10 points for joining.');
   }
 
   function confirmAcceptInvite(invite: MyGuildInvite) {
     const extra = myRequest ? ` Your pending request to ${myRequest.guild_name} will be cancelled.` : '';
-    Alert.alert(`Join ${invite.guild_name}?`, `Your other open invites will be cancelled.${extra}`, [
+    showAlert(`Join ${invite.guild_name}?`, `Your other open invites will be cancelled.${extra}`, [
       { text: 'Not now', style: 'cancel' },
       { text: 'Join', onPress: () => void answerInvite(invite, true) },
     ]);
   }
 
   function confirmDeclineInvite(invite: MyGuildInvite) {
-    Alert.alert(`Decline ${invite.guild_name}'s invite?`, 'They can invite you again tomorrow.', [
+    showAlert(`Decline ${invite.guild_name}'s invite?`, 'They can invite you again tomorrow.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Decline', style: 'destructive', onPress: () => void answerInvite(invite, false) },
     ]);
@@ -378,7 +387,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
 
   function confirmCancelRequest() {
     if (!myRequest) return;
-    Alert.alert(`Cancel your request to ${myRequest.guild_name}?`, 'You can ask again or pick another guild any time.', [
+    showAlert(`Cancel your request to ${myRequest.guild_name}?`, 'You can ask again or pick another guild any time.', [
       { text: 'Keep it', style: 'cancel' },
       {
         text: 'Cancel request',
@@ -388,7 +397,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
           const { error } = await cancelJoinRequest();
           setBusyId(null);
           if (error) {
-            Alert.alert('Could not cancel', error.message);
+            showAlert('Could not cancel', error.message);
             return;
           }
           setMyRequest(null);
@@ -469,6 +478,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
 
   async function refresh() {
     setRefreshing(true);
+    setRefreshKey((key) => key + 1);
     await Promise.all([load(period), loadOpenReports()]);
     setRefreshing(false);
   }
@@ -495,8 +505,31 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
           </Card>
         ) : (
           <View key="content" className="gap-4">
-            {/* My guild (or how to get one) */}
-            {guild ? (
+            {/* My guild (or how to get one). Its leader gets Leader HQ. */}
+            {canManage && guild ? (
+              <View key="leader-hq" className="gap-4">
+                <LeaderHero
+                  guild={guild}
+                  memberCount={members.length}
+                  lifetimePoints={myGuildRow?.lifetime_points ?? 0}
+                  periodPoints={myGuildRow?.points ?? 0}
+                  periodRank={myStanding >= 0 ? myStanding + 1 : null}
+                  periodLabel={PERIOD_SHORT[period]}
+                  onEdit={openForm}
+                />
+                <CommandCenter
+                  isDark={isDark}
+                  guild={guild}
+                  joinRequests={joinRequests.length}
+                  openReports={openReports}
+                  stepDownBusy={busyId === 'step-down'}
+                  onReports={() => setInboxVisible(true)}
+                  onAudit={() => setAuditVisible(true)}
+                  onEdit={openForm}
+                  onStepDown={confirmStepDown}
+                />
+              </View>
+            ) : guild ? (
               <Card key="my-guild" index={0}>
                 <AnimatedPressable
                   onPress={() => router.push({ pathname: '/guild/[id]', params: { id: guild.id } })}
@@ -542,38 +575,17 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
                     <MessageCircle size={16} color="#FFFFFF" />
                     <Text className="font-bold text-white">Guild chat</Text>
                   </AnimatedPressable>
-                  {guild.leader_id === profile?.id ? (
-                    <AnimatedPressable onPress={openForm} className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${softBorder}`}>
-                      <Pencil size={16} color={primaryColor} />
-                      <Text className="font-bold" style={{ color: primaryColor }}>
-                        Edit guild
-                      </Text>
-                    </AnimatedPressable>
-                  ) : (
-                    <AnimatedPressable
-                      onPress={confirmLeave}
-                      disabled={busyId === 'leave'}
-                      className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${softBorder}`}>
-                      {busyId === 'leave' ? <ActivityIndicator color={primaryColor} /> : <UserMinus size={16} color={primaryColor} />}
-                      <Text className="font-bold" style={{ color: primaryColor }}>
-                        Leave guild
-                      </Text>
-                    </AnimatedPressable>
-                  )}
-                </View>
-                {guild.leader_id === profile?.id ? (
                   <AnimatedPressable
-                    key="step-down"
-                    onPress={confirmStepDown}
-                    disabled={busyId === 'step-down'}
-                    scaleTo={0.97}
-                    className="mt-3 flex-row items-center justify-center gap-1.5 py-1"
-                    accessibilityLabel="Step down as Guild Leader">
-                    {busyId === 'step-down' ? <ActivityIndicator color={isDark ? '#94A3B8' : '#67748D'} /> : <Crown size={14} color={isDark ? '#94A3B8' : '#67748D'} />}
-                    <Text className={`text-sm font-semibold ${mutedText}`}>Step down as leader</Text>
+                    onPress={confirmLeave}
+                    disabled={busyId === 'leave'}
+                    className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${softBorder}`}>
+                    {busyId === 'leave' ? <ActivityIndicator color={primaryColor} /> : <UserMinus size={16} color={primaryColor} />}
+                    <Text className="font-bold" style={{ color: primaryColor }}>
+                      Leave guild
+                    </Text>
                   </AnimatedPressable>
-                ) : (
-                  <View key="report-links" className="mt-3 flex-row items-center justify-center gap-6">
+                </View>
+                <View key="report-links" className="mt-3 flex-row items-center justify-center gap-6">
                     <AnimatedPressable
                       onPress={() => openReport(null)}
                       scaleTo={0.97}
@@ -590,8 +602,7 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
                       <LifeBuoy size={14} color={isDark ? '#94A3B8' : '#67748D'} />
                       <Text className={`text-sm font-semibold ${mutedText}`}>Help & Reports</Text>
                     </AnimatedPressable>
-                  </View>
-                )}
+                </View>
               </Card>
             ) : isLeader ? (
               <Card key="found-guild" index={0}>
@@ -759,59 +770,15 @@ export function MyGuildPanel({ isDark, onFindGuild, onGuildChanged, focus }: Pro
               </Card>
             ) : null}
 
-            {/* Leader tools: join requests, reports inbox and audit log */}
+            {/* This week's leader missions */}
             {canManage && guild ? (
-              <Card key="guild-tools" index={0}>
-                {/* Always shown, so the leader knows where requests land even
-                    when none are waiting. */}
-                <AnimatedPressable
-                  onPress={() => router.push({ pathname: '/guild/requests', params: { guildId: guild.id } })}
-                  scaleTo={0.98}
-                  className={`mb-3 flex-row items-center gap-3 rounded-2xl p-3 ${mutedPanel}`}
-                  accessibilityLabel={joinRequests.length > 0 ? `Join requests, ${joinRequests.length} waiting` : 'Join requests'}>
-                  <View className="h-10 w-10 items-center justify-center rounded-xl" style={{ backgroundColor: `${primaryColor}1F` }}>
-                    <UserPlus size={18} color={primaryColor} />
-                  </View>
-                  <View className="flex-1">
-                    <Text className={`text-base font-bold ${primaryText}`}>Join Requests</Text>
-                    <Text className={`text-xs ${mutedText}`}>
-                      {joinRequests.length > 0
-                        ? `${joinRequests.length} ${joinRequests.length === 1 ? 'traveler wants' : 'travelers want'} to join`
-                        : 'No one waiting right now'}
-                    </Text>
-                  </View>
-                  {joinRequests.length > 0 ? (
-                    <View className="min-w-[22px] items-center rounded-full bg-[#DC2626] px-1.5 py-0.5">
-                      <Text className="text-[11px] font-black text-white">{joinRequests.length}</Text>
-                    </View>
-                  ) : null}
-                  <ChevronRight size={18} color={isDark ? '#475569' : '#A3AEC2'} />
-                </AnimatedPressable>
-                <View className="flex-row gap-3">
-                  <AnimatedPressable
-                    onPress={() => setInboxVisible(true)}
-                    className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${softBorder}`}
-                    accessibilityLabel={openReports > 0 ? `Reports, ${openReports} open` : 'Reports'}>
-                    <Flag size={16} color={openReports > 0 ? '#DC2626' : primaryColor} />
-                    <Text className="font-bold" style={{ color: primaryColor }}>
-                      Reports
-                    </Text>
-                    {openReports > 0 ? (
-                      <View className="min-w-[20px] items-center rounded-full bg-[#DC2626] px-1.5 py-0.5">
-                        <Text className="text-[11px] font-black text-white">{openReports}</Text>
-                      </View>
-                    ) : null}
-                  </AnimatedPressable>
-                  <AnimatedPressable
-                    onPress={() => setAuditVisible(true)}
-                    className={`flex-1 flex-row items-center justify-center gap-2 rounded-2xl border py-3 ${softBorder}`}>
-                    <ScrollText size={16} color={primaryColor} />
-                    <Text className="font-bold" style={{ color: primaryColor }}>
-                      Audit log
-                    </Text>
-                  </AnimatedPressable>
-                </View>
-              </Card>
+              <LeaderMissionsCard
+                key="leader-missions"
+                isDark={isDark}
+                guildLifetimePoints={myGuildRow?.lifetime_points ?? 0}
+                refreshKey={refreshKey}
+                onOpenMissions={onOpenMissions}
+              />
             ) : null}
 
             {/* My rank and coins */}

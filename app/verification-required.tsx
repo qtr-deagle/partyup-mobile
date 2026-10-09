@@ -10,9 +10,10 @@ import { getMyVerification } from '@/lib/verification';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Clock, MapPin, ShieldAlert, ShieldX } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, AppState, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, AppState, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 // Every traveler must have an approved ID before using the app. The root
 // layout redirects unverified travelers here from any other screen, and back
 // to the tabs once staff approve them.
@@ -43,7 +44,7 @@ export default function VerificationRequiredScreen() {
     await refreshProfile();
     setSavingMunicipality(false);
     if (error) {
-      Alert.alert('Could not save', error.message);
+      showAlert('Could not save', error.message);
     }
   }
 

@@ -1,4 +1,6 @@
+import { DraftBanner } from '@/components/ui/DraftBanner';
 import { ScreenHeader } from '@/components/ui/screen-header';
+import { useDraft, useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createSupportTicket, MAX_TICKET_PHOTOS, TICKET_CATEGORIES, TICKET_CATEGORY_LABELS, type TicketCategory } from '@/lib/support';
 import { getTheme } from '@/lib/theme';
@@ -29,12 +31,29 @@ export default function NewTicketScreen() {
   const { screenBackground } = getTheme(isDark);
 
   const aboutLeader = params.category === 'guild_leader' && !!params.userId;
+  const initialSubject = aboutLeader ? `Problem with my Guild Leader${params.userName ? `, ${params.userName}` : ''}` : '';
+  const initialBody = params.excerpt ? `Reported guild chat message: "${params.excerpt}"\n\n` : '';
   const [category, setCategory] = useState<TicketCategory>(aboutLeader ? 'guild_leader' : 'other');
-  const [subject, setSubject] = useState(aboutLeader ? `Problem with my Guild Leader${params.userName ? `, ${params.userName}` : ''}` : '');
-  const [body, setBody] = useState(params.excerpt ? `Reported guild chat message: "${params.excerpt}"\n\n` : '');
+  const [subject, setSubject] = useState(initialSubject);
+  const [body, setBody] = useState(initialBody);
   const [evidenceUris, setEvidenceUris] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Unsaved work: warn on leave; plain tickets also keep a draft (leader
+  // reports are prefilled per leader, so they don't).
+  const dirty = subject.trim() !== initialSubject.trim() || body.trim() !== initialBody.trim() || evidenceUris.length > 0;
+  const { allowLeave } = useUnsavedChangesGuard(dirty, { message: "Your ticket isn't sent yet. Leave anyway?" });
+  const draft = useDraft(aboutLeader ? null : 'support-ticket', { category, subject, body, evidenceUris }, { isEmpty: () => !dirty });
+
+  function restoreDraft() {
+    const saved = draft.restore();
+    if (!saved) return;
+    setCategory(saved.category);
+    setSubject(saved.subject);
+    setBody(saved.body);
+    setEvidenceUris(saved.evidenceUris ?? []);
+  }
 
   const primaryText = isDark ? '#FFFFFF' : '#1B2340';
   const mutedText = isDark ? '#94A3B8' : '#6C7A95';
@@ -78,6 +97,8 @@ export default function NewTicketScreen() {
       setErrorMessage(error?.message ?? 'Failed to send ticket.');
       return;
     }
+    draft.clear();
+    allowLeave();
     router.replace({ pathname: '/support/[id]', params: { id: data.id } });
   }
 
@@ -86,6 +107,18 @@ export default function NewTicketScreen() {
       <ScreenHeader title={aboutLeader ? 'Report your Guild Leader' : 'New ticket'} subtitle="Sent to the PartyUp team" />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} className="flex-1">
         <ScrollView className="flex-1" contentContainerClassName="px-4 pt-5" contentContainerStyle={{ paddingBottom: insets.bottom + 24 }} keyboardShouldPersistTaps="handled">
+          {draft.offer ? (
+            <View className="mb-4">
+              <DraftBanner
+                savedAt={draft.offer.savedAt}
+                preview={draft.offer.value.subject || null}
+                isDark={isDark}
+                onContinue={restoreDraft}
+                onStartFresh={draft.dismiss}
+              />
+            </View>
+          ) : null}
+
           {errorMessage ? (
             <View className="mb-4 rounded-xl bg-[#FEE2E2] px-4 py-3">
               <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>

@@ -20,6 +20,7 @@ import { Card } from "@/components/ui/screen-header";
 import { useAuth } from "@/hooks/auth-provider";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { useGuildJoin } from "@/hooks/use-guild-join";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import {
   getGuild,
   getGuildLeaderboard,
@@ -144,6 +145,9 @@ export default function GuildHallScreen() {
       void load(period);
     }, [load, period]),
   );
+  const { refreshControl } = usePullToRefresh(
+    useCallback(() => load(period), [load, period]),
+  );
 
   const color = guild?.color ?? primaryColor;
   const lifetime = standing?.lifetime_points ?? 0;
@@ -203,7 +207,10 @@ export default function GuildHallScreen() {
 
   return (
     <View className={`flex-1 ${screenBackground}`}>
-      <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+        refreshControl={refreshControl}
+      >
         {/* Banner */}
         <View
           className="overflow-hidden"

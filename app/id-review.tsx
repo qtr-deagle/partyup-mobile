@@ -12,10 +12,13 @@ import {
 import { useFocusEffect, useRouter } from 'expo-router';
 import { AlertTriangle, BadgeCheck, Check, ShieldQuestion, X } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeOutLeft, LinearTransition } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
+import ReasonChips from '@/components/ReasonChips';
+import { composeReason, EMPTY_REASON, REASON_PRESETS, type ReasonValue } from '@/lib/reasonPresets';
 const DOCUMENT_LABELS: Record<string, string> = {
   passport: 'Passport',
   driver_license: "Driver's License",
@@ -123,7 +126,7 @@ export default function IdReviewScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
-  const [rejectNotes, setRejectNotes] = useState('');
+  const [rejectReason, setRejectReason] = useState<ReasonValue>(EMPTY_REASON);
 
   // Verification reviews are an admin job.
   const isStaff = profile?.role === 'admin';
@@ -153,24 +156,24 @@ export default function IdReviewScreen() {
     const { error } = await reviewVerification(id, 'approved');
     setBusyId(null);
     if (error) {
-      Alert.alert('Unable to approve', error.message);
+      showAlert('Unable to approve', error.message);
       return;
     }
     setPending((current) => current.filter((row) => row.id !== id));
   }
 
   function startReject(id: string) {
-    setRejectNotes('');
+    setRejectReason(EMPTY_REASON);
     setRejectingId(id);
   }
 
   async function confirmReject() {
     if (!rejectingId) return;
     setBusyId(rejectingId);
-    const { error } = await reviewVerification(rejectingId, 'rejected', rejectNotes.trim() || undefined);
+    const { error } = await reviewVerification(rejectingId, 'rejected', composeReason(REASON_PRESETS.idReject, rejectReason));
     setBusyId(null);
     if (error) {
-      Alert.alert('Unable to reject', error.message);
+      showAlert('Unable to reject', error.message);
       return;
     }
     setPending((current) => current.filter((row) => row.id !== rejectingId));
@@ -262,19 +265,23 @@ export default function IdReviewScreen() {
 
               {rejectingId === row.id ? (
                 <View className="gap-2">
-                  <TextInput
-                    className={`rounded-2xl px-4 py-3 text-sm ${inputBg} ${primary}`}
-                    placeholder="Reason for rejection (optional)"
-                    placeholderTextColor={isDark ? '#64748B' : '#9AA3B1'}
-                    value={rejectNotes}
-                    onChangeText={setRejectNotes}
-                    multiline
+                  <ReasonChips
+                    presets={REASON_PRESETS.idReject}
+                    value={rejectReason}
+                    onChange={setRejectReason}
+                    isDark={isDark}
+                    label="Reason for rejection"
+                    required
+                    audience="The traveler"
                   />
                   <View className="flex-row gap-2">
                     <AnimatedPressable onPress={() => setRejectingId(null)} className={`flex-1 items-center rounded-2xl border py-3 ${border}`}>
                       <Text className={`font-bold ${primary}`}>Cancel</Text>
                     </AnimatedPressable>
-                    <AnimatedPressable onPress={() => void confirmReject()} disabled={busyId === row.id} className="flex-1 items-center rounded-2xl bg-[#E32727] py-3">
+                    <AnimatedPressable
+                      onPress={() => void confirmReject()}
+                      disabled={busyId === row.id || !composeReason(REASON_PRESETS.idReject, rejectReason)}
+                      className={`flex-1 items-center rounded-2xl py-3 ${composeReason(REASON_PRESETS.idReject, rejectReason) ? 'bg-[#E32727]' : 'bg-[#E32727]/40'}`}>
                       {busyId === row.id ? <ActivityIndicator color="#FFFFFF" /> : <Text className="font-bold text-white">Confirm Reject</Text>}
                     </AnimatedPressable>
                   </View>

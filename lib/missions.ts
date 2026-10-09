@@ -1,7 +1,8 @@
 import { withRequestTimeout } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
 
-export type MissionCategory = 'weekly' | 'monthly' | 'milestone' | 'guild';
+// 'leader' = weekly missions only Guild Leaders get (202610090008).
+export type MissionCategory = 'weekly' | 'monthly' | 'milestone' | 'guild' | 'leader';
 
 export type Mission = {
   key: string;

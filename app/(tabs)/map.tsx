@@ -29,10 +29,11 @@ import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, Eye, EyeOff, Info, Layers, LocateFixed, MapPin, Minus, Navigation, Plus, Shield, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Linking, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Circle, Polyline, PROVIDER_GOOGLE, type Region } from 'react-native-maps';
 import Animated, { FadeOut, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
+import { showAlert } from '@/lib/dialog';
 type RequestStatus = 'incoming_pending' | 'outgoing_pending' | 'accepted' | null;
 
 type Traveler = NearbyTraveler & {
@@ -567,7 +568,7 @@ export default function MapScreen() {
 
     if (traveler.request_status === 'outgoing_pending' && traveler.request_id) {
       const requestId = traveler.request_id;
-      Alert.alert('Cancel friend request?', `Cancel your request to ${traveler.display_name}?`, [
+      showAlert('Cancel friend request?', `Cancel your request to ${traveler.display_name}?`, [
         { text: 'Keep request', style: 'cancel', onPress: () => setRequestingId(null) },
         { text: 'Cancel request', style: 'destructive', onPress: () => void cancelRequest(traveler.user_id, requestId) },
       ]);

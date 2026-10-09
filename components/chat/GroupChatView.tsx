@@ -1,5 +1,7 @@
 import { Composer, QUICK_REACTION } from '@/components/chat/Composer';
-import { GroupInfoSheet, type GroupMember } from '@/components/chat/GroupInfoSheet';
+import { usePersistentText } from '@/hooks/use-unsaved-changes';
+import { GroupInfoSheet, type GroupMember, type InfoAction } from '@/components/chat/GroupInfoSheet';
+import { DaySeparator, dayKey, SystemNote } from '@/components/chat/ChatTimeline';
 import { MessageActionsSheet } from '@/components/chat/MessageActionsSheet';
 import { MessageBubble, messageSummary } from '@/components/chat/MessageBubble';
 import { PhotoViewer } from '@/components/chat/PhotoViewer';
@@ -19,12 +21,14 @@ import { feedback } from '@/lib/sounds';
 import { getTheme } from '@/lib/theme';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, BellOff, Info } from 'lucide-react-native';
+import { ArrowLeft, BellOff, ChevronDown, Info } from 'lucide-react-native';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, FlatList, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, FlatList, Text, TextInput, TouchableOpacity, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import Animated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { askMuteDuration } from '@/lib/chatMute';
+import { showAlert } from '@/lib/dialog';
 type Props = {
   threadId: string | null;
   // Still working out which thread to show.
@@ -48,11 +52,13 @@ type Props = {
   empty: { icon: ReactNode; title: string; message: string };
   pinnable?: boolean;
   infoLink?: { label: string; onPress: () => void };
+  // Friend groups: Edit group, Add people, Leave group, shown in Chat info.
+  infoActions?: InfoAction[];
 };
 
 // A guild or trip group conversation: sender names and avatars, photos,
 // replies, reactions, unsend, mute/pin. Messages live in useThreadMessages.
-export function GroupChatView({ threadId, loading, blocker, title, subtitle, avatar, color, onPressTitle, members, blockedIds, renderAvatarBadge, renderNameTag, onModerateRemove, onReportMessage, placeholder, empty, pinnable = false, infoLink }: Props) {
+export function GroupChatView({ threadId, loading, blocker, title, subtitle, avatar, color, onPressTitle, members, blockedIds, renderAvatarBadge, renderNameTag, onModerateRemove, onReportMessage, placeholder, empty, pinnable = false, infoLink, infoActions }: Props) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const keyboardHeight = useKeyboardHeight();
@@ -60,18 +66,25 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
   const { session } = useAuth();
   const myUserId = session?.user.id;
   const { screenBackground, primaryText } = getTheme(isDark);
-  const [draft, setDraft] = useState('');
+  // Unsent text is kept per thread, so leaving the chat doesn't lose it.
+  const [draft, setDraft] = usePersistentText(threadId ? `chat:${threadId}` : null);
   const [replyTo, setReplyTo] = useState<ScreenMessage | null>(null);
   const [actionTarget, setActionTarget] = useState<ScreenMessage | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [infoVisible, setInfoVisible] = useState(false);
-  const [prefs, setPrefs] = useState({ muted: false, pinned: false });
+  const [prefs, setPrefs] = useState<{ muted: boolean; mutedUntil: string | null; pinned: boolean }>({ muted: false, mutedUntil: null, pinned: false });
   // userId -> last_read_at, kept live for the "seen by" avatars.
   const [readMarks, setReadMarks] = useState<Map<string, string>>(new Map());
   const listRef = useRef<FlatList<ScreenMessage>>(null);
+  // Only follow new messages while the reader is at the bottom; otherwise
+  // count them on the "jump to latest" button.
+  const atBottom = useRef(true);
+  const [showJump, setShowJump] = useState(false);
+  const [unseenCount, setUnseenCount] = useState(0);
+  const lastCount = useRef(0);
   const inputRef = useRef<TextInput>(null);
 
-  const thread = useThreadMessages({ threadId, myUserId, onError: (message) => Alert.alert('Something went wrong', message) });
+  const thread = useThreadMessages({ threadId, myUserId, onError: (message) => showAlert('Something went wrong', message) });
 
   useEffect(() => {
     if (!threadId || !myUserId) return;
@@ -143,13 +156,23 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
 
   function togglePref(kind: 'muted' | 'pinned') {
     if (!threadId) return;
-    const next = !prefs[kind];
+    // Muting asks how long; unmuting and pinning apply right away.
+    if (kind === 'muted' && !prefs.muted) {
+      askMuteDuration(title, (until) => applyPref('muted', true, until));
+      return;
+    }
+    applyPref(kind, !prefs[kind], null);
+  }
+
+  function applyPref(kind: 'muted' | 'pinned', next: boolean, until: Date | null) {
+    if (!threadId) return;
     feedback.select();
-    setPrefs((current) => ({ ...current, [kind]: next }));
-    void (kind === 'muted' ? setChatMuted(threadId, next) : setChatPinned(threadId, next)).then(({ error }) => {
+    const before = prefs;
+    setPrefs((current) => ({ ...current, [kind]: next, ...(kind === 'muted' ? { mutedUntil: next && until ? until.toISOString() : null } : {}) }));
+    void (kind === 'muted' ? setChatMuted(threadId, next, until) : setChatPinned(threadId, next)).then(({ error }) => {
       if (!error) return;
-      Alert.alert('Could not update chat', error.message);
-      setPrefs((current) => ({ ...current, [kind]: !next }));
+      showAlert('Could not update chat', error.message);
+      setPrefs(before);
     });
   }
 
@@ -170,7 +193,7 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
 
   function confirmRemove(message: ScreenMessage, mine: boolean) {
     setActionTarget(null);
-    Alert.alert(mine ? 'Unsend message?' : 'Remove message?', mine ? 'It will be removed for everyone in this chat.' : 'It will be removed for everyone. Admins can still see what was removed.', [
+    showAlert(mine ? 'Unsend message?' : 'Remove message?', mine ? 'It will be removed for everyone in this chat.' : 'It will be removed for everyone. Admins can still see what was removed.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: mine ? 'Unsend' : 'Remove',
@@ -200,6 +223,31 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
   };
 
   const actionMine = actionTarget?.sender_id === myUserId;
+
+  function handleScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const nearBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height) < 140;
+    atBottom.current = nearBottom;
+    setShowJump(!nearBottom);
+    if (nearBottom) setUnseenCount(0);
+  }
+
+  function handleContentSize() {
+    const added = visible.length - lastCount.current;
+    lastCount.current = visible.length;
+    const lastMessage = visible[visible.length - 1];
+    if (atBottom.current || lastMessage?.sender_id === myUserId) {
+      listRef.current?.scrollToEnd({ animated: added > 0 && added < 5 });
+    } else if (added > 0) {
+      setUnseenCount((count) => count + added);
+    }
+  }
+
+  function jumpToLatest() {
+    feedback.select();
+    setUnseenCount(0);
+    listRef.current?.scrollToEnd({ animated: true });
+  }
 
   return (
     <View className={`flex-1 ${screenBackground}`} style={{ paddingBottom: keyboardHeight }}>
@@ -239,20 +287,41 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
           contentContainerClassName="px-3 pt-3"
           contentContainerStyle={{ paddingBottom: 12, flexGrow: 1 }}
           keyboardShouldPersistTaps="handled"
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+          onContentSizeChange={handleContentSize}
+          onScroll={handleScroll}
+          scrollEventThrottle={64}
           onScrollToIndexFailed={({ index }) => listRef.current?.scrollToOffset({ offset: index * 60, animated: true })}
           ListEmptyComponent={<EmptyState icon={empty.icon} title={empty.title} message={empty.message} />}
           renderItem={({ item, index }) => {
             const mine = item.sender_id === myUserId;
             const previous = visible[index - 1];
-            const grouped = previous && previous.sender_id === item.sender_id && !item.reply_to_id && new Date(item.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60_000;
+            const newDay = !previous || dayKey(previous.created_at) !== dayKey(item.created_at);
+            const separator = newDay ? <DaySeparator value={item.created_at} isDark={isDark} /> : null;
+            // "Maria added Jo" and friends: a centered note, no bubble.
+            if (item.message_type === 'system') {
+              return (
+                <View key={item.localKey ?? item.id}>
+                  {separator}
+                  <SystemNote text={item.body} isDark={isDark} />
+                </View>
+              );
+            }
+            const grouped =
+              !newDay &&
+              previous &&
+              previous.message_type !== 'system' &&
+              previous.sender_id === item.sender_id &&
+              !item.reply_to_id &&
+              new Date(item.created_at).getTime() - new Date(previous.created_at).getTime() < 5 * 60_000;
             const sender = byId.get(item.sender_id);
             const name = sender?.name ?? 'Former member';
             const quoted = item.reply_to_id ? thread.messagesById.get(item.reply_to_id) ?? null : null;
             const isNew = !thread.initialIds.has(item.id);
             const seenBy = item.pending ? undefined : seenByMessageId.get(item.id);
             return (
-              <Animated.View key={item.localKey ?? item.id} entering={isNew ? riseIn(0, 300) : undefined} className={`flex-row items-end gap-2 ${grouped ? 'mt-0.5' : 'mt-3'} ${mine ? 'justify-end' : ''}`}>
+              <View key={item.localKey ?? item.id}>
+              {separator}
+              <Animated.View entering={isNew ? riseIn(0, 300) : undefined} className={`flex-row items-end gap-2 ${grouped ? 'mt-0.5' : 'mt-3'} ${mine ? 'justify-end' : ''}`}>
                 {!mine ? (
                   <View className="w-8">
                     {!grouped ? (
@@ -301,10 +370,24 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
                   {seenBy ? <SeenByRow readers={seenBy} mine={mine} isDark={isDark} /> : null}
                 </View>
               </Animated.View>
+              </View>
             );
           }}
         />
       )}
+
+      {showJump && threadId && !blocker ? (
+        <View pointerEvents="box-none" className="absolute right-4 items-end" style={{ bottom: (keyboardHeight > 0 ? keyboardHeight : insets.bottom) + 84 }}>
+          <TouchableOpacity onPress={jumpToLatest} activeOpacity={0.85} accessibilityLabel="Jump to latest messages">
+            <View
+              className="flex-row items-center gap-1.5 rounded-full px-3.5 py-2.5"
+              style={{ backgroundColor: unseenCount ? color : isDark ? '#22324B' : '#FFFFFF', elevation: 6, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } }}>
+              {unseenCount ? <Text className="text-[13px] font-extrabold text-white">{unseenCount} new</Text> : null}
+              <ChevronDown size={18} color={unseenCount ? '#FFFFFF' : isDark ? '#E2E8F0' : '#182847'} />
+            </View>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       {threadId && !loading && !blocker ? (
         <Composer
@@ -366,6 +449,7 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
         members={members}
         photos={thread.sharedPhotos}
         muted={prefs.muted}
+        mutedUntil={prefs.mutedUntil}
         pinned={prefs.pinned}
         pinnable={pinnable}
         onToggleMute={() => togglePref('muted')}
@@ -379,6 +463,13 @@ export function GroupChatView({ threadId, loading, blocker, title, subtitle, ava
           openMember(member.userId);
         }}
         link={infoLink ? { label: infoLink.label, onPress: () => { setInfoVisible(false); infoLink.onPress(); } } : undefined}
+        extraActions={infoActions?.map((action) => ({
+          ...action,
+          onPress: () => {
+            setInfoVisible(false);
+            action.onPress();
+          },
+        }))}
       />
       <PhotoViewer uri={viewerUri} onClose={() => setViewerUri(null)} />
     </View>

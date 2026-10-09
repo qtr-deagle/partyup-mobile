@@ -15,6 +15,7 @@ import { Camera, CheckCircle2, IdCard, MapPin, Upload } from 'lucide-react-nativ
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Image, KeyboardAvoidingView, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes';
 
 const documentOptions: { label: string; value: DocumentType; needsBack: boolean }[] = [
   { label: 'Passport', value: 'passport', needsBack: false },
@@ -84,6 +85,11 @@ export default function VerifyIdScreen() {
   // sign-up even if the profile finishes loading after this screen mounts.
   const [editedName, setEditedName] = useState<LegalName | null>(null);
   const [editedNoMiddleName, setEditedNoMiddleName] = useState<boolean | null>(null);
+
+  // Photos taken or the name edited, and not sent yet: ask before leaving.
+  useUnsavedChangesGuard(!submitted && !!(frontUri || backUri || selfieUri || editedName || editedNoMiddleName !== null), {
+    message: "Your ID photos aren't sent yet. If you leave, you'll need to take them again.",
+  });
 
   if (loading) {
     return null;

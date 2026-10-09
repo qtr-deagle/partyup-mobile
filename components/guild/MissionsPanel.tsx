@@ -35,13 +35,15 @@ import {
   UserPlus,
   Users,
   type LucideIcon,
+  ChevronDown,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, RefreshControl, ScrollView, Text, View } from 'react-native';
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const ICONS: Record<string, LucideIcon> = {
+import { showAlert } from '@/lib/dialog';
+export const MISSION_ICONS: Record<string, LucideIcon> = {
   car: Car,
   route: Route,
   star: Star,
@@ -60,15 +62,22 @@ const ICONS: Record<string, LucideIcon> = {
   camera: Camera,
 };
 
-// Monthly missions were retired (202610030001); the board is Individual,
-// Guild and Milestones.
+// Monthly missions were retired (202610030001); the board is Leader (Guild
+// Leaders only, 202610090008), Individual, Guild and Milestones. Empty
+// sections are skipped.
 const SECTIONS: { id: MissionCategory; title: string; color: string; icon: LucideIcon; blurb: string }[] = [
+  { id: 'leader', title: 'Leader Duties', color: '#D97706', icon: Crown, blurb: 'Weekly goals for running your guild · resets Monday' },
   { id: 'weekly', title: 'Individual', color: '#284BD6', icon: User, blurb: 'Your own goals and what you add to your guild · resets Monday' },
   { id: 'guild', title: 'Guild Contribution', color: '#7C3AED', icon: Swords, blurb: 'Shared goals for the whole guild; everyone claims' },
   { id: 'milestone', title: 'Milestones', color: '#CA8A04', icon: Trophy, blurb: 'Lifetime goals; top steps unlock banners and frames' },
 ];
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+
+// Longer sections show this many cards until expanded.
+const SECTION_PREVIEW = 5;
+
+const WEEKLY_CATEGORIES: MissionCategory[] = ['weekly', 'guild', 'leader'];
 
 type Props = {
   isDark: boolean;
@@ -95,6 +104,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
   // Mission key -> the banner/frame claiming it unlocks.
   const [unlocks, setUnlocks] = useState<Record<string, Cosmetic>>({});
   const [now, setNow] = useState(() => Date.now());
+  const [expanded, setExpanded] = useState<MissionCategory[]>([]);
   const clearReward = useCallback(() => setReward(null), []);
 
   const load = useCallback(async () => {
@@ -131,7 +141,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
     const { data, error } = await claimMission(mission.key);
     setClaimingKey(null);
     if (error) {
-      Alert.alert('Could not claim', error.message);
+      showAlert('Could not claim', error.message);
       await load();
       return;
     }
@@ -158,7 +168,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
 
   const ready = claimableCount(missions);
   const readyPoints = missions.filter((mission) => missionState(mission) === 'claimable').reduce((sum, mission) => sum + mission.reward, 0);
-  const weekly = missions.filter((mission) => (mission.category === 'weekly' || mission.category === 'guild') && !mission.locked);
+  const weekly = missions.filter((mission) => WEEKLY_CATEGORIES.includes(mission.category) && !mission.locked);
   const weeklyDone = weekly.filter((mission) => mission.claimed).length;
   const weeklyReset = timeLeft(weekly[0]?.resets_at ?? missions.find((mission) => mission.resets_at)?.resets_at ?? null, now);
   const openPoints = missions.filter((mission) => !mission.claimed && !mission.locked).reduce((sum, mission) => sum + mission.reward, 0);
@@ -224,7 +234,7 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
             );
             if (rows.length === 0) return null;
             const allLocked = rows.every((row) => row.mission.locked);
-            const reset = section.id === 'weekly' || section.id === 'guild' ? timeLeft(rows[0].mission.resets_at, now) : null;
+            const reset = WEEKLY_CATEGORIES.includes(section.id) ? timeLeft(rows[0].mission.resets_at, now) : null;
             const SectionIcon = section.icon;
             return (
               <View key={section.id} className="gap-2.5">
@@ -259,19 +269,35 @@ export function MissionsPanel({ isDark, onFindGuild, onChanged }: Props) {
                     </View>
                   </AnimatedPressable>
                 ) : (
-                  rows.map((row, index) => (
-                    <MissionCard
-                      key={row.mission.chain ?? row.mission.key}
-                      mission={row.mission}
-                      steps={row.steps}
-                      color={section.color}
-                      unlock={unlocks[row.mission.key] ?? null}
-                      isDark={isDark}
-                      index={sectionIndex * 3 + index}
-                      claiming={claimingKey === row.mission.key || claimingKey === 'all'}
-                      onClaim={() => void claim(row.mission)}
-                    />
-                  ))
+                  <View key="rows" className="gap-2.5">
+                    {/* Sorted ready-first, so the hidden ones are in progress or done. */}
+                    {(expanded.includes(section.id) ? rows : rows.slice(0, SECTION_PREVIEW)).map((row, index) => (
+                      <MissionCard
+                        key={row.mission.chain ?? row.mission.key}
+                        mission={row.mission}
+                        steps={row.steps}
+                        color={section.color}
+                        unlock={unlocks[row.mission.key] ?? null}
+                        isDark={isDark}
+                        index={sectionIndex * 3 + index}
+                        claiming={claimingKey === row.mission.key || claimingKey === 'all'}
+                        onClaim={() => void claim(row.mission)}
+                      />
+                    ))}
+                    {rows.length > SECTION_PREVIEW && !expanded.includes(section.id) ? (
+                      <AnimatedPressable
+                        key="more"
+                        onPress={() => setExpanded((current) => [...current, section.id])}
+                        scaleTo={0.97}
+                        className="flex-row items-center justify-center gap-1.5 rounded-2xl border-2 border-dashed py-3"
+                        style={{ borderColor: `${section.color}55` }}>
+                        <Text className="text-sm font-bold" style={{ color: section.color }}>
+                          Show {rows.length - SECTION_PREVIEW} more
+                        </Text>
+                        <ChevronDown size={16} color={section.color} />
+                      </AnimatedPressable>
+                    ) : null}
+                  </View>
                 )}
               </View>
             );
@@ -320,7 +346,7 @@ type CardProps = {
 
 function MissionCard({ mission, steps, color, unlock, isDark, index, claiming, onClaim }: CardProps) {
   const state = missionState(mission);
-  const Icon = ICONS[mission.icon] ?? Flag;
+  const Icon = MISSION_ICONS[mission.icon] ?? Flag;
   const shown = Math.min(mission.progress, mission.target);
   const pct = mission.target > 0 ? shown / mission.target : 0;
   const primaryText = isDark ? 'text-white' : 'text-[#182847]';

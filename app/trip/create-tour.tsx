@@ -7,12 +7,15 @@ import { TourDestinationPicker } from '@/components/carpool/TourDestinationPicke
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { EmptyState, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { useDraft, useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes';
 import { useAuth } from '@/hooks/auth-provider';
+import { hasPhone } from '@/lib/phone';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { createTrip, formatMeetupLabel } from '@/lib/carpool';
 import { formatTourDestination, TOUR_CATEGORIES, type TourCategory, type TourDestination } from '@/lib/tours';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Calendar, CalendarDays, Clock, MapPin, ShieldAlert, Sparkles, Wallet } from 'lucide-react-native';
+import { Calendar, CalendarDays, Clock, MapPin, Phone, ShieldAlert, Sparkles, Wallet } from 'lucide-react-native';
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, ScrollView, Text, TextInput, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
@@ -122,6 +125,42 @@ export default function CreateTourScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { style: shakeStyle, shake } = useShake();
 
+  // Unsaved work: warn on leave, and keep a draft on the device.
+  const dirty =
+    !!title.trim() ||
+    !!destination ||
+    !!category ||
+    !!(meetup.municipality || meetup.pin || meetup.landmark.trim()) ||
+    !!startDate ||
+    !!durationDays ||
+    !!maxParticipants ||
+    !!pricePerPerson ||
+    !!description.trim() ||
+    interests.length > 0 ||
+    itinerary.length > 0;
+  const { allowLeave } = useUnsavedChangesGuard(dirty, { message: "Your tour isn't posted yet. We'll keep a draft, but leaving now closes the form." });
+  const draft = useDraft(
+    guildId ? `tour:guild:${guildId}` : 'tour',
+    { title, destination, category, meetup, startAt: startDate?.toISOString() ?? null, durationDays, maxParticipants, pricePerPerson, description, interests, itinerary },
+    { enabled: isVerified, isEmpty: () => !dirty }
+  );
+
+  function restoreDraft() {
+    const saved = draft.restore();
+    if (!saved) return;
+    setTitle(saved.title);
+    setDestination(saved.destination);
+    setCategory(saved.category);
+    setMeetup(saved.meetup);
+    setStartDate(saved.startAt ? new Date(saved.startAt) : null);
+    setDurationDays(saved.durationDays);
+    setMaxParticipants(saved.maxParticipants);
+    setPricePerPerson(saved.pricePerPerson);
+    setDescription(saved.description);
+    setInterests(saved.interests ?? []);
+    setItinerary(saved.itinerary ?? []);
+  }
+
   function fail(message: string) {
     setErrorMessage(message);
     shake();
@@ -211,6 +250,8 @@ export default function CreateTourScreen() {
       return;
     }
 
+    draft.clear();
+    allowLeave();
     router.replace({ pathname: '/trip/[id]', params: { id: (data as { id: string }).id, celebrate: 'created' } });
   }
 
@@ -246,10 +287,31 @@ export default function CreateTourScreen() {
             ) : undefined
           }
         />
+      ) : !hasPhone(profile?.phone) ? (
+        <EmptyState
+          key="no-phone"
+          icon={<Phone size={34} color="#2A55D4" />}
+          title="Add your mobile number"
+          message="Organizers need a mobile number on file so the safety team can reach you during the tour."
+          action={
+            <AnimatedPressable onPress={() => router.push('/edit-profile')} className="rounded-2xl bg-[#2A55D4] px-6 py-3.5">
+              <Text className="text-base font-bold text-white">Add Mobile Number</Text>
+            </AnimatedPressable>
+          }
+        />
       ) : (
       <>
       <ScrollView className="flex-1" contentContainerClassName="gap-4 px-4 pt-5"
         contentContainerStyle={{ paddingBottom: insets.bottom + 40 }} keyboardShouldPersistTaps="handled">
+        {draft.offer ? (
+          <DraftBanner
+            savedAt={draft.offer.savedAt}
+            preview={draft.offer.value.title || null}
+            isDark={isDark}
+            onContinue={restoreDraft}
+            onStartFresh={draft.dismiss}
+          />
+        ) : null}
         <Card index={0} className="gap-4">
           <SectionTitle isDark={isDark} icon={<MapPin size={16} color="#2A55D4" />} title="Where to" />
           <View>

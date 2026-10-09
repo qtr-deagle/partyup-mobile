@@ -9,6 +9,43 @@ export type VehicleOwnershipType = 'owned' | 'borrowed';
 
 export type VehicleAiFlag = 'passed' | 'needs_review' | 'mismatch' | 'error';
 
+export type VehicleType = 'sedan' | 'hatchback' | 'suv' | 'mpv' | 'van' | 'pickup';
+
+/** Seats include the driver; `seats` is the usual count, used as the default. */
+export const VEHICLE_TYPES: { value: VehicleType; label: string; seats: number }[] = [
+  { value: 'sedan', label: 'Sedan', seats: 5 },
+  { value: 'hatchback', label: 'Hatchback', seats: 5 },
+  { value: 'suv', label: 'SUV', seats: 7 },
+  { value: 'mpv', label: 'MPV', seats: 7 },
+  { value: 'van', label: 'Van', seats: 12 },
+  { value: 'pickup', label: 'Pickup', seats: 5 },
+];
+
+export const VEHICLE_TYPE_LABEL: Record<VehicleType, string> = Object.fromEntries(VEHICLE_TYPES.map((type) => [type.value, type.label])) as Record<VehicleType, string>;
+
+/** Common brands in the Philippines, for the make picker ("Other" types it). */
+export const COMMON_MAKES = ['Toyota', 'Mitsubishi', 'Honda', 'Nissan', 'Suzuki', 'Hyundai', 'Ford', 'Isuzu', 'Kia', 'Mazda', 'Geely', 'Chevrolet'];
+
+export const VEHICLE_COLORS: { name: string; hex: string }[] = [
+  { name: 'White', hex: '#F8FAFC' },
+  { name: 'Pearl White', hex: '#EEF0F2' },
+  { name: 'Silver', hex: '#C0C6CF' },
+  { name: 'Gray', hex: '#6B7280' },
+  { name: 'Black', hex: '#111827' },
+  { name: 'Red', hex: '#DC2626' },
+  { name: 'Blue', hex: '#2563EB' },
+  { name: 'Brown', hex: '#7C4A2D' },
+  { name: 'Beige', hex: '#D6C3A1' },
+  { name: 'Green', hex: '#15803D' },
+  { name: 'Orange', hex: '#EA580C' },
+  { name: 'Yellow', hex: '#EAB308' },
+];
+
+/** "ABC 1234", "abc-1234" and "ABC1234" are the same plate (matches normalize_plate in SQL). */
+export function normalizePlate(plate: string) {
+  return plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
 export type Vehicle = {
   id: string;
   user_id: string;
@@ -17,6 +54,11 @@ export type Vehicle = {
   year: number | null;
   color: string | null;
   plate_number: string | null;
+  vehicle_type: VehicleType | null;
+  /** Seats including the driver. */
+  seat_capacity: number | null;
+  /** OR/CR registration valid until (YYYY-MM-DD). */
+  registration_expiry: string | null;
   verification_status: VehicleVerificationStatus;
   is_primary: boolean;
   notes: string | null;
@@ -54,6 +96,9 @@ export type CreateVehicleInput = {
   year?: number | null;
   color?: string | null;
   plateNumber?: string | null;
+  vehicleType?: VehicleType | null;
+  seatCapacity?: number | null;
+  registrationExpiry?: string | null;
   isPrimary?: boolean;
   notes?: string | null;
 };
@@ -133,6 +178,9 @@ export async function createVehicle(input: CreateVehicleInput) {
         year: input.year ?? null,
         color: input.color?.trim() || null,
         plate_number: input.plateNumber?.trim() || null,
+        vehicle_type: input.vehicleType ?? null,
+        seat_capacity: input.seatCapacity ?? null,
+        registration_expiry: input.registrationExpiry ?? null,
         is_primary: input.isPrimary ?? false,
         notes: input.notes?.trim() || null,
       })
@@ -151,10 +199,52 @@ export async function updateVehicle(vehicleId: string, patch: UpdateVehicleInput
   if (patch.year !== undefined) payload.year = patch.year;
   if (patch.color !== undefined) payload.color = patch.color?.trim() || null;
   if (patch.plateNumber !== undefined) payload.plate_number = patch.plateNumber?.trim() || null;
+  if (patch.vehicleType !== undefined) payload.vehicle_type = patch.vehicleType;
+  if (patch.seatCapacity !== undefined) payload.seat_capacity = patch.seatCapacity;
+  if (patch.registrationExpiry !== undefined) payload.registration_expiry = patch.registrationExpiry;
   if (patch.isPrimary !== undefined) payload.is_primary = patch.isPrimary;
   if (patch.notes !== undefined) payload.notes = patch.notes?.trim() || null;
 
   return withRequestTimeout(supabase.from('vehicles').update(payload).eq('id', vehicleId), 'Updating vehicle');
+}
+
+/** Blocked server-side while the car is on an upcoming or ongoing trip. */
+export async function deleteVehicle(vehicleId: string) {
+  return withRequestTimeout(supabase.from('vehicles').delete().eq('id', vehicleId), 'Removing vehicle');
+}
+
+export function isRegistrationExpired(vehicle: Pick<Vehicle, 'registration_expiry'>) {
+  return !!vehicle.registration_expiry && vehicle.registration_expiry < new Date().toISOString().slice(0, 10);
+}
+
+/** Within 30 days of expiring (and not yet expired). */
+export function isRegistrationExpiringSoon(vehicle: Pick<Vehicle, 'registration_expiry'>) {
+  if (!vehicle.registration_expiry || isRegistrationExpired(vehicle)) return false;
+  const soon = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  return vehicle.registration_expiry <= soon;
+}
+
+export type TripVehicle = {
+  make: string;
+  model: string;
+  year: number | null;
+  color: string | null;
+  vehicle_type: VehicleType | null;
+  seat_capacity: number | null;
+  /** Only for the driver and accepted riders. */
+  plate_number: string | null;
+};
+
+/** The car riders should look for on a trip. */
+export async function getTripVehicle(tripId: string) {
+  let response;
+  try {
+    response = await withRequestTimeout(supabase.rpc('get_trip_vehicle', { p_trip_id: tripId }), 'Loading vehicle');
+  } catch (error) {
+    return { data: null as TripVehicle | null, error: error instanceof Error ? error : new Error('Unable to load the vehicle.') };
+  }
+  const rows = (response.data ?? []) as TripVehicle[];
+  return { data: rows[0] ?? null, error: response.error };
 }
 
 export async function listMyVehicles() {

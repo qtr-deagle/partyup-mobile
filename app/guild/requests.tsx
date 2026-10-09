@@ -10,9 +10,10 @@ import { getTheme } from '@/lib/theme';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, UserPlus, X } from 'lucide-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Image, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 // The Guild Leader's join-request queue, opened from the leader dashboard.
 // `?guildId=` skips the lookup; without it, the leader's own guild is used.
 export default function GuildRequestsScreen() {
@@ -77,7 +78,7 @@ export default function GuildRequestsScreen() {
     const { error } = await respondJoinRequest(request.id, accept);
     setBusyId(null);
     if (error) {
-      Alert.alert(accept ? 'Could not accept' : 'Could not decline', error.message);
+      showAlert(accept ? 'Could not accept' : 'Could not decline', error.message);
       await load();
       return;
     }
@@ -85,7 +86,7 @@ export default function GuildRequestsScreen() {
   }
 
   function confirmDecline(request: GuildJoinRequest) {
-    Alert.alert(`Decline ${request.display_name}?`, "They'll be told this time didn't work out and can ask another guild.", [
+    showAlert(`Decline ${request.display_name}?`, "They'll be told this time didn't work out and can ask another guild.", [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Decline', style: 'destructive', onPress: () => void answerRequest(request, false) },
     ]);

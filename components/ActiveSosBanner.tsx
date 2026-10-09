@@ -6,10 +6,11 @@ import { supabase, uniqueChannelName } from '@/lib/supabase';
 import * as Location from 'expo-location';
 import { ShieldCheck, Siren } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 const WATCH_INTERVAL_MS = 5000;
 
 // Global, app-wide: while the signed-in user has an active SOS, keeps a red
@@ -44,7 +45,7 @@ export default function ActiveSosBanner() {
       alertIdRef.current = null;
       setAlert(null);
       if (next.resolved_by && next.resolved_by !== userId) {
-        Alert.alert('SOS resolved', 'A PartyUp admin marked your emergency alert as resolved. Live location sharing has stopped.');
+        showAlert('SOS resolved', 'A PartyUp admin marked your emergency alert as resolved. Live location sharing has stopped.');
       }
     };
 
@@ -111,7 +112,7 @@ export default function ActiveSosBanner() {
     if (!alert) {
       return;
     }
-    Alert.alert("I'm safe", 'End the emergency alert and stop sharing your live location with PartyUp Guild Leaders?', [
+    showAlert("I'm safe", 'End the emergency alert and stop sharing your live location with PartyUp Guild Leaders?', [
       { text: 'Keep SOS on', style: 'cancel' },
       {
         text: "Yes, I'm safe",
@@ -121,7 +122,7 @@ export default function ActiveSosBanner() {
           setEnding(false);
           if (error) {
             feedback.error();
-            Alert.alert('Unable to end SOS', error.message);
+            showAlert('Unable to end SOS', error.message);
             return;
           }
           feedback.notify();

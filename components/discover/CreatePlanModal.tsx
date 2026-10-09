@@ -1,4 +1,5 @@
 import { riseIn } from '@/components/ui/motion';
+import { confirmDiscard } from '@/hooks/use-unsaved-changes';
 import { EMPTY_PICKS, MAX_PICKS_PER_CATEGORY, PLAN_CATEGORIES, PLAN_DESCRIPTION_MAX, type ChoiceCategory, type PlanPicks } from '@/lib/travelPlans';
 import { Check, X } from 'lucide-react-native';
 import { useState } from 'react';
@@ -27,6 +28,11 @@ export function CreatePlanModal({ visible, value, isDark, saving, errorMessage, 
 
   const complete = draft.ride.length > 0 && draft.destination.length > 0 && draft.food.length > 0;
 
+  function handleClose() {
+    if (saving) return;
+    confirmDiscard(JSON.stringify(draft) !== JSON.stringify(value ?? EMPTY_PICKS), onClose, { message: "Your plan changes aren't saved yet. Discard them?" });
+  }
+
   // Up to two picks per category; tapping a third replaces the oldest pick.
   function toggle(category: ChoiceCategory, option: string) {
     setDraft((current) => {
@@ -38,16 +44,16 @@ export function CreatePlanModal({ visible, value, isDark, saving, errorMessage, 
   }
 
   return (
-    <Modal transparent visible={visible} animationType="fade" onShow={() => setDraft(value ?? EMPTY_PICKS)} onRequestClose={onClose}>
+    <Modal transparent visible={visible} animationType="fade" onShow={() => setDraft(value ?? EMPTY_PICKS)} onRequestClose={handleClose}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} className="flex-1 items-center justify-center px-4">
-        <Pressable className="absolute inset-0 bg-black/40" onPress={onClose} />
+        <Pressable className="absolute inset-0 bg-black/40" onPress={handleClose} />
         <Animated.View entering={riseIn(0, 380)} style={{ maxHeight: height * 0.85 }} className={`w-full max-w-[420px] overflow-hidden rounded-[28px] ${background}`}>
           <View className="flex-row items-start justify-between px-5 pb-3 pt-5">
             <View className="flex-1 pr-3">
               <Text className={`text-headline-20 font-bold ${textPrimary}`}>Your plan</Text>
               <Text className={`mt-1 text-sm ${textSecondary}`}>Pick 1 or 2 in each. Your matches are scored from these.</Text>
             </View>
-            <TouchableOpacity onPress={onClose} hitSlop={10}><X size={22} color={isDark ? '#E2E8F0' : '#182847'} /></TouchableOpacity>
+            <TouchableOpacity onPress={handleClose} hitSlop={10}><X size={22} color={isDark ? '#E2E8F0' : '#182847'} /></TouchableOpacity>
           </View>
 
           <ScrollView style={{ flexShrink: 1 }} contentContainerClassName="px-5 pb-4 pt-1" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>

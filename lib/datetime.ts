@@ -22,23 +22,62 @@ export function parseTimestamp(value: string): Date {
   return new Date(iso);
 }
 
+export type Countdown = {
+  /** Small caption above the value: "Pickup in" or "Pickup". */
+  lead: string;
+  /** The big part: "45", "5h 20m", "Tomorrow", "11". */
+  value: string;
+  /** Smaller unit next to the value, if any: "min", "days". */
+  unit: string | null;
+  /** The exact time, e.g. "Today · 5:00 PM", "Wed, Oct 21 · 5:00 AM". */
+  when: string;
+  /** Under an hour away: worth highlighting. */
+  soon: boolean;
+};
+
+// Calendar day in Manila as a day number, so "tomorrow" means the next date,
+// not "within 24 hours".
+function manilaDayNumber(date: Date) {
+  // en-US numeric ("10/21/2026") formats the same on every JS engine.
+  const [month, day, year] = date
+    .toLocaleDateString('en-US', { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: MANILA_TZ })
+    .split('/')
+    .map(Number);
+  return Date.UTC(year, month - 1, day) / 86_400_000;
+}
+
 /**
- * Formats the time remaining until `startAt` as a short countdown label
- * (e.g. "2.3h", "45m"), or null if it's already passed / unset.
+ * How long until `startAt`, worded for a glance: "45 min", "5h 20m",
+ * "Tomorrow", "3 days", with the exact time underneath. Null once it has
+ * passed or when unset.
  */
-export function formatCountdown(startAt: string | null | undefined): string | null {
+export function describeCountdown(startAt: string | null | undefined, now: Date = new Date()): Countdown | null {
   if (!startAt) {
     return null;
   }
-  const diffMs = parseTimestamp(startAt).getTime() - Date.now();
+  const start = parseTimestamp(startAt);
+  const diffMs = start.getTime() - now.getTime();
   if (Number.isNaN(diffMs) || diffMs <= 0) {
     return null;
   }
-  const diffMinutes = diffMs / 60000;
-  if (diffMinutes < 60) {
-    return `${Math.round(diffMinutes)}m`;
+
+  const minutes = Math.ceil(diffMs / 60_000);
+  const dayGap = manilaDayNumber(start) - manilaDayNumber(now);
+  const clock = formatClockTime(start);
+  const dateLabel = start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: MANILA_TZ });
+
+  if (minutes < 60) {
+    return { lead: 'Pickup in', value: String(minutes), unit: minutes === 1 ? 'min' : 'mins', when: `${dayGap === 0 ? 'Today' : 'Tomorrow'} · ${clock}`, soon: true };
   }
-  return `${(diffMinutes / 60).toFixed(1)}h`;
+  if (dayGap === 0) {
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return { lead: 'Pickup in', value: rest ? `${hours}h ${rest}m` : `${hours}h`, unit: null, when: `Today · ${clock}`, soon: false };
+  }
+  if (dayGap === 1) {
+    return { lead: 'Pickup', value: 'Tomorrow', unit: null, when: `${dateLabel} · ${clock}`, soon: false };
+  }
+  return { lead: 'Pickup in', value: String(dayGap), unit: 'days', when: `${dateLabel} · ${clock}`, soon: false };
 }
 
 /**

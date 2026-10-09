@@ -1,16 +1,18 @@
 import { supabase } from '@/lib/supabase';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Link, useRouter } from 'expo-router';
-import { AlertCircle, ArrowLeft, ArrowRight, Calendar, Check, ChevronDown, Eye, EyeOff, Lock, Mail, MailCheck, MapPin, X } from 'lucide-react-native';
+import { AlertCircle, ArrowLeft, ArrowRight, Calendar, Check, ChevronDown, Eye, EyeOff, Lock, Mail, MailCheck, MapPin, Phone, X } from 'lucide-react-native';
+import { PHONE_INVALID_MESSAGE, formatPhone, isValidPhone, normalizePhone } from '@/lib/phone';
 import { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { BackHandler, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { useAuth } from '@/hooks/auth-provider';
 import OtpCodeInput, { EMAIL_OTP_LENGTH, isOtpComplete, useResendCooldown } from '@/components/OtpCodeInput';
 import LegalNameFields from '@/components/LegalNameFields';
 import MunicipalityPicker from '@/components/MunicipalityPicker';
 import { displayNameFrom, legalNameColumns, validateLegalName, type LegalName } from '@/lib/names';
-import TermsModal from '@/components/TermsModal';
+import LegalModal, { type LegalDoc } from '@/components/LegalModal';
 import { riseIn, useShake } from '@/components/ui/motion';
 import { rateLimitWaitSeconds } from '@/lib/rateLimit';
 import { feedback } from '@/lib/sounds';
@@ -90,6 +92,8 @@ export default function SignUpScreen() {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [municipality, setMunicipality] = useState<BulacanMunicipality | null>(null);
+  // 09XXXXXXXXX
+  const [phone, setPhone] = useState('');
   const [showMunicipalityPicker, setShowMunicipalityPicker] = useState(false);
   const [interests, setInterests] = useState<string[]>([]);
   const [showPassword, setShowPassword] = useState(false);
@@ -99,12 +103,12 @@ export default function SignUpScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [showTermsModal, setShowTermsModal] = useState(false);
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
   const [otpCode, setOtpCode] = useState('');
   const [resendingCode, setResendingCode] = useState(false);
   const resendCooldown = useResendCooldown();
   const { style: shakeStyle, shake } = useShake();
-  const [focusedField, setFocusedField] = useState<'email' | 'password' | 'confirm' | null>(null);
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | 'confirm' | 'phone' | null>(null);
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
   const [passwordTouched, setPasswordTouched] = useState(false);
@@ -130,16 +134,38 @@ export default function SignUpScreen() {
     }
   }, [errorMessage, shake]);
 
+  // Steps 1-3 hold typed details; leaving asks first. Step 4 (email code)
+  // comes after the account exists, so there's nothing left to lose.
+  const dirty =
+    step < 4 &&
+    !!(legalName.firstName.trim() || legalName.lastName.trim() || email.trim() || password || dateOfBirth || municipality || phone || interests.length);
+  const { allowLeave } = useUnsavedChangesGuard(dirty, {
+    title: 'Leave sign up?',
+    message: "What you've entered so far won't be saved.",
+  });
+
+  // Android back on steps 2-3 goes to the previous step instead of leaving.
+  useEffect(() => {
+    if (step <= 1 || step >= 4) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setErrorMessage(null);
+      setStep((current) => current - 1);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [step]);
+
   useEffect(() => {
     if (!loading && session) {
+      allowLeave();
       router.replace('/(tabs)');
     }
-  }, [loading, router, session]);
+  }, [allowLeave, loading, router, session]);
 
   async function handleSignUp() {
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (validateLegalName(legalName, noMiddleName) || !normalizedEmail || !password || !confirmPassword || !dateOfBirth.trim() || !municipality || interests.length === 0) {
+    if (validateLegalName(legalName, noMiddleName) || !normalizedEmail || !password || !confirmPassword || !dateOfBirth.trim() || !municipality || !isValidPhone(phone) || interests.length === 0) {
       setErrorMessage('Please complete all profile details and select at least one interest.');
       return;
     }
@@ -187,6 +213,7 @@ export default function SignUpScreen() {
           ...legalNameColumns(legalName, noMiddleName),
           date_of_birth: dateOfBirth.trim(),
           municipality,
+          phone,
           interests,
         },
       },
@@ -275,6 +302,7 @@ export default function SignUpScreen() {
         date_of_birth: dateOfBirth.trim(),
         interests,
         city: municipality,
+        phone,
         country: 'Philippines',
         terms_accepted_at: new Date().toISOString(),
       })
@@ -337,6 +365,10 @@ export default function SignUpScreen() {
       }
       if (!municipality) {
         setErrorMessage('Select your city or municipality in Bulacan.');
+        return;
+      }
+      if (!isValidPhone(phone)) {
+        setErrorMessage(phone ? PHONE_INVALID_MESSAGE : 'Enter your mobile number.');
         return;
       }
     }
@@ -421,15 +453,21 @@ export default function SignUpScreen() {
       </View>
 
       <KeyboardAvoidingView behavior="padding" className="flex-1">
-        <ScrollView contentContainerClassName="flex-grow" bounces={false} overScrollMode="never" keyboardShouldPersistTaps="handled">
-          <Animated.View entering={riseIn(0, 450)} className="px-7 pb-6 pt-5">
+        {/* Centered card, like sign-in; long steps scroll. */}
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: 20, paddingTop: 20, paddingBottom: insets.bottom + 20 }}
+          bounces={false}
+          overScrollMode="never"
+          keyboardShouldPersistTaps="handled">
+          <View className="w-full max-w-[420px] self-center">
+          <Animated.View entering={riseIn(0, 450)} className="px-2 pb-5">
             <Text className="text-headline-24 font-bold text-[#2445B8]">{stepTitle}</Text>
             <Text className="mt-1 text-[14px] leading-[21px] text-[#697386]">{stepSubtitle}</Text>
           </Animated.View>
 
           {/* Separate layers: the entering animation and the shake both drive transform. */}
-          <Animated.View entering={riseIn(120, 500)} className="flex-grow">
-            <View className="flex-1 rounded-t-[32px] bg-white px-6 pt-7 shadow-lg shadow-black/10" style={{ paddingBottom: insets.bottom + 24 }}>
+          <Animated.View entering={riseIn(120, 500)}>
+            <View className="rounded-[28px] bg-white px-6 py-7 shadow-lg shadow-black/10">
               <Animated.View style={shakeStyle}>
                 {/* key={step} remounts the fields each step so they slide in fresh. */}
                 <Animated.View key={step} entering={FadeInRight.duration(280)} className="gap-5">
@@ -475,6 +513,10 @@ export default function SignUpScreen() {
                       <TouchableOpacity onPress={() => setShowMunicipalityPicker(true)} className={pickerBoxClass(showMunicipalityPicker)}><MapPin size={18} color={showMunicipalityPicker ? AUTH_BRAND : AUTH_ICON} /><Text className={`ml-3 flex-1 text-[15px] ${municipality ? 'text-[#273142]' : 'text-[#9AA3B1]'}`}>{municipality ?? 'Select where you live'}</Text><ChevronDown size={18} color={AUTH_ICON} /></TouchableOpacity>
                       <Text className="ml-1 mt-1.5 text-[11px] leading-4 text-[#697386]">PartyUp is currently for Bulacan residents. You can still travel anywhere.</Text>
                     </View>
+                    <AuthField label="Mobile Number" focused={focusedField === 'phone'} hint="Only your trusted circle and the PartyUp safety team can see it.">
+                      <Phone size={18} color={focusedField === 'phone' ? AUTH_BRAND : AUTH_ICON} />
+                      <TextInput className={AUTH_INPUT_CLASS} placeholder="0917 123 4567" placeholderTextColor={AUTH_PLACEHOLDER} keyboardType="phone-pad" autoComplete="tel" textContentType="telephoneNumber" maxLength={13} value={formatPhone(phone)} onChangeText={(text) => setPhone(normalizePhone(text))} {...focusProps('phone')} />
+                    </AuthField>
                   </> : null}
 
                   {step === 3 ? (
@@ -520,8 +562,12 @@ export default function SignUpScreen() {
                       </View>
                       <Text className="flex-1 text-[13px] leading-5 text-[#697386]">
                         I agree to the{' '}
-                        <Text className="font-semibold text-[#2445B8]" onPress={() => setShowTermsModal(true)}>
+                        <Text className="font-semibold text-[#2445B8]" onPress={() => setLegalDoc('terms')}>
                           Terms and Conditions
+                        </Text>{' '}
+                        and{' '}
+                        <Text className="font-semibold text-[#2445B8]" onPress={() => setLegalDoc('privacy')}>
+                          Privacy Policy
                         </Text>
                       </Text>
                     </TouchableOpacity>
@@ -563,13 +609,19 @@ export default function SignUpScreen() {
                 </Text>
               ) : null}
 
-              <View className="flex-1" />
-              {step < 3 ? <Text className="mt-8 px-3 text-center text-[11px] leading-4 text-[#9AA3B1]">By signing up, you agree to our Terms of Service and Privacy Policy</Text> : null}
             </View>
+            {step < 3 ? (
+              <Text className="mt-4 px-3 text-center text-[11px] leading-4 text-[#9AA3B1]">
+                By signing up, you agree to our{' '}
+                <Text className="font-semibold text-[#2445B8]" onPress={() => setLegalDoc('terms')}>Terms of Service</Text> and{' '}
+                <Text className="font-semibold text-[#2445B8]" onPress={() => setLegalDoc('privacy')}>Privacy Policy</Text>
+              </Text>
+            ) : null}
           </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
-      <TermsModal visible={showTermsModal} onClose={() => setShowTermsModal(false)} />
+      <LegalModal visible={legalDoc !== null} doc={legalDoc ?? 'terms'} onClose={() => setLegalDoc(null)} />
     </View>
   );
 }

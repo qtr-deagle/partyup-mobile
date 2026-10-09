@@ -11,7 +11,7 @@ import { chatScreenshot, upload } from './images.mjs';
 const REPORTS = [
   {
     reporter: 'enzo', reported: 'marco', type: 'payment', trip: 'marco-marilao', status: 'open', hours: 26,
-    details: 'I sent ₱88 via GCash for the Meycauayan to SM Marilao ride (ref GCASH-4471029381) but the driver still has not confirmed it after 4 days.',
+    details: 'I paid ₱89.60 with GCash in the app for the Meycauayan to SM Marilao ride, but it still says Processing after 4 days. GCash shows the money left my account.',
     evidence: { title: 'GCASH RECEIPT', lines: [[true, 'SENT P88.00 TO MARCO R.'], [true, 'REF 4471029381'], [false, 'CHECK KO MAMAYA'], [true, 'SIR PAKI-CONFIRM PO']] },
   },
   {

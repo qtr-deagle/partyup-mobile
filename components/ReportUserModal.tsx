@@ -2,9 +2,12 @@ import { MAX_REPORT_EVIDENCE_PHOTOS, REPORT_TYPES, REPORT_TYPE_LABELS, submitRep
 import * as ImagePicker from 'expo-image-picker';
 import { ImagePlus, X } from 'lucide-react-native';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { DraftBanner } from '@/components/ui/DraftBanner';
+import { confirmDiscard, useDraft } from '@/hooks/use-unsaved-changes';
+import { showAlert } from '@/lib/dialog';
 type Props = {
   visible: boolean;
   onClose: () => void;
@@ -40,9 +43,33 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
     setErrorMessage(null);
   }
 
-  function handleClose() {
+  // Typed details/photos survive an accidental close: ask first, and keep a
+  // draft per person (or trip) until it's sent or discarded.
+  const dirty = !!details.trim() || evidenceUris.length > 0;
+  const draft = useDraft(
+    visible ? `report:${variant}:${reportedUserId ?? tripId ?? 'unknown'}` : null,
+    { reportType, details, evidenceUris },
+    { isEmpty: () => !dirty }
+  );
+
+  function restoreDraft() {
+    const saved = draft.restore();
+    if (!saved) return;
+    setReportType(saved.reportType);
+    setDetails(saved.details);
+    setEvidenceUris(saved.evidenceUris ?? []);
+  }
+
+  function finish() {
     reset();
     onClose();
+  }
+
+  function handleClose() {
+    confirmDiscard(dirty, () => {
+      draft.clear();
+      finish();
+    }, { message: "Your report isn't sent yet. Discard it?" });
   }
 
   async function handlePickImages() {
@@ -83,14 +110,15 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
       setErrorMessage(error.message);
       return;
     }
-    Alert.alert('Report submitted', "Thanks for letting us know. Our team will review it, and you can follow along in Profile > Help & Reports.");
-    handleClose();
+    showAlert('Report submitted', "Thanks for letting us know. Our team will review it, and you can follow along in Profile > Help & Reports.");
+    draft.clear();
+    finish();
   }
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable style={StyleSheet.absoluteFillObject} className="bg-black/55" onPress={handleClose} />
+        <Pressable style={StyleSheet.absoluteFill} className="bg-black/55" onPress={handleClose} />
         <View style={{ backgroundColor: sheetBackground, paddingBottom: insets.bottom + 36 }} className="rounded-t-[32px] px-5 pt-5 shadow-2xl">
           <View className="flex-row items-center justify-between">
             <Text className="text-headline-24 font-bold" style={{ color: primaryText }}>
@@ -100,6 +128,12 @@ export function ReportUserModal({ visible, onClose, isDark, reportedUserId, trip
               <X size={18} color={mutedText} />
             </TouchableOpacity>
           </View>
+
+          {draft.offer ? (
+            <View className="mt-4">
+              <DraftBanner savedAt={draft.offer.savedAt} preview={draft.offer.value.details.slice(0, 40) || null} isDark={isDark} onContinue={restoreDraft} onStartFresh={draft.dismiss} />
+            </View>
+          ) : null}
 
           {errorMessage ? (
             <View className="mt-4 rounded-xl bg-[#FEE2E2] px-4 py-3">

@@ -18,6 +18,8 @@ import { Poppins_600SemiBold, Poppins_700Bold, Poppins_800ExtraBold, useFonts as
 import ActiveSosBanner from '@/components/ActiveSosBanner';
 import WarningModeBanner from '@/components/WarningModeBanner';
 import InAppNotifier from '@/components/InAppNotifier';
+import OfflineBanner from '@/components/OfflineBanner';
+import DialogHost from '@/components/ui/DialogHost';
 import SosAlertOverlay from '@/components/SosAlertOverlay';
 import SosEdgeTab from '@/components/SosEdgeTab';
 import { AuthProvider, useAuth } from '@/hooks/auth-provider';
@@ -94,6 +96,7 @@ function RootLayoutContent() {
         <Stack.Screen name="verify-id" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         <Stack.Screen name="verification-required" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="account-suspended" options={{ headerShown: false, gestureEnabled: false }} />
+        <Stack.Screen name="account-pending-deletion" options={{ headerShown: false, gestureEnabled: false }} />
         <Stack.Screen name="verify-vehicle" options={{ presentation: 'fullScreenModal', headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', headerShown: false }} />
         <Stack.Screen name="friends" options={{ headerShown: false }} />
@@ -116,6 +119,7 @@ function RootLayoutContent() {
         <Stack.Screen name="trip/create-tour" options={{ headerShown: false }} />
         <Stack.Screen name="trip/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="trip/chat/[id]" options={{ headerShown: false }} />
+        <Stack.Screen name="chat/group/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="trip/join/[code]" options={{ headerShown: false }} />
         <Stack.Screen name="trip-history" options={{ headerShown: false }} />
       </Stack>
@@ -125,6 +129,8 @@ function RootLayoutContent() {
       <WarningModeBanner />
       <ActiveSosBanner />
       <SosAlertOverlay />
+      <OfflineBanner />
+      <DialogHost />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </ThemeProvider>
   );
@@ -154,6 +160,10 @@ function VerificationGate() {
   // Staff suspend accounts from the website by clearing is_active. Admins
   // can't be suspended, so only travelers and Guild Leaders are held here.
   const isSuspended = Boolean(session) && profile !== null && !profile.is_active && profile.role !== 'admin';
+  // A deletion request deactivates the account for 30 days; signing in during
+  // that window lands here so the user can restore it. Checked before
+  // suspension because the request also clears is_active.
+  const pendingDeletion = Boolean(session) && profile !== null && profile.deletion_scheduled_for != null;
 
   useEffect(() => {
     if (!navigationState?.key || !profileReady) {
@@ -161,9 +171,24 @@ function VerificationGate() {
     }
 
     if (!session) {
-      if (currentSegment === 'verification-required' || currentSegment === 'account-suspended') {
+      if (
+        currentSegment === 'verification-required' ||
+        currentSegment === 'account-suspended' ||
+        currentSegment === 'account-pending-deletion'
+      ) {
         router.replace('/(auth)/sign-in');
       }
+      return;
+    }
+
+    if (pendingDeletion) {
+      if (currentSegment !== 'account-pending-deletion') {
+        router.replace('/account-pending-deletion');
+      }
+      return;
+    }
+    if (currentSegment === 'account-pending-deletion') {
+      router.replace(isSuspended ? '/account-suspended' : needsVerification ? '/verification-required' : '/(tabs)');
       return;
     }
 
@@ -183,7 +208,7 @@ function VerificationGate() {
     } else if (!needsVerification && currentSegment === 'verification-required') {
       router.replace('/(tabs)');
     }
-  }, [currentSegment, isSuspended, navigationState?.key, needsVerification, profileReady, router, session]);
+  }, [currentSegment, isSuspended, navigationState?.key, needsVerification, pendingDeletion, profileReady, router, session]);
 
   return null;
 }

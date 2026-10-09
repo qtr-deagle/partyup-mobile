@@ -24,9 +24,10 @@ import {
   Users,
 } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { ActivityIndicator, Alert, Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import Animated from 'react-native-reanimated';
 
+import { showAlert } from '@/lib/dialog';
 type Props = {
   isDark: boolean;
   // Platform-wide numbers (admins only).
@@ -52,7 +53,7 @@ export default function StaffDashboard({ isDark, overview, guildSnapshot = null,
     });
 
   const showReportsInfo = () =>
-    Alert.alert('User reports', 'Reports are handled by PartyUp admins on the admin website, where they can view evidence and resolve them.');
+    showAlert('User reports', 'Reports are handled by PartyUp admins on the admin website, where they can view evidence and resolve them.');
 
   const sosCount = overview?.active_sos.length ?? 0;
   const queueTotal = overview ? overview.pending_ids + overview.pending_vehicles + overview.open_reports : 0;

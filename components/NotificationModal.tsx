@@ -2,10 +2,11 @@ import { EmptyState, enterFromBelow } from '@/components/ui/motion';
 import * as Haptics from 'expo-haptics';
 import { Bell, BellOff, CheckCheck, MessageCircle, Plane, ShieldAlert, Sparkles, UserPlus, X, type LucideIcon } from 'lucide-react-native';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Animated, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { showAlert } from '@/lib/dialog';
 interface Notification {
   id: string;
   type: 'trip' | 'message' | 'match' | 'safety' | 'system';
@@ -81,7 +82,7 @@ export default function NotificationModal({
     if (onNotificationPress) {
       onNotificationPress(notification);
     } else {
-      Alert.alert(notification.title, notification.message);
+      showAlert(notification.title, notification.message);
     }
   };
 

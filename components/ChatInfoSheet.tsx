@@ -1,9 +1,10 @@
 import { riseIn } from '@/components/ui/motion';
+import { mutedUntilLabel } from '@/lib/chatMute';
 import { parseTimestamp } from '@/lib/datetime';
 import { Image } from 'expo-image';
 import { Bell, BellOff, Calendar, ChevronRight, Flag, MessageCircle, Pin, PinOff, Search, Shield, Trash2, UserMinus, UserRound } from 'lucide-react-native';
 import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Switch, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -17,6 +18,8 @@ type Props = {
   messageCount: number;
   firstMessageAt: string | null;
   muted: boolean;
+  /** When a timed mute ends; null while muted means until turned back on. */
+  mutedUntil?: string | null;
   pinned: boolean;
   // Newest first; only the first six are shown.
   photos: { key: string; url: string }[];
@@ -32,7 +35,7 @@ type Props = {
 };
 
 // Messenger-style "chat info" sheet for a direct conversation.
-export function ChatInfoSheet({ visible, onClose, isDark, name, avatarUrl, status, messageCount, firstMessageAt, muted, pinned, photos, onViewProfile, onToggleMute, onTogglePin, onOpenPhoto, onDelete, onSearch, onReport, onUnfriend, onBlock }: Props) {
+export function ChatInfoSheet({ visible, onClose, isDark, name, avatarUrl, status, messageCount, firstMessageAt, muted, mutedUntil, pinned, photos, onViewProfile, onToggleMute, onTogglePin, onOpenPhoto, onDelete, onSearch, onReport, onUnfriend, onBlock }: Props) {
   const insets = useSafeAreaInsets();
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   // Three across, inside the sheet's 16px padding with 4px gaps.
@@ -99,8 +102,27 @@ export function ChatInfoSheet({ visible, onClose, isDark, name, avatarUrl, statu
 
               <Text className={`mb-2 ml-1 mt-4 text-[11px] font-bold uppercase tracking-wider ${secondary}`}>Actions</Text>
               <View className={`overflow-hidden rounded-2xl ${group}`}>
-                <InfoRow icon={muted ? <Bell size={18} color={iconColor} /> : <BellOff size={18} color={iconColor} />} label={muted ? 'Unmute notifications' : 'Mute notifications'} textClass={primary} divider={divider} onPress={onToggleMute} />
-                <InfoRow icon={pinned ? <PinOff size={18} color={iconColor} /> : <Pin size={18} color={iconColor} />} label={pinned ? 'Unpin chat' : 'Pin chat'} textClass={primary} divider={divider} onPress={onTogglePin} last />
+                <InfoRow
+                  icon={muted ? <BellOff size={18} color={iconColor} /> : <Bell size={18} color={iconColor} />}
+                  label="Mute notifications"
+                  detail={muted ? mutedUntilLabel(mutedUntil) : undefined}
+                  textClass={primary}
+                  secondaryClass={secondary}
+                  divider={divider}
+                  onPress={onToggleMute}
+                  trailing={<ToggleSwitch value={muted} onChange={onToggleMute} isDark={isDark} />}
+                />
+                <InfoRow
+                  icon={pinned ? <Pin size={18} color={iconColor} /> : <PinOff size={18} color={iconColor} />}
+                  label="Pin chat"
+                  detail={pinned ? 'Kept at the top of your chats' : undefined}
+                  textClass={primary}
+                  secondaryClass={secondary}
+                  divider={divider}
+                  onPress={onTogglePin}
+                  trailing={<ToggleSwitch value={pinned} onChange={onTogglePin} isDark={isDark} />}
+                  last
+                />
               </View>
 
               <Text className={`mb-2 ml-1 mt-4 text-[11px] font-bold uppercase tracking-wider ${secondary}`}>Privacy & support</Text>
@@ -128,12 +150,48 @@ function QuickAction({ label, icon, onPress, isDark }: { label: string; icon: Re
   );
 }
 
-function InfoRow({ icon, label, textClass, divider, onPress, last }: { icon: ReactNode; label: string; textClass: string; divider: string; onPress?: () => void; last?: boolean }) {
+// No chevron: none of these rows opens another screen. Toggles show a switch.
+function InfoRow({
+  icon,
+  label,
+  detail,
+  textClass,
+  secondaryClass,
+  divider,
+  onPress,
+  trailing,
+  last,
+}: {
+  icon: ReactNode;
+  label: string;
+  detail?: string;
+  textClass: string;
+  secondaryClass?: string;
+  divider: string;
+  onPress?: () => void;
+  trailing?: ReactNode;
+  last?: boolean;
+}) {
   return (
     <TouchableOpacity disabled={!onPress} onPress={onPress} activeOpacity={0.6} className={`flex-row items-center gap-3 px-4 py-3 ${last ? '' : `border-b ${divider}`}`}>
       {icon}
-      <Text className={`flex-1 text-sm font-medium ${textClass}`}>{label}</Text>
-      {onPress ? <ChevronRight size={18} color="#94A3B8" /> : null}
+      <View className="flex-1">
+        <Text className={`text-sm font-medium ${textClass}`}>{label}</Text>
+        {detail ? <Text className={`mt-0.5 text-xs ${secondaryClass ?? ''}`}>{detail}</Text> : null}
+      </View>
+      {trailing}
     </TouchableOpacity>
+  );
+}
+
+export function ToggleSwitch({ value, onChange, isDark }: { value: boolean; onChange: () => void; isDark: boolean }) {
+  return (
+    <Switch
+      value={value}
+      onValueChange={onChange}
+      trackColor={{ false: isDark ? '#334155' : '#D0D5DD', true: '#93B4FF' }}
+      thumbColor={value ? '#284BD6' : '#FFFFFF'}
+      ios_backgroundColor={isDark ? '#334155' : '#D0D5DD'}
+    />
   );
 }

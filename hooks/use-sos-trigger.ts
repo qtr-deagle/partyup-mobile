@@ -3,8 +3,9 @@ import { triggerSosAlert } from '@/lib/safety';
 import { feedback } from '@/lib/sounds';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 
+
+import { showAlert } from '@/lib/dialog';
 // The confirm-then-send SOS flow behind the Home SOS card.
 export function useSosTrigger() {
   const router = useRouter();
@@ -17,11 +18,11 @@ export function useSosTrigger() {
     setSendingSos(false);
     if (error) {
       feedback.error();
-      Alert.alert('Unable to send SOS', error.message);
+      showAlert('Unable to send SOS', error.message);
       return;
     }
     feedback.notify();
-    Alert.alert(
+    showAlert(
       'SOS sent',
       'PartyUp Guild Leaders can now see your live location' +
         (data && data.recipient_count > 0
@@ -36,13 +37,13 @@ export function useSosTrigger() {
       return;
     }
     if (profile?.emergency_sos_enabled === false) {
-      Alert.alert('Emergency SOS is disabled', 'Enable Emergency SOS in Settings to use this feature.', [
+      showAlert('Emergency SOS is disabled', 'Enable Emergency SOS in Settings to use this feature.', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Open Settings', onPress: () => router.push('/modal') },
       ]);
       return;
     }
-    Alert.alert(
+    showAlert(
       'Send emergency SOS?',
       "This immediately alerts PartyUp Guild Leaders and your trusted circle, and shares your live location until you tap \"I'm safe\".",
       [

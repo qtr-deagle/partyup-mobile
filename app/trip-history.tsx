@@ -1,6 +1,7 @@
 import { EmptyState, SkeletonRow } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { listMyTrips, type MyTrip, type TripType } from '@/lib/carpool';
 import { formatDateTime } from '@/lib/datetime';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -71,6 +72,7 @@ export default function TripHistoryScreen() {
       void load();
     }, [load])
   );
+  const { refreshControl } = usePullToRefresh(load);
 
   const places = useMemo(() => {
     const groups = new Map<string, { name: string; trips: CompletedTrip[] }>();
@@ -136,7 +138,7 @@ export default function TripHistoryScreen() {
         })}
       </ScrollView>
 
-      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 20 }}>
+      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pt-4" contentContainerStyle={{ paddingBottom: insets.bottom + 20 }} refreshControl={refreshControl}>
         {errorMessage ? (
           <View className="rounded-xl bg-[#FEE2E2] px-4 py-3">
             <Text className="text-sm text-[#B91C1C]">{errorMessage}</Text>

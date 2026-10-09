@@ -4,6 +4,7 @@ import { riseIn, SuccessOverlay, useShake } from '@/components/ui/motion';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
 import { useAuth } from '@/hooks/auth-provider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useUnsavedChangesGuard } from '@/hooks/use-unsaved-changes';
 import {
   getMyDriverLicense,
   hasVerifiedIdLicense,
@@ -121,6 +122,10 @@ export default function VerifyVehicleScreen() {
     }, [loadLicense])
   );
   const { style: shakeStyle, shake } = useShake();
+  // Document photos taken but not sent yet: ask before leaving.
+  useUnsavedChangesGuard(!submitted && Object.values(photos).some(Boolean), {
+    message: "Your photos aren't sent yet. If you leave, you'll need to take them again.",
+  });
   const finishSubmitted = useCallback(() => {
     setSubmitted(false);
     router.back();

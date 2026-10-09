@@ -24,7 +24,7 @@ export const PEOPLE = [
   { key: 'ramon', first: 'Ramon', last: 'Bautista', dob: '12/19/1992', city: 'San Rafael', role: 'traveler', verification: 'approved', gender: 'male', interests: ['Adventure', 'Budget'], demos: 'Rider, reported for behavior' },
   { key: 'enzo', first: 'Enzo', last: 'Villanueva', dob: '04/27/1997', city: 'Paombong', role: 'traveler', verification: 'approved', gender: 'male', interests: ['Food', 'Beach'], demos: 'Rider, filed a payment report' },
   { key: 'lia', first: 'Lia', last: 'Navarro', dob: '06/11/2000', city: 'Calumpit', role: 'traveler', verification: 'approved', gender: 'female', interests: ['Beach', 'Wellness'], demos: 'New rider (Rookie), open support ticket' },
-  { key: 'kim', first: 'Kim', last: 'Aquino', dob: '10/05/1998', city: 'Meycauayan', role: 'traveler', verification: 'approved', gender: 'female', interests: ['Beach', 'Backpacking'], demos: 'No guild yet, pending request to join Malolos' },
+  { key: 'kim', first: 'Kim', last: 'Aquino', dob: '10/05/1998', city: 'Meycauayan', role: 'traveler', verification: 'approved', gender: 'female', interests: ['Beach', 'Backpacking'], noPhone: true, demos: 'No guild yet, pending request to join Malolos; no mobile number yet (sees the add-number prompt, trips blocked)' },
 
   // Vehicle review queue: approved people with a vehicle waiting
   { key: 'rico', first: 'Rico', last: 'Galang', dob: '01/23/1990', city: 'Baliwag', role: 'traveler', verification: 'approved', gender: 'male', interests: ['Adventure', 'City'], demos: 'Vehicle queue: owned car, AI passed, pending license' },
@@ -86,6 +86,8 @@ async function createPerson(p) {
       country: 'Philippines',
       terms_accepted_at: new Date().toISOString(),
       gcash_handle: p.verification === 'approved' ? handle : null,
+      // Mobile numbers are required for trips (202610090005); same fake number as the handle.
+      phone: p.noPhone ? null : handle,
       ...(p.verification === 'approved' ? { verification_status: 'approved' } : {}),
     })
     .eq('id', data.user.id);

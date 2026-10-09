@@ -1,4 +1,5 @@
 import { submitUserRating } from '@/lib/ratings';
+import { confirmDiscard } from '@/hooks/use-unsaved-changes';
 import { Star, X } from 'lucide-react-native';
 import { useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -31,8 +32,11 @@ export function RateUserModal({ visible, onClose, isDark, targetUserId, tripId, 
   const inputBg = isDark ? '#111B2E' : '#FBFCFE';
 
   function handleClose() {
-    setErrorMessage(null);
-    onClose();
+    if (submitting) return;
+    confirmDiscard(rating !== (initialRating ?? 0) || comment.trim() !== (initialComment ?? '').trim(), () => {
+      setErrorMessage(null);
+      onClose();
+    }, { message: "Your rating isn't submitted yet. Discard it?" });
   }
 
   async function handleSubmit() {
@@ -49,13 +53,13 @@ export function RateUserModal({ visible, onClose, isDark, targetUserId, tripId, 
       return;
     }
     onSubmitted(rating, comment.trim() || null);
-    handleClose();
+    onClose();
   }
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={handleClose}>
       <View style={{ flex: 1, justifyContent: 'flex-end' }}>
-        <Pressable style={StyleSheet.absoluteFillObject} className="bg-black/55" onPress={handleClose} />
+        <Pressable style={StyleSheet.absoluteFill} className="bg-black/55" onPress={handleClose} />
         <View style={{ backgroundColor: sheetBackground, paddingBottom: insets.bottom + 36 }} className="rounded-t-[32px] px-5 pt-5 shadow-2xl">
           <View className="flex-row items-center justify-between">
             <Text className="text-headline-24 font-bold" style={{ color: primaryText }}>
@@ -93,7 +97,11 @@ export function RateUserModal({ visible, onClose, isDark, targetUserId, tripId, 
             onChangeText={setComment}
           />
 
-          <TouchableOpacity onPress={handleSubmit} disabled={submitting} className="mt-5 rounded-2xl bg-[#2A55D4] py-4">
+          <Text className="mt-4 text-center text-[12px]" style={{ color: mutedText }}>
+            Ratings are final and can&apos;t be changed after you submit.
+          </Text>
+
+          <TouchableOpacity onPress={handleSubmit} disabled={submitting} className="mt-3 rounded-2xl bg-[#2A55D4] py-4">
             {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text className="text-center text-base font-bold text-white">Submit Rating</Text>}
           </TouchableOpacity>
         </View>

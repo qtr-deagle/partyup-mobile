@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/auth-provider';
 import { ProfileTrophies } from '@/components/guild/ProfileTrophies';
 import { ReportUserModal } from '@/components/ReportUserModal';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
+import { ConfirmDialog, useConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { riseIn, Skeleton } from '@/components/ui/motion';
 import { Card } from '@/components/ui/screen-header';
 import { formatResidence } from '@/lib/bulacan';
@@ -15,9 +16,9 @@ import { getLoadout, type Loadout } from '@/lib/cosmetics';
 import { cancelGuildInvite, getGuildInviteStatus, inviteToGuild, type GuildInviteStatus } from '@/lib/guilds';
 import { createOrGetDirectThread, getFriendRequestStatuses, getProfileById, removeFriend, respondToFriendRequest, sendFriendRequest, type SearchProfile } from '@/lib/social';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, BadgeCheck, Check, Flag, Lock, MailCheck, MapPin, Pencil, Shield, ShieldOff, Star, UserPlus, Users, X } from 'lucide-react-native';
-import { useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, View } from 'react-native';
+import { ArrowLeft, BadgeCheck, Check, Clock3, Flag, Lock, MailCheck, MapPin, MessageCircle, PartyPopper, Pencil, Shield, ShieldOff, Star, UserCheck, UserMinus, UserPlus, Users, X } from 'lucide-react-native';
+import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Image, ScrollView, Text, View } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -29,6 +30,71 @@ function getAge(dateOfBirth: string | null) {
   const hasHadBirthdayThisYear = today.getMonth() > dob.getMonth() || (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
   if (!hasHadBirthdayThisYear) age -= 1;
   return age;
+}
+
+function ActionButton({
+  label,
+  sublabel,
+  icon,
+  variant,
+  isDark,
+  busy,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  sublabel?: string;
+  icon: ReactNode;
+  variant: 'primary' | 'soft' | 'pending';
+  isDark: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const box =
+    variant === 'primary'
+      ? 'bg-[#284BD6]'
+      : variant === 'pending'
+        ? isDark
+          ? 'border border-[#5B4A1E] bg-[#2A2414]'
+          : 'border border-[#F5D9A6] bg-[#FFF8EB]'
+        : isDark
+          ? 'border border-[#22324B] bg-[#18253C]'
+          : 'border border-[#E1E7F2] bg-white';
+  const text = variant === 'primary' ? 'text-white' : variant === 'pending' ? (isDark ? 'text-[#FCD34D]' : 'text-[#B45309]') : isDark ? 'text-[#E2E8F0]' : 'text-[#1B2340]';
+  return (
+    <AnimatedPressable onPress={onPress} disabled={busy || disabled} scaleTo={0.97} className="flex-1">
+      <View className={`h-[52px] flex-row items-center justify-center gap-2 rounded-2xl px-3 ${box}`}>
+        {busy ? (
+          <ActivityIndicator color={variant === 'primary' ? '#FFFFFF' : isDark ? '#E2E8F0' : '#284BD6'} />
+        ) : (
+          <>
+            {icon}
+            <View className="items-center">
+              <Text className={`text-[15px] font-bold ${text}`}>{label}</Text>
+              {sublabel ? <Text className={`text-[11px] font-medium opacity-70 ${text}`}>{sublabel}</Text> : null}
+            </View>
+          </>
+        )}
+      </View>
+    </AnimatedPressable>
+  );
+}
+
+// The person's photo with a small action badge, for the top of dialogs.
+function DialogAvatar({ url, name, badge, badgeColor, isDark }: { url: string | null; name: string; badge: ReactNode; badgeColor: string; isDark: boolean }) {
+  return (
+    <View className="h-[76px] w-[76px]">
+      <View className={`h-[76px] w-[76px] items-center justify-center overflow-hidden rounded-full border-4 bg-[#B7C4EC] ${isDark ? 'border-[#18253C]' : 'border-[#EEF2FF]'}`}>
+        {url ? <Image source={{ uri: url }} className="h-full w-full" /> : <Text className="text-[28px] font-bold text-[#24314A]">{name.charAt(0).toUpperCase()}</Text>}
+      </View>
+      <View
+        className={`absolute -bottom-0.5 -right-0.5 h-7 w-7 items-center justify-center rounded-full border-[3px] ${isDark ? 'border-[#111B2E]' : 'border-white'}`}
+        style={{ backgroundColor: badgeColor }}>
+        {badge}
+      </View>
+    </View>
+  );
 }
 
 export default function PublicProfileScreen() {
@@ -49,6 +115,8 @@ export default function PublicProfileScreen() {
   const [inviteStatus, setInviteStatus] = useState<GuildInviteStatus | null>(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [loadout, setLoadout] = useState<Loadout>({ banner: null, frame: null });
+  const [messaging, setMessaging] = useState(false);
+  const dialog = useConfirmDialog();
   const displayName = fullProfile?.display_name ?? params.displayName ?? 'PartyUp traveler';
   const interests = useMemo(() => {
     if (fullProfile) return fullProfile.interests;
@@ -90,14 +158,58 @@ export default function PublicProfileScreen() {
     }, [loadProfile])
   );
 
-  async function handleRequest() {
-    if (requestStatus === 'outgoing_pending' && requestId) {
-      Alert.alert('Cancel friend request?', `Cancel your request to ${displayName}?`, [
-        { text: 'Keep request', style: 'cancel' },
-        { text: 'Cancel request', style: 'destructive', onPress: () => void handleCancelRequest() },
-      ]);
+  const avatarHero = (badge: ReactNode, badgeColor: string) => (
+    <DialogAvatar url={avatarUrl} name={displayName} badge={badge} badgeColor={badgeColor} isDark={isDark} />
+  );
+
+  function confirmCancelRequest() {
+    dialog.open({
+      hero: avatarHero(<Clock3 size={13} color="#FFFFFF" />, '#E5A00D'),
+      title: 'Cancel friend request?',
+      message: `${displayName} won't see your request anymore. You can send a new one later.`,
+      tone: 'danger',
+      confirmLabel: 'Cancel request',
+      cancelLabel: 'Keep request',
+      onConfirm: handleCancelRequest,
+    });
+  }
+
+  function confirmDeclineRequest() {
+    dialog.open({
+      hero: avatarHero(<X size={13} color="#FFFFFF" />, '#E32727'),
+      title: 'Decline request?',
+      message: `${displayName} won't be notified that you declined.`,
+      tone: 'danger',
+      confirmLabel: 'Decline',
+      cancelLabel: 'Not now',
+      onConfirm: async () => {
+        setRequesting(true);
+        setErrorMessage(null);
+        const { error } = await respondToFriendRequest(requestId, 'rejected');
+        setRequesting(false);
+        if (error) {
+          setErrorMessage(error.message);
+          return;
+        }
+        setRequestStatus('');
+        setRequestId('');
+      },
+    });
+  }
+
+  async function openChat() {
+    setMessaging(true);
+    setErrorMessage(null);
+    const result = await createOrGetDirectThread(params.id);
+    setMessaging(false);
+    if (result.error) {
+      setErrorMessage(result.error.message);
       return;
     }
+    router.push({ pathname: '/(tabs)/chat', params: { threadId: String(result.data) } });
+  }
+
+  async function handleRequest() {
     setRequesting(true);
     setErrorMessage(null);
     const { data, error } = requestStatus === 'incoming_pending' && requestId
@@ -118,10 +230,15 @@ export default function PublicProfileScreen() {
         return;
       }
       setRequestStatus('accepted');
-      Alert.alert('You are now friends! 🎉', `Say hi to ${displayName}?`, [
-        { text: 'Later', style: 'cancel' },
-        { text: 'Say hi', onPress: () => router.push({ pathname: '/(tabs)/chat', params: { threadId: String(threadResult.data) } }) },
-      ]);
+      dialog.open({
+        hero: avatarHero(<PartyPopper size={13} color="#FFFFFF" />, '#00A56A'),
+        title: "You're now friends!",
+        message: `Start planning your next trip together. Say hi to ${displayName}?`,
+        tone: 'success',
+        confirmLabel: 'Say hi',
+        cancelLabel: 'Later',
+        onConfirm: () => router.push({ pathname: '/(tabs)/chat', params: { threadId: String(threadResult.data) } }),
+      });
       return;
     }
     setRequestStatus('outgoing_pending');
@@ -141,10 +258,15 @@ export default function PublicProfileScreen() {
   }
 
   function confirmRemoveFriend() {
-    Alert.alert('Remove friend?', `Remove ${displayName} from your friends?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => void handleRemoveFriend() },
-    ]);
+    dialog.open({
+      hero: avatarHero(<UserMinus size={13} color="#FFFFFF" />, '#E32727'),
+      title: `Unfriend ${displayName}?`,
+      message: "You'll be removed from each other's friends list. Your chat history stays.",
+      tone: 'danger',
+      confirmLabel: 'Unfriend',
+      cancelLabel: 'Keep as friend',
+      onConfirm: handleRemoveFriend,
+    });
   }
 
   async function handleRemoveFriend() {
@@ -161,10 +283,26 @@ export default function PublicProfileScreen() {
   }
 
   function confirmBlock() {
-    Alert.alert('Block this traveler?', `You won't see ${displayName} in Discover, nearby travelers, or search, and any friend connection will be removed.`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Block', style: 'destructive', onPress: () => void handleBlock() },
-    ]);
+    dialog.open({
+      hero: avatarHero(<Shield size={13} color="#FFFFFF" />, '#E32727'),
+      title: `Block ${displayName}?`,
+      message: "You won't see them in Discover, nearby travelers or search, and any friend connection will be removed. You can unblock them later in Settings.",
+      tone: 'danger',
+      confirmLabel: 'Block',
+      cancelLabel: 'Cancel',
+      onConfirm: handleBlock,
+    });
+  }
+
+  function confirmUnblock() {
+    dialog.open({
+      hero: avatarHero(<ShieldOff size={13} color="#FFFFFF" />, '#284BD6'),
+      title: `Unblock ${displayName}?`,
+      message: "They'll show up in Discover and search again. Your old friend connection won't come back.",
+      confirmLabel: 'Unblock',
+      cancelLabel: 'Cancel',
+      onConfirm: handleUnblock,
+    });
   }
 
   async function handleBlock() {
@@ -206,30 +344,36 @@ export default function PublicProfileScreen() {
       setErrorMessage(error.message);
       return;
     }
-    Alert.alert('Invite sent', `${displayName} will get a notification to join ${inviteStatus.guild_name}.`);
+    dialog.open({
+      hero: avatarHero(<MailCheck size={13} color="#FFFFFF" />, '#00A56A'),
+      title: 'Invite sent',
+      message: `${displayName} will get a notification to join ${inviteStatus.guild_name}.`,
+      tone: 'success',
+      confirmLabel: 'Done',
+    });
   }
 
   function confirmCancelInvite() {
     if (!inviteStatus?.invite_id) return;
     const inviteId = inviteStatus.invite_id;
-    Alert.alert('Cancel invite?', `Withdraw ${displayName}'s invite to ${inviteStatus.guild_name}?`, [
-      { text: 'Keep invite', style: 'cancel' },
-      {
-        text: 'Cancel invite',
-        style: 'destructive',
-        onPress: async () => {
-          setInviteBusy(true);
-          const { error } = await cancelGuildInvite(inviteId);
-          const refreshed = await getGuildInviteStatus(params.id);
-          setInviteBusy(false);
-          setInviteStatus(refreshed.data);
-          if (error) setErrorMessage(error.message);
-        },
+    dialog.open({
+      hero: avatarHero(<Users size={13} color="#FFFFFF" />, '#E5A00D'),
+      title: 'Cancel guild invite?',
+      message: `${displayName}'s invite to ${inviteStatus.guild_name} will be withdrawn.`,
+      tone: 'danger',
+      confirmLabel: 'Cancel invite',
+      cancelLabel: 'Keep invite',
+      onConfirm: async () => {
+        setInviteBusy(true);
+        const { error } = await cancelGuildInvite(inviteId);
+        const refreshed = await getGuildInviteStatus(params.id);
+        setInviteBusy(false);
+        setInviteStatus(refreshed.data);
+        if (error) setErrorMessage(error.message);
       },
-    ]);
+    });
   }
 
-  const isFriendish = requestStatus === 'accepted' || requestStatus === 'outgoing_pending';
   // Opened on yourself (e.g. from a leaderboard or roster): no friend/report/block.
   const isSelf = !!session?.user.id && session.user.id === params.id;
   const divider = isDark ? 'border-[#22324B]' : 'border-[#E4EAF2]';
@@ -318,13 +462,33 @@ export default function PublicProfileScreen() {
             </AnimatedPressable>
           ) : !fullProfile?.is_blocked_by_me ? (
             <>
-            <AnimatedPressable
-              key="friend"
-              onPress={requestStatus === 'accepted' ? confirmRemoveFriend : () => void handleRequest()}
-              disabled={requesting}
-              className={`mt-5 flex-row items-center justify-center gap-2 self-stretch rounded-2xl py-3.5 ${isFriendish ? 'bg-[#9EAFE9]' : 'bg-[#284BD6] shadow-sm shadow-[#284BD6]/30'}`}>
-              {requesting ? <ActivityIndicator color="#FFFFFF" /> : <>{requestStatus === 'accepted' || requestStatus === 'incoming_pending' ? <Check size={17} color="#FFFFFF" /> : requestStatus === 'outgoing_pending' ? <X size={17} color="#FFFFFF" /> : <UserPlus size={17} color="#FFFFFF" />}<Text className="font-bold text-white">{requestStatus === 'accepted' ? 'Friends' : requestStatus === 'outgoing_pending' ? 'Cancel request' : requestStatus === 'incoming_pending' ? 'Confirm' : 'Add Friend'}</Text></>}
-            </AnimatedPressable>
+            {requestStatus === 'incoming_pending' ? (
+              <View key="incoming" className={`mt-5 self-stretch rounded-2xl p-3 ${isDark ? 'bg-[#18253C]' : 'bg-[#F0F4FF]'}`}>
+                <View className="flex-row items-center gap-2 px-1 pb-3">
+                  <UserPlus size={15} color={isDark ? '#A5B8F5' : '#284BD6'} />
+                  <Text className={`flex-1 text-[13px] font-semibold ${isDark ? 'text-[#C7D2FE]' : 'text-[#284BD6]'}`}>
+                    {displayName.split(/\s+/)[0]} sent you a friend request
+                  </Text>
+                </View>
+                <View className="flex-row gap-2">
+                  <ActionButton label="Decline" icon={<X size={16} color={isDark ? '#E2E8F0' : '#1B2340'} />} variant="soft" isDark={isDark} disabled={requesting} onPress={confirmDeclineRequest} />
+                  <ActionButton label="Accept" icon={<Check size={16} color="#FFFFFF" />} variant="primary" isDark={isDark} busy={requesting} onPress={() => void handleRequest()} />
+                </View>
+              </View>
+            ) : (
+              <View key="friend-actions" className="mt-5 flex-row gap-2 self-stretch">
+                {requestStatus === 'accepted' ? (
+                  <>
+                    <ActionButton label="Friends" icon={<UserCheck size={16} color={isDark ? '#E2E8F0' : '#1B2340'} />} variant="soft" isDark={isDark} busy={requesting} onPress={confirmRemoveFriend} />
+                    <ActionButton label="Message" icon={<MessageCircle size={16} color="#FFFFFF" />} variant="primary" isDark={isDark} busy={messaging} onPress={() => void openChat()} />
+                  </>
+                ) : requestStatus === 'outgoing_pending' ? (
+                  <ActionButton label="Request sent" sublabel="Tap to cancel" icon={<Clock3 size={16} color={isDark ? '#FCD34D' : '#B45309'} />} variant="pending" isDark={isDark} busy={requesting} onPress={confirmCancelRequest} />
+                ) : (
+                  <ActionButton label="Add Friend" icon={<UserPlus size={16} color="#FFFFFF" />} variant="primary" isDark={isDark} busy={requesting} onPress={() => void handleRequest()} />
+                )}
+              </View>
+            )}
 
             {inviteStatus?.invite_id ? (
               <AnimatedPressable
@@ -380,7 +544,7 @@ export default function PublicProfileScreen() {
             <Text className={`font-bold ${secondary}`}>Report</Text>
           </AnimatedPressable>
           <AnimatedPressable
-            onPress={fullProfile?.is_blocked_by_me ? () => void handleUnblock() : confirmBlock}
+            onPress={fullProfile?.is_blocked_by_me ? confirmUnblock : confirmBlock}
             disabled={blockBusy}
             scaleTo={0.97}
             className="flex-1 flex-row items-center justify-center gap-2 py-3"
@@ -402,6 +566,8 @@ export default function PublicProfileScreen() {
         </Card>
         )}
       </View>
+
+      <ConfirmDialog {...dialog.props} isDark={isDark} />
 
       <ReportUserModal
         visible={reportModalVisible}

@@ -1,19 +1,24 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import { AlertTriangle, ChevronRight, IdCard, MapPin, PanelRightOpen, Shield, ShieldAlert, ShieldCheck, SunMedium, Trash2, Trophy, UserX, Users, Volume2 } from 'lucide-react-native';
+import { AlertTriangle, ChevronRight, Clock3, FileText, IdCard, KeyRound, Lock, MapPin, PanelRightOpen, Shield, ShieldAlert, ShieldCheck, SunMedium, Trash2, Trophy, UserX, Users, Volume2 } from 'lucide-react-native';
 import { useCallback, useState, type ReactNode } from 'react';
 import { ScrollView, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import ChangePasswordModal from '@/components/ChangePasswordModal';
+import DeleteAccountModal from '@/components/DeleteAccountModal';
+import LegalModal, { type LegalDoc } from '@/components/LegalModal';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Card, ScreenHeader } from '@/components/ui/screen-header';
-import { useAuth } from '@/hooks/auth-provider';
+import { useAuth, type VerificationStatus } from '@/hooks/auth-provider';
 import { useColorScheme, useThemePreference } from '@/hooks/use-color-scheme';
+import { formatDeletionDate } from '@/lib/accountDeletion';
 import { setLocationVisibility } from '@/lib/location';
 import { setSafetyPreferences } from '@/lib/safety';
 import { setSosEdgeEnabled, useSosEdge } from '@/lib/sos-edge';
 import { setSoundEnabled, useSoundEnabled } from '@/lib/sounds';
 import { supabase } from '@/lib/supabase';
 
+import { showAlert } from '@/lib/dialog';
 function IconBadge({ children, tint }: { children: ReactNode; tint: string }) {
   return <View className={`h-9 w-9 items-center justify-center rounded-full ${tint}`}>{children}</View>;
 }
@@ -78,13 +83,31 @@ function SettingRow({
   );
 }
 
+type VerificationItem = { label: string; state: 'done' | 'pending' | 'missing'; onPress?: '/verify-id' | '/edit-profile' };
+
+// Real status per check; incomplete ones link to where they get fixed.
+function verificationItems(idStatus: VerificationStatus | undefined, phone: string | null | undefined): VerificationItem[] {
+  return [
+    { label: 'Email Verified', state: 'done' },
+    idStatus === 'approved'
+      ? { label: 'ID Verified', state: 'done' }
+      : idStatus === 'pending'
+        ? { label: 'ID Under Review', state: 'pending' }
+        : { label: idStatus === 'rejected' ? 'ID Rejected - Resubmit' : 'ID Not Verified', state: 'missing', onPress: '/verify-id' },
+    phone ? { label: 'Phone Number Added', state: 'done' } : { label: 'Add a Phone Number', state: 'missing', onPress: '/edit-profile' },
+  ];
+}
+
 export default function ModalScreen() {
   const router = useRouter();
-  const { session, profile, loading, refreshProfile } = useAuth();
+  const { session, profile, loading, refreshProfile, signOut } = useAuth();
   const colorScheme = useColorScheme();
   const { setPreference } = useThemePreference();
   const insets = useSafeAreaInsets();
   const [liveLocation, setLiveLocation] = useState(true);
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const isDark = colorScheme === 'dark';
   const soundEnabled = useSoundEnabled();
@@ -118,6 +141,15 @@ export default function ModalScreen() {
     if (error) {
       setLiveLocation(!next);
     }
+  }
+
+  async function handleAccountDeleted(scheduledFor: string | null) {
+    setShowDeleteAccount(false);
+    await signOut();
+    showAlert(
+      'Account scheduled for deletion',
+      `Your account is deactivated and will be permanently deleted on ${formatDeletionDate(scheduledFor)}. Sign in before then if you change your mind.`
+    );
   }
 
   async function handleToggleWarningAlerts(next: boolean) {
@@ -228,16 +260,33 @@ export default function ModalScreen() {
           </View>
 
           <View className="mt-4 gap-3">
-            {['Email Verified'].map((item) => (
-              <View key={item} className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
-                <Text className={`text-[15px] ${isDark ? 'text-white' : 'text-[#182847]'}`}>{item}</Text>
-                <ShieldCheck size={18} color="#00A56A" />
-              </View>
+            {verificationItems(profile?.verification_status, profile?.phone).map(({ label, state, onPress }) => (
+              <AnimatedPressable
+                key={label}
+                onPress={onPress ? () => router.push(onPress) : undefined}
+                disabled={!onPress}
+                scaleTo={0.98}
+                className={`flex-row items-center justify-between rounded-2xl px-4 py-4 ${isDark ? 'bg-[#18253C]' : 'bg-[#F4F8F6]'}`}>
+                <Text className={`text-[15px] ${isDark ? 'text-white' : 'text-[#182847]'}`}>{label}</Text>
+                {state === 'done' ? (
+                  <ShieldCheck size={18} color="#00A56A" />
+                ) : state === 'pending' ? (
+                  <Clock3 size={18} color="#D88700" />
+                ) : (
+                  <AlertTriangle size={18} color="#E32727" />
+                )}
+              </AnimatedPressable>
             ))}
           </View>
         </Card>
 
         <Card index={3} className="py-1">
+          <NavRow
+            isDark={isDark}
+            icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><KeyRound size={17} color="#2647B8" /></IconBadge>}
+            label="Change Password"
+            onPress={() => setShowChangePassword(true)}
+          />
           <NavRow
             isDark={isDark}
             icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><Users size={17} color="#2647B8" /></IconBadge>}
@@ -266,13 +315,46 @@ export default function ModalScreen() {
           ) : null}
           <NavRow
             isDark={isDark}
-            destructive
-            last
-            icon={<IconBadge tint={isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}><Trash2 size={17} color="#E32727" /></IconBadge>}
-            label="Delete Account"
+            icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><FileText size={17} color="#2647B8" /></IconBadge>}
+            label="Terms & Conditions"
+            onPress={() => setLegalDoc('terms')}
           />
+          <NavRow
+            isDark={isDark}
+            icon={<IconBadge tint={isDark ? 'bg-[#18253C]' : 'bg-[#EEF3FF]'}><Lock size={17} color="#2647B8" /></IconBadge>}
+            label="Privacy Policy"
+            onPress={() => setLegalDoc('privacy')}
+          />
+          {profile?.role === 'admin' ? null : (
+            <NavRow
+              isDark={isDark}
+              destructive
+              last
+              icon={<IconBadge tint={isDark ? 'bg-[#2B1414]' : 'bg-[#FDECEC]'}><Trash2 size={17} color="#E32727" /></IconBadge>}
+              label="Delete Account"
+              onPress={() => setShowDeleteAccount(true)}
+            />
+          )}
         </Card>
       </View>
+
+      <LegalModal visible={legalDoc !== null} doc={legalDoc ?? 'terms'} isDark={isDark} onClose={() => setLegalDoc(null)} />
+      <ChangePasswordModal
+        visible={showChangePassword}
+        email={session.user.email ?? ''}
+        isDark={isDark}
+        onClose={() => setShowChangePassword(false)}
+        onForgot={() => {
+          setShowChangePassword(false);
+          router.push({ pathname: '/(auth)/forgot-password', params: { email: session.user.email ?? '', signedIn: '1' } });
+        }}
+      />
+      <DeleteAccountModal
+        visible={showDeleteAccount}
+        isDark={isDark}
+        onClose={() => setShowDeleteAccount(false)}
+        onDeleted={handleAccountDeleted}
+      />
     </ScrollView>
   );
 }

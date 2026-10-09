@@ -63,8 +63,13 @@ async function buildChatPush(admin: SupabaseClient, id: string): Promise<Push | 
   }
 
   const [{ data: participants }, { data: sender }, { data: thread }, { data: blocks }] = await Promise.all([
-    // Muted chats stay silent.
-    admin.from('chat_participants').select('user_id').eq('thread_id', message.thread_id).neq('user_id', message.sender_id).eq('muted', false),
+    // Muted chats stay silent, until a timed mute runs out (muted_until, migration 202610090012).
+    admin
+      .from('chat_participants')
+      .select('user_id')
+      .eq('thread_id', message.thread_id)
+      .neq('user_id', message.sender_id)
+      .or(`muted.eq.false,muted_until.lt.${new Date().toISOString()}`),
     admin.from('profiles').select('display_name').eq('id', message.sender_id).maybeSingle(),
     admin.from('chat_threads').select('thread_type, title').eq('id', message.thread_id).maybeSingle(),
     // Anyone who blocked the sender gets nothing.
